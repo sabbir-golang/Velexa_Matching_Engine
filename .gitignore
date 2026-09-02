@@ -1,0 +1,11 @@
+# compiled binaries (module builds ./velexa-sim-me)
+velexa-sim-me
+velexa-sim-me.*
+# editing backups
+*.bak
+*.bak.*
+# large runtime message log (9.6G)
+*.log
+fix_messages.log
+# runtime audit data
+admin_audit.jsonl
