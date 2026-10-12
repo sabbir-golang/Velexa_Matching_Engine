@@ -65,7 +65,7 @@ flowchart LR
     LIVE -- "/purge" --> AUD
 ```
 
-`main` in `main.go` wires everything together at startup:
+`main` in `run.go` wires everything together at startup:
 
 1. Builds the bus, loads the instrument universe, creates the `Engine`, and starts its run loop and the bots.
 2. Starts the FIX acceptor (a failure is logged; HTTP keeps running) and loads the ITCH credentials.

@@ -1,15 +1,21 @@
-# compiled binaries (module builds ./velexa-sim-me)
-velexa-sim-me
-velexa-sim-me.*
-# editing backups
+# build output
+/bin/
+/velexa-sim-me
+/velexa-sim-me.*
+/matching-engine
+
+# local backups and old binaries
+/backups/
 *.bak
 *.bak.*
-# large runtime message log (9.6G)
-*.log
-fix_messages.log
-# runtime audit data
+
+# runtime state written next to the binary on a dev machine
+data/
+/instruments.json
 admin_audit.jsonl
 me.env
-matching-engine
-instruments.json
-data/
+
+# logs (the FIX message log can reach gigabytes)
+/logs/
+*.log
+fix_messages.log

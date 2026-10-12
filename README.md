@@ -31,9 +31,11 @@ A Go simulator of the Dhaka Stock Exchange (DSE) matching engine, built so an or
 You need Go 1.25 or newer.
 
 ```bash
-go build                          # produces ./velexa-sim-me
-ME_FIX_SPEC_DIR=$PWD/spec ./velexa-sim-me
+make run                          # same as: go run ./cmd/matching-engine
+# or build a binary: make build && ./bin/velexa-sim-me
 ```
+
+Start it from the repository root: it finds the FIX dictionaries in `spec/` and keeps its data files in `data/` there (when `/opt/velexa-sim-me` doesn't exist).
 
 Then:
 
@@ -49,7 +51,7 @@ Then:
 Without other settings, the engine:
 - runs on the 430 built-in DSE instruments, after trying the default exchange URL, which can take up to 12 s
 - has FIX and ITCH authentication turned off
-- looks for its data files under `/opt/velexa-sim-me/`
+- looks for its data files under `/opt/velexa-sim-me/`, or in `./data/` when that directory does not exist
 
 For a real deployment, see [configuration](docs/configuration.md) and [operations](docs/operations.md). Before exposing the engine to anyone, read the [security notes](docs/configuration.md#security-notes).
 
@@ -76,3 +78,16 @@ For a real deployment, see [configuration](docs/configuration.md) and [operation
 
 These docs are kept in sync with the code by the `/update-docs` Claude Code skill in `.claude/skills/update-docs/`.
 # Velexa_Matching_Engine
+
+## Project layout
+
+```
+cmd/matching-engine/   entry point (calls me.Run())
+internal/me/           the engine: matching, FIX/ITCH, admin console, loaders, load tests, web pages
+internal/refdata/      DSE reference tables (asset class, category, sector, ISIN)
+spec/                  FIX data dictionaries
+docs/  tools/  deploy/ documentation, helper scripts, server deployment files
+Makefile               make build | run | test | vet | report
+```
+
+See [development](docs/development.md) for the source-file map and conventions.

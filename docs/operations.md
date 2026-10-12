@@ -5,15 +5,15 @@ This page is for whoever deploys and runs the engine. It covers building and sta
 ## Build and run
 
 ```bash
-go build                 # produces ./velexa-sim-me (named after the module)
-./velexa-sim-me
+make build               # produces bin/velexa-sim-me (go build -o bin/velexa-sim-me ./cmd/matching-engine)
+./bin/velexa-sim-me
 ```
 
 The engine reads only environment variables (see [configuration](configuration.md#environment-variables)). If you keep them in an env file such as the git-ignored `me.env`, export it into the shell before starting:
 
 ```bash
 set -a; . ./me.env; set +a
-./velexa-sim-me 2>&1 | tee -a me.log
+./bin/velexa-sim-me 2>&1 | tee -a logs/me.log
 ```
 
 The repo contains no systemd unit, Dockerfile or process supervisor; set up your own.
@@ -38,14 +38,14 @@ Restarting clears all books, orders and trades (see [Persistence](architecture.m
 | 8010 (`PORT`) | engine | Web UI, JSON API, WebSocket streams, SSE, admin console |
 | 5001 (`FIX_PORT`) | engine | FIX acceptor |
 | 5501 (`ITCH_PORT`) | engine | SoupBinTCP ITCH feed |
-| 80 / 443 | nginx | Reverse proxy to 8010 (`nginx-443.patch`) |
-| 5443 | nginx | External FIX gateway, TCP proxy to 5001 (`regen-fixs-gateway.sh`) |
+| 80 / 443 | nginx | Reverse proxy to 8010 (`deploy/nginx-443.patch`) |
+| 5443 | nginx | External FIX gateway, TCP proxy to 5001 (`deploy/regen-fixs-gateway.sh`) |
 
 ## nginx front ends
 
-### HTTPS reverse proxy (`nginx-443.patch`)
+### HTTPS reverse proxy (`deploy/nginx-443.patch`)
 
-`nginx-443.patch` is a unified diff against `/etc/nginx/sites-available/matching-engine`. It also creates `/etc/nginx/snippets/matching-engine-proxy.conf`. It does three things:
+`deploy/nginx-443.patch` is a unified diff against `/etc/nginx/sites-available/matching-engine`. It also creates `/etc/nginx/snippets/matching-engine-proxy.conf`. It does three things:
 
 - Moves the proxy `location /` block into that snippet, which both the port 80 and port 443 servers include. The block:
   - proxies to `127.0.0.1:8010` over HTTP/1.1
@@ -70,7 +70,7 @@ The admin login cookie is marked `Secure` when nginx sends `X-Forwarded-Proto: h
 
 ### External FIX gateway (port 5443)
 
-Outside brokers connect to port 5443, where an nginx `stream` server forwards raw TCP to the acceptor on `127.0.0.1:5001`. `regen-fixs-gateway.sh` generates `/etc/nginx/stream-enabled/fixs-gateway.conf` from the IP allowlist:
+Outside brokers connect to port 5443, where an nginx `stream` server forwards raw TCP to the acceptor on `127.0.0.1:5001`. `deploy/regen-fixs-gateway.sh` generates `/etc/nginx/stream-enabled/fixs-gateway.conf` from the IP allowlist:
 
 - Each IP in `fix_allow.json` (`FIXS_ALLOW_FILE`) gets an `allow` line, followed by `deny all`. Loopback and one host address written into the script are always allowed.
 - An **empty allowlist means `allow all`**, matching what the admin console says.
@@ -114,7 +114,7 @@ Every credential change, allowlist change, session control and instrument reload
 1. Under **Broker Credentials**, enter the broker's SenderCompID. Company, contact, FIX password, ITCH username and ITCH password are optional; blank passwords are generated, and the ITCH username defaults to the first 6 characters of the SenderCompID.
 2. The engine writes `fix_brokers.json`, `itch_brokers.json` and `broker_meta.json` straight away. No restart is needed.
 3. Print or download the onboarding sheet. It fills in `FIX_SENDER` as the TargetCompID, `FIXT.1.1` / ApplVerID 9, and the external, internal and ITCH endpoints from the `ME_PUB_*`, `ME_INT_*` and `ME_ITCH_*` variables. Set those variables to the real addresses before issuing any sheets.
-4. If the broker connects from outside, add its OMS IP under **External OMS Access** and run `regen-fixs-gateway.sh`.
+4. If the broker connects from outside, add its OMS IP under **External OMS Access** and run `deploy/regen-fixs-gateway.sh`.
 5. Credentials are only checked if `ME_FIX_AUTH=on` and `ME_ITCH_AUTH=on` are set.
 
 Revoking a broker removes its credentials and metadata. It doesn't disconnect a live session; use **FIX Sessions → disconnect** for that.
@@ -195,8 +195,8 @@ The dashboard checks fixed ports on `127.0.0.1`: 5001, 5443, 5501 and 8010. If y
 | Broker logon refused | Look in Diagnostics or the log for `logon REJECTED`. The reason says whether the broker isn't registered, the password is wrong, or 553 doesn't match the CompID. |
 | FIX orders rejected `off-tick` or `price band` | The price isn't on the instrument's tick, or is outside the daily band (see [Pre-trade checks](architecture.md#pre-trade-checks-fix-orders-only)). An import with the real tick and previous close fixes auto-listed symbols. |
 | Market orders rejected during the auction | Pre-Open accepts only limit orders. Open the market first. |
-| External broker can't connect on 5443 | Its IP isn't allowed, or `regen-fixs-gateway.sh` wasn't run after editing the allowlist. |
+| External broker can't connect on 5443 | Its IP isn't allowed, or `deploy/regen-fixs-gateway.sh` wasn't run after editing the allowlist. |
 | Live test sends orders but none reach the engine | The FIX initiator dials `ME_ADVERTISE_HOST:5001` with target `DSEME`. Check `ME_ADVERTISE_HOST`, and note that a changed `FIX_PORT` or `FIX_SENDER` isn't used here. |
 | Benchmark `persisted` count goes up but the tables stay empty | Postgres write errors are ignored, and the counter goes up anyway. Check the `ME_DB_*` settings and that the tables exist. |
 | `/api/bench/orders.csv` returns 500 | The Postgres pool couldn't be created, or the query failed; the error text is in the body. |
-| Browser shows no live updates through nginx | Proxy buffering is on. The snippet in `nginx-443.patch` turns it off. |
+| Browser shows no live updates through nginx | Proxy buffering is on. The snippet in `deploy/nginx-443.patch` turns it off. |

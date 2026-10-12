@@ -4,13 +4,30 @@ This page is for developers changing the engine's code: how the source is laid o
 
 ## Build and test
 
-You need Go 1.25 or newer (from `go.mod`). Everything is one `main` package in the repo root.
+You need Go 1.25 or newer (from `go.mod`). Run everything from the repo root: the engine finds `spec/` and writes `data/` relative to it.
 
 ```bash
-go build              # builds ./velexa-sim-me (git-ignored)
-go vet .
-go test ./...
+make build            # builds bin/velexa-sim-me (git-ignored)
+make run              # go run ./cmd/matching-engine
+make vet
+make test             # unit tests plus the FIX conformance suite (about 40 s)
 ```
+
+## Project layout
+
+```
+cmd/matching-engine/   entry point: a thin main that calls me.Run()
+internal/me/           the engine: matching, FIX acceptor, ITCH feed/gateway, admin console,
+                       instrument loading, load tests, embedded web pages, tests
+internal/refdata/      DSE reference tables (asset class, category, sector, ISIN per ticker)
+spec/                  QuickFIX data dictionaries (FIXT11.xml, FIX50SP2.xml)
+docs/                  documentation and the DSE conformance report
+tools/                 helper scripts (conformance_report.py)
+deploy/                nginx patch, gateway script and sample state files for a server
+Makefile               build / run / test shortcuts
+```
+
+`internal/me` is one package on purpose: the engine, gateways and admin API share state through a few process-wide tables (the instrument metadata, the broker allowlists, the message log). Splitting it further would mean exporting and threading those through every call, which changes code rather than moving it. The source-file table below lists the files in `internal/me/` (and `internal/refdata/`).
 
 Direct dependencies:
 
@@ -28,7 +45,7 @@ ME_INSTRUMENT_FILE=/tmp/me/instruments.json ME_FIX_MSGLOG_FILE=/tmp/me/fix.log \
 ME_AUDIT_FILE=/tmp/me/audit.jsonl ME_FIX_AUTH_FILE=/tmp/me/fix_brokers.json \
 ME_ITCH_AUTH_FILE=/tmp/me/itch_brokers.json ME_BROKER_META_FILE=/tmp/me/broker_meta.json \
 FIXS_ALLOW_FILE=/tmp/me/fix_allow.json EXCHANGE_INSTRUMENT_URL=http://127.0.0.1:1/ \
-./velexa-sim-me
+go run ./cmd/matching-engine
 ```
 
 Setting `EXCHANGE_INSTRUMENT_URL` to a closed local port makes the engine fall back to the built-in instruments at once, instead of waiting for the 12-second timeout on the default address.
@@ -59,7 +76,7 @@ Setting `EXCHANGE_INSTRUMENT_URL` to a closed local port makes the engine fall b
 | `latencyproxy.go` | Collects per-stage latency from the OMS API and FIX initiator, plus this engine's own FIX timing (`meFixLatency`), for `/api/live/latency`. |
 | `live.go` | Live load test (`LiveBench`): broker list, OMS test data, order generation through the OMS API, fill counting, and the destructive `Cleanup`. |
 | `loader.go` | Instrument universe loading: source priority, JSON/CSV/TSV master parsing, per-symbol metadata (`instrMeta`), symbol validation, default tick. |
-| `main.go` | Built-in 400-instrument fallback list, process startup, and the public HTTP routes. |
+| `run.go` | Built-in 400-instrument fallback list, process startup, and the public HTTP routes. |
 | `persist.go` | Batched Postgres `COPY` writer for benchmark orders and executions. |
 | `rms.go` | `RiskEngine`: pre-trade risk checks used by the synthetic benchmark. |
 | `web.go` | Embedded HTML for the `/` trade terminal page. |
@@ -70,9 +87,9 @@ Other files in the repo:
 | File | Purpose |
 |---|---|
 | `spec/FIXT11.xml`, `spec/FIX50SP2.xml` | QuickFIX data dictionaries (see `ME_FIX_SPEC_DIR`). |
-| `regen-fixs-gateway.sh` | Generates the nginx port 5443 allowlist config and reloads nginx. |
-| `nginx-443.patch` | nginx HTTPS reverse-proxy change (see [operations](operations.md#https-reverse-proxy-nginx-443patch)). |
-| `*.json`, `brokers.tsv` | Data files; see [configuration](configuration.md#data-and-config-files). |
+| `deploy/regen-fixs-gateway.sh` | Generates the nginx port 5443 allowlist config and reloads nginx. |
+| `deploy/nginx-443.patch` | nginx HTTPS reverse-proxy change (see [operations](operations.md#https-reverse-proxy-nginx-443patch)). |
+| `deploy/state/*.json`, `brokers.tsv` | Sample data files; see [configuration](configuration.md#data-and-config-files). |
 | `.claude/skills/update-docs/` | The skill that keeps these docs in sync with the code. |
 
 ## Conventions
@@ -95,7 +112,7 @@ Other files in the repo:
 
 ### Add an HTTP route
 
-1. Public routes go in `main` (`main.go`); admin routes go in `registerAdmin` (`admin.go`), wrapped in `requireAdmin`.
+1. Public routes go in `main` (`run.go`); admin routes go in `registerAdmin` (`admin.go`), wrapped in `requireAdmin`.
 2. If the route should accept only one method, check `r.Method` as `/api/order` does.
 3. Read or change engine state as described under **Engine state** in [Conventions](#conventions).
 4. Run `/update-docs` to add it to the [route index](http-api.md#route-index).
@@ -118,7 +135,7 @@ Other files in the repo:
 
 ### Add or change instruments
 
-Instruments are data, not code. Supply a master through `ME_INSTRUMENT_FILE`, `EXCHANGE_INSTRUMENT_URL` or the admin import (see [Instrument universe](architecture.md#instrument-universe)). Only edit the built-in `universe` list in `main.go` to change the fallback used when no master is available.
+Instruments are data, not code. Supply a master through `ME_INSTRUMENT_FILE`, `EXCHANGE_INSTRUMENT_URL` or the admin import (see [Instrument universe](architecture.md#instrument-universe)). Only edit the built-in `universe` list in `universe_data.go` to change the fallback used when no master is available.
 
 ## Keeping these docs current
 

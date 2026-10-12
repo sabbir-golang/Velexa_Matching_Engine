@@ -1,10 +1,10 @@
 # HTTP API
 
-This page documents everything served on the HTTP port (`PORT`, default `8010`): the web pages, the JSON API, the CSV exports, the WebSocket market-data streams, the `/events` stream and the admin console API. All routes are registered on one `http.ServeMux` in `main.go`, `admin.go` and `instruments.go`.
+This page documents everything served on the HTTP port (`PORT`, default `8010`): the web pages, the JSON API, the CSV exports, the WebSocket market-data streams, the `/events` stream and the admin console API. All routes are registered on one `http.ServeMux` in `run.go`, `admin.go` and `instruments.go`.
 
 Unless a route says otherwise:
 
-- Responses are JSON, written by `writeJSON` in `main.go`.
+- Responses are JSON, written by `writeJSON` in `run.go`.
 - The handler doesn't check the HTTP method, so any method works. The bundled pages use `GET` for reads and `POST` for actions; do the same.
 - Errors inside a JSON action come back as HTTP 200 with `{"ok": false, "error": "…"}`.
 

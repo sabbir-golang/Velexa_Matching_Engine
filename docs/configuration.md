@@ -12,9 +12,9 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | Variable | Default | Purpose | Read in |
 |---|---|---|---|
 | `EXCHANGE_INSTRUMENT_URL` | deployment-specific default, see `loader.go` | URL of the exchange security master. Second choice for the instrument universe at boot and on reload (see [Instrument universe](architecture.md#instrument-universe)). | `loader.go` (`instrumentURL`) |
-| `FIXS_ALLOW_FILE` | `/opt/velexa-sim-me/fix_allow.json` | Source-IP allowlist for the external FIX gateway on port 5443, edited from the admin console. | `admin.go` (`allowPath`), `regen-fixs-gateway.sh` |
-| `FIX_PORT` | `5001` | TCP port of the FIX acceptor. | `main.go` |
-| `FIX_SENDER` | `DSEME` | SenderCompID of the FIX acceptor; also printed as the TargetCompID on broker onboarding sheets. | `main.go`, `admin.go` (`meEndpoints`) |
+| `FIXS_ALLOW_FILE` | `/opt/velexa-sim-me/fix_allow.json` | Source-IP allowlist for the external FIX gateway on port 5443, edited from the admin console. | `admin.go` (`allowPath`), `deploy/regen-fixs-gateway.sh` |
+| `FIX_PORT` | `5001` | TCP port of the FIX acceptor. | `run.go` |
+| `FIX_SENDER` | `DSEME` | SenderCompID of the FIX acceptor; also printed as the TargetCompID on broker onboarding sheets. | `run.go`, `admin.go` (`meEndpoints`) |
 | `ITCH_PORT` | `5501` | TCP port of the SoupBinTCP ITCH market-data feed. | `itchfeed.go` |
 | `LIVE_BROKERS_FILE` | unset; falls back to `/opt/velexa-sim-me/brokers.tsv` | Broker list used by the live load test. If the file is missing or empty, three built-in brokers are used. | `live.go` (`loadBrokersFile`) |
 | `ME_ADMIN_PASS` | built-in default (see [Security notes](#security-notes)) | Admin console password. | `admin.go` (`adminPass`) |
@@ -54,7 +54,7 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `ME_OMS_USER` | `postgres` | User for the OMS Postgres. | `config.go` (`omsDSN`) |
 | `ME_PUB_HOST` | deployment-specific default, see `admin.go` | Public hostname printed on onboarding sheets (Host / SNI). | `admin.go` (`meEndpoints`) |
 | `ME_PUB_IP` | deployment-specific default, see `admin.go` | Public IP printed on onboarding sheets for the external FIX gateway; also the default for `ME_ITCH_IP`. | `admin.go` (`meEndpoints`) |
-| `PORT` | `8010` | HTTP listen port (web UI, JSON API, WebSockets, admin console). | `main.go` |
+| `PORT` | `8010` | HTTP listen port (web UI, JSON API, WebSockets, admin console). | `run.go` |
 <!-- /AUTO:env-vars -->
 
 ### Variables that only change what the onboarding sheet says
@@ -80,7 +80,7 @@ With no variables set, the engine runs standalone on one machine:
 | `fix_brokers.json` | `ME_FIX_AUTH_FILE` | JSON object: SenderCompID → password | FIX logon credentials. Rewritten (mode `0600`) when brokers are added or revoked in the admin console. |
 | `itch_brokers.json` | `ME_ITCH_AUTH_FILE` | JSON object: username → password | ITCH feed credentials. Rewritten (mode `0600`) from the admin console. |
 | `broker_meta.json` | `ME_BROKER_META_FILE` | JSON object: SenderCompID → `{company, sender, itch_user, contact, created}` | Links each broker's FIX CompID to its ITCH user and company for the admin console. Holds no passwords. |
-| `fix_allow.json` | `FIXS_ALLOW_FILE` | JSON object: IP address → label | Source-IP allowlist for the external FIX gateway. Read by `regen-fixs-gateway.sh`. |
+| `fix_allow.json` | `FIXS_ALLOW_FILE` | JSON object: IP address → label | Source-IP allowlist for the external FIX gateway. Read by `deploy/regen-fixs-gateway.sh`. |
 | `brokers.tsv` | `LIVE_BROKERS_FILE` | Tab-separated, no header. Columns: BO-ID prefix, OMS subdomain, OMS database name, SenderCompID; further columns are ignored | Broker set for the live load test and the broker picker on `/bench`. |
 | `admin_audit.jsonl` | `ME_AUDIT_FILE` | JSON lines: `{time, actor, action, target}` | Admin audit trail. The last 300 entries are reloaded at startup. Git-ignored. |
 | `fix_messages.log` | `ME_FIX_MSGLOG_FILE` | Text lines: `YYYY-MM-DD HH:MM:SS.mmm DIR SESSION RAW`, with FIX SOH shown as `\|` | Every FIX message in and out except heartbeats. The last 4000 lines are reloaded at startup. Git-ignored. |
@@ -152,7 +152,7 @@ Every file default points into one directory:
 └── fix_messages.log        # written at runtime
 ```
 
-`regen-fixs-gateway.sh` says to run it as `~/matching-engine/regen-fixs-gateway.sh`. The binary and scripts can live elsewhere, as long as the data paths resolve. Each path can be moved with the env override listed in the table above.
+`deploy/regen-fixs-gateway.sh` says to run it as `~/matching-engine/deploy/regen-fixs-gateway.sh`. The binary and scripts can live elsewhere, as long as the data paths resolve. Each path can be moved with the env override listed in the table above.
 
 ## Security notes
 
