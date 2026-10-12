@@ -16,8 +16,8 @@ var botsPaused int32
 
 func (e *Engine) startBots(seed int64) {
 	rng := rand.New(rand.NewSource(seed))
-	for i := range e.instr {
-		sym := e.instr[i].Symbol
+	for i, in := range e.instr() {
+		sym := in.Symbol
 		go e.marketMaker(sym, rand.New(rand.NewSource(seed+int64(i)+1)))
 		go e.noiseTrader(sym, rand.New(rand.NewSource(seed+int64(i)+1000)))
 	}
@@ -50,8 +50,11 @@ func (e *Engine) marketMaker(sym string, rng *rand.Rand) {
 		if atomic.LoadInt32(&botsPaused) == 1 {
 			continue
 		}
+		if !metaFor(sym).tradable() {
+			continue
+		}
 		e.mu.Lock()
-		md := e.md[sym]
+		md := e.mdOf(sym)
 		ref := md.Ref
 		if ref <= 0 {
 			ref = md.Prev
@@ -83,6 +86,9 @@ func (e *Engine) noiseTrader(sym string, rng *rand.Rand) {
 	for {
 		time.Sleep(time.Duration(600+rng.Intn(1800)) * time.Millisecond)
 		if atomic.LoadInt32(&botsPaused) == 1 {
+			continue
+		}
+		if !metaFor(sym).tradable() {
 			continue
 		}
 		side := Buy

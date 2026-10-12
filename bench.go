@@ -106,12 +106,12 @@ type Bench struct {
 }
 
 func NewBench(pool *pgxpool.Pool, eng *Engine) *Bench {
-	syms := make([]string, 0, len(eng.instr))
+	syms := make([]string, 0, len(eng.instr()))
 	ref := map[string]float64{}
 	eng.mu.RLock()
-	for _, in := range eng.instr {
+	for _, in := range eng.instr() {
 		syms = append(syms, in.Symbol)
-		p := eng.md[in.Symbol].Last
+		p := eng.mdOf(in.Symbol).Last
 		if p <= 0 {
 			p = in.Prev
 		}

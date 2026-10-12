@@ -31,7 +31,7 @@ type brokerMeta struct {
 var meBrokers = &brokerMeta{recs: map[string]*BrokerRec{}}
 
 func loadBrokerMeta() {
-	meBrokers.path = envOr("ME_BROKER_META_FILE", "/opt/velexa-sim-me/broker_meta.json")
+	meBrokers.path = envOr("ME_BROKER_META_FILE", stateFile("broker_meta.json"))
 	if b, err := os.ReadFile(meBrokers.path); err == nil {
 		var m map[string]*BrokerRec
 		if json.Unmarshal(b, &m) == nil {

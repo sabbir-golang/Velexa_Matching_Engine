@@ -1,0 +1,89 @@
+--- a/etc/nginx/sites-available/matching-engine
++++ b/etc/nginx/sites-available/matching-engine
+@@ -1,4 +1,4 @@
+-# Velexa Matching Engine — reverse proxy :80 -> 127.0.0.1:8010
++# Velexa Matching Engine — reverse proxy :80/:443 -> 127.0.0.1:8010
+ upstream matching_engine { server 127.0.0.1:8010; keepalive 32; }
+ 
+ server {
+@@ -9,22 +9,38 @@
+     access_log /var/log/nginx/matching-engine.access.log;
+     error_log  /var/log/nginx/matching-engine.error.log;
+ 
+-    location / {
+-        proxy_pass http://matching_engine;
+-        proxy_http_version 1.1;
+-
+-        proxy_set_header Upgrade    $http_upgrade;
+-        proxy_set_header Connection $connection_upgrade;
+-
+-        proxy_set_header Host              $host;
+-        proxy_set_header X-Real-IP         $remote_addr;
+-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+-        proxy_set_header X-Forwarded-Proto $scheme;
+-
+-        # SSE (/events) + long-lived feeds must not be buffered
+-        proxy_buffering off;
+-        proxy_cache off;
+-        proxy_read_timeout 24h;
+-        proxy_send_timeout 24h;
+-    }
++    # NOTE: deliberately no 80 -> 443 redirect. Cloudflare must keep working
++    # whether the zone is on Flexible (edge -> :80) or Full (edge -> :443).
++    include snippets/matching-engine-proxy.conf;
++}
++
++server {
++    listen 443 ssl http2 default_server;
++    listen [::]:443 ssl http2 default_server;
++    server_name _;
++
++    # Cloudflare Origin Certificate:
++    #   dash -> SSL/TLS -> Origin Server -> Create Certificate
++    #   cert  -> /etc/ssl/velexa/origin.pem   (root:root 0644)
++    #   key   -> /etc/ssl/velexa/origin.key   (root:root 0600)
++    ssl_certificate     /etc/ssl/velexa/origin.pem;
++    ssl_certificate_key /etc/ssl/velexa/origin.key;
++
++    ssl_protocols       TLSv1.2 TLSv1.3;
++    ssl_session_cache   shared:MESSL:10m;
++    ssl_session_timeout 1d;
++    ssl_session_tickets off;
++
++    # Authenticated Origin Pulls — 443 is world-reachable once the NAT forwards
++    # it, so this is what stops anyone bypassing Cloudflare. Enable ONLY after
++    # fetching the CA to the path below:
++    #   curl -fsSL https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem \
++    #     -o /etc/ssl/velexa/cloudflare-origin-pull-ca.pem
++    # ssl_client_certificate /etc/ssl/velexa/cloudflare-origin-pull-ca.pem;
++    # ssl_verify_client on;
++
++    access_log /var/log/nginx/matching-engine.access.log;
++    error_log  /var/log/nginx/matching-engine.error.log;
++
++    include snippets/matching-engine-proxy.conf;
+ }
+--- /dev/null
++++ b/etc/nginx/snippets/matching-engine-proxy.conf
+@@ -0,0 +1,21 @@
++# Shared proxy config for the Velexa Matching Engine vhosts (:80 and :443).
++# Included from /etc/nginx/sites-available/matching-engine — edit here, not
++# there, so the two listeners can never drift apart.
++location / {
++    proxy_pass http://matching_engine;
++    proxy_http_version 1.1;
++
++    proxy_set_header Upgrade    $http_upgrade;
++    proxy_set_header Connection $connection_upgrade;
++
++    proxy_set_header Host              $host;
++    proxy_set_header X-Real-IP         $remote_addr;
++    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
++    proxy_set_header X-Forwarded-Proto $scheme;
++
++    # SSE (/events) + long-lived feeds must not be buffered
++    proxy_buffering off;
++    proxy_cache off;
++    proxy_read_timeout 24h;
++    proxy_send_timeout 24h;
++}

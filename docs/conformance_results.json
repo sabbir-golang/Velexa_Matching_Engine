@@ -1,0 +1,2382 @@
+{
+ "counts": {
+  "FAIL": 6,
+  "GAP": 44,
+  "INFO": 9,
+  "PARTIAL": 3,
+  "PASS": 122
+ },
+ "generated": "2026-10-12T12:21:55Z",
+ "results": [
+  {
+   "id": "OT-01",
+   "category": "Order type (40)",
+   "title": "Limit (40=2) with price",
+   "dse_expected": "Accepted, rests on book",
+   "sent": "8=FIXT.1.1|9=199|35=D|34=2|49=TESTBRK|50=TRADER1|52=20261012-12:21:21.000|56=DSEME|1=BO1001|11=CF00001|38=100|40=2|44=99.00|54=1|55=T001M|59=0|60=20261012-12:21:21.000|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=083|",
+   "replies": [
+    "8=FIXT.1.1|9=202|35=8|34=2|49=DSEME|52=20261012-12:21:21.000|56=TESTBRK|6=0.00|11=CF00001|14=0|17=1|22=4|37=1|38=100|39=0|44=99.00|48=BD0001000001|54=1|55=T001M|60=20261012-12:21:21.000|150=0|151=100|207=XDHA|1300=MAIN|10=053|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "OT-02",
+   "category": "Order type (40)",
+   "title": "Limit (40=2) without price (44), liquid book",
+   "dse_expected": "Rejected: price required for a limit order",
+   "sent": "8=FIXT.1.1|9=190|35=D|34=3|49=TESTBRK|50=TRADER1|52=20261012-12:21:21.121|56=DSEME|1=BO1001|11=CF00002|38=100|40=2|54=1|55=T002M|59=0|60=20261012-12:21:21.121|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=175|",
+   "replies": [
+    "8=FIXT.1.1|9=216|35=8|34=3|49=DSEME|52=20261012-12:21:21.121|56=TESTBRK|6=100.00|11=CF00002|14=100|17=2|22=4|31=100.00|32=100|37=3|38=100|39=2|48=BD0001000002|54=1|55=T002M|60=20261012-12:21:21.121|150=TRADE|151=0|207=XDHA|1300=MAIN|10=059|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "FAIL",
+   "note": "accepted and executed — the engine silently converts a 40=2 order with no price into a MARKET order (fixacceptor.go:465-479)"
+  },
+  {
+   "id": "OT-03",
+   "category": "Order type (40)",
+   "title": "Market (40=1) without price, liquid book",
+   "dse_expected": "Matches at best available price",
+   "sent": "8=FIXT.1.1|9=190|35=D|34=4|49=TESTBRK|50=TRADER1|52=20261012-12:21:21.241|56=DSEME|1=BO1001|11=CF00003|38=100|40=1|54=1|55=T003M|59=0|60=20261012-12:21:21.241|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=183|",
+   "replies": [
+    "8=FIXT.1.1|9=216|35=8|34=4|49=DSEME|52=20261012-12:21:21.241|56=TESTBRK|6=100.50|11=CF00003|14=100|17=3|22=4|31=100.50|32=100|37=5|38=100|39=2|48=BD0001000003|54=1|55=T003M|60=20261012-12:21:21.241|150=TRADE|151=0|207=XDHA|1300=MAIN|10=082|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "PASS",
+   "note": "filled 100"
+  },
+  {
+   "id": "OT-04",
+   "category": "Order type (40)",
+   "title": "Market (40=1) carrying a price (post-close style)",
+   "dse_expected": "Accepted; DSE requires the close price in the post-close session",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=5|49=TESTBRK|50=TRADER1|52=20261012-12:21:21.362|56=DSEME|1=BO1001|11=CF00004|38=100|40=1|44=100.00|54=1|55=T003M|59=0|60=20261012-12:21:21.362|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=126|",
+   "replies": [
+    "8=FIXT.1.1|9=226|35=8|34=5|49=DSEME|52=20261012-12:21:21.362|56=TESTBRK|6=100.50|11=CF00004|14=100|17=4|22=4|31=100.50|32=100|37=6|38=100|39=2|44=100.00|48=BD0001000003|54=1|55=T003M|60=20261012-12:21:21.362|150=TRADE|151=0|207=XDHA|1300=MAIN|10=036|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "PASS",
+   "note": "filled at best; price field ignored"
+  },
+  {
+   "id": "OT-05",
+   "category": "Order type (40)",
+   "title": "Market (40=1) on an empty book",
+   "dse_expected": "Order not executed (no liquidity); treatment of the remainder not specified by the OMS reference",
+   "sent": "8=FIXT.1.1|9=190|35=D|34=6|49=TESTBRK|50=TRADER1|52=20261012-12:21:21.482|56=DSEME|1=BO1001|11=CF00005|38=100|40=1|54=1|55=T004M|59=0|60=20261012-12:21:21.482|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=202|",
+   "replies": [
+    "8=FIXT.1.1|9=240|35=8|34=6|49=DSEME|52=20261012-12:21:21.482|56=TESTBRK|6=0.00|11=CF00005|14=0|17=5|22=4|37=7|38=100|39=8|48=BD0001000004|54=1|55=T004M|58=no liquidity: no resting SELL orders on T004M|60=20261012-12:21:21.482|150=8|151=0|207=XDHA|1300=MAIN|10=158|"
+   ],
+   "actual": "35=8 150=8 39=8 58=no liquidity: no resting SELL orders on T004M",
+   "verdict": "INFO",
+   "note": "rejected with 'no liquidity' — market orders never rest"
+  },
+  {
+   "id": "OT-06",
+   "category": "Order type (40)",
+   "title": "Market-At-Best (40=Z)",
+   "dse_expected": "DSE-specific type: accepted and matched at best",
+   "sent": "8=FIXT.1.1|9=190|35=D|34=7|49=TESTBRK|50=TRADER1|52=20261012-12:21:21.603|56=DSEME|1=BO1001|11=CF00006|38=100|40=Z|54=1|55=T004M|59=0|60=20261012-12:21:21.603|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=235|",
+   "replies": [
+    "8=FIXT.1.1|9=140|35=3|34=7|49=DSEME|52=20261012-12:21:21.603|56=TESTBRK|57=TRADER1|45=7|58=Value is incorrect (out of range) for this tag|371=40|372=D|373=5|10=206|"
+   ],
+   "actual": "35=3 371=40 372=D 373=5 58=Value is incorrect (out of range) for this tag",
+   "verdict": "GAP",
+   "note": "OrdType Z is not in the engine's data dictionary, so the session layer refuses it (35=3) — Market-At-Best is not supported"
+  },
+  {
+   "id": "OT-07",
+   "category": "Order type (40)",
+   "title": "Stop (40=3) with StopPx (99)",
+   "dse_expected": "Not used by the OMS (informational)",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=8|49=TESTBRK|50=TRADER1|52=20261012-12:21:21.723|56=DSEME|1=BO1001|11=CF00007|38=100|40=3|54=1|55=T005M|59=0|60=20261012-12:21:21.723|99=101.00|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=149|",
+   "replies": [
+    "8=FIXT.1.1|9=162|35=8|34=8|49=DSEME|52=20261012-12:21:21.723|56=TESTBRK|6=0.00|11=CF00007|14=0|17=6|37=8|38=100|39=A|54=1|55=T005M|60=20261012-12:21:21.723|150=A|151=100|207=XDHA|10=219|"
+   ],
+   "actual": "35=8 150=A 39=A",
+   "verdict": "INFO",
+   "note": "engine: 35=8 150=A 39=A"
+  },
+  {
+   "id": "OT-08",
+   "category": "Order type (40)",
+   "title": "Stop-limit (40=4) with StopPx and price",
+   "dse_expected": "Not used by the OMS (informational)",
+   "sent": "8=FIXT.1.1|9=210|35=D|34=9|49=TESTBRK|50=TRADER1|52=20261012-12:21:21.844|56=DSEME|1=BO1001|11=CF00008|38=100|40=4|44=101.00|54=1|55=T005M|59=0|60=20261012-12:21:21.844|99=101.00|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=103|",
+   "replies": [
+    "8=FIXT.1.1|9=172|35=8|34=9|49=DSEME|52=20261012-12:21:21.844|56=TESTBRK|6=0.00|11=CF00008|14=0|17=7|37=9|38=100|39=A|44=101.00|54=1|55=T005M|60=20261012-12:21:21.844|150=A|151=100|207=XDHA|10=174|"
+   ],
+   "actual": "35=8 150=A 39=A",
+   "verdict": "INFO",
+   "note": "engine: 35=8 150=A 39=A"
+  },
+  {
+   "id": "OT-095",
+   "category": "Order type (40)",
+   "title": "Unsupported OrdType 40=5",
+   "dse_expected": "Rejected as an unsupported order type",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=10|49=TESTBRK|50=TRADER1|52=20261012-12:21:21.964|56=DSEME|1=BO1001|11=CF00009|38=100|40=5|44=100.00|54=1|55=T004M|59=0|60=20261012-12:21:21.964|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=197|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=10|49=DSEME|52=20261012-12:21:21.964|56=TESTBRK|6=0.00|11=CF00009|14=0|17=8|22=4|37=10|38=100|39=0|44=100.00|48=BD0001000004|54=1|55=T004M|60=20261012-12:21:21.964|150=0|151=100|207=XDHA|1300=MAIN|10=241|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "FAIL",
+   "note": "accepted and silently treated as a Limit order (mapping default in fixacceptor.go:465-479)"
+  },
+  {
+   "id": "OT-099",
+   "category": "Order type (40)",
+   "title": "Unsupported OrdType 40=9",
+   "dse_expected": "Rejected as an unsupported order type",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=11|49=TESTBRK|50=TRADER1|52=20261012-12:21:22.085|56=DSEME|1=BO1001|11=CF00010|38=100|40=9|44=100.00|54=1|55=T004M|59=0|60=20261012-12:21:22.085|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=184|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=11|49=DSEME|52=20261012-12:21:22.085|56=TESTBRK|6=0.00|11=CF00010|14=0|17=9|22=4|37=11|38=100|39=0|44=100.00|48=BD0001000004|54=1|55=T004M|60=20261012-12:21:22.085|150=0|151=100|207=XDHA|1300=MAIN|10=226|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "FAIL",
+   "note": "accepted and silently treated as a Limit order (mapping default in fixacceptor.go:465-479)"
+  },
+  {
+   "id": "TIF-0",
+   "category": "Validity (59)",
+   "title": "Day (59=0) resting limit",
+   "dse_expected": "Accepted, rests until close",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=12|49=TESTBRK|50=TRADER1|52=20261012-12:21:22.206|56=DSEME|1=BO1001|11=CF00011|38=100|40=2|44=95.00|54=1|55=T006M|59=0|60=20261012-12:21:22.206|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=135|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=12|49=DSEME|52=20261012-12:21:22.206|56=TESTBRK|6=0.00|11=CF00011|14=0|17=10|22=4|37=12|38=100|39=0|44=95.00|48=BD0001000006|54=1|55=T006M|60=20261012-12:21:22.206|150=0|151=100|207=XDHA|1300=MAIN|10=228|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted and resting"
+  },
+  {
+   "id": "TIF-1",
+   "category": "Validity (59)",
+   "title": "GTC (59=1) resting limit",
+   "dse_expected": "Accepted, rests until cancelled",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=13|49=TESTBRK|50=TRADER1|52=20261012-12:21:22.326|56=DSEME|1=BO1001|11=CF00012|38=100|40=2|44=95.00|54=1|55=T006M|59=1|60=20261012-12:21:22.326|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=144|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=13|49=DSEME|52=20261012-12:21:22.326|56=TESTBRK|6=0.00|11=CF00012|14=0|17=11|22=4|37=13|38=100|39=0|44=95.00|48=BD0001000006|54=1|55=T006M|60=20261012-12:21:22.326|150=0|151=100|207=XDHA|1300=MAIN|10=238|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted and resting"
+  },
+  {
+   "id": "TIF-3a",
+   "category": "Validity (59)",
+   "title": "IOC (59=3) partially fillable (50 of 100)",
+   "dse_expected": "Fills 50, cancels the remaining 50",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=14|49=TESTBRK|50=TRADER1|52=20261012-12:21:22.447|56=DSEME|1=BO1001|11=CF00013|38=100|40=2|44=100.00|54=1|55=T007M|59=3|60=20261012-12:21:22.447|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=193|",
+   "replies": [
+    "8=FIXT.1.1|9=227|35=8|34=14|49=DSEME|52=20261012-12:21:22.447|56=TESTBRK|6=100.00|11=CF00013|14=50|17=12|22=4|31=100.00|32=50|37=15|38=100|39=1|44=100.00|48=BD0001000007|54=1|55=T007M|60=20261012-12:21:22.447|150=TRADE|151=0|207=XDHA|1300=MAIN|10=099|"
+   ],
+   "actual": "35=8 150=TRADE 39=1 14=50",
+   "verdict": "PASS",
+   "note": "filled 50, remainder cancelled: 35=8 150=TRADE 39=1 14=50"
+  },
+  {
+   "id": "TIF-3b",
+   "category": "Validity (59)",
+   "title": "IOC (59=3) with no liquidity",
+   "dse_expected": "Cancelled / expired with no fill",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=15|49=TESTBRK|50=TRADER1|52=20261012-12:21:22.567|56=DSEME|1=BO1001|11=CF00014|38=100|40=2|44=100.00|54=1|55=T008M|59=3|60=20261012-12:21:22.567|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=202|",
+   "replies": [
+    "8=FIXT.1.1|9=204|35=8|34=15|49=DSEME|52=20261012-12:21:22.568|56=TESTBRK|6=0.00|11=CF00014|14=0|17=13|22=4|37=16|38=100|39=4|44=100.00|48=BD0001000008|54=1|55=T008M|60=20261012-12:21:22.568|150=4|151=0|207=XDHA|1300=MAIN|10=212|"
+   ],
+   "actual": "35=8 150=4 39=4",
+   "verdict": "PASS",
+   "note": "cancelled"
+  },
+  {
+   "id": "TIF-4a",
+   "category": "Validity (59)",
+   "title": "FOK (59=4) fully fillable",
+   "dse_expected": "Fully filled",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=16|49=TESTBRK|50=TRADER1|52=20261012-12:21:22.688|56=DSEME|1=BO1001|11=CF00015|38=100|40=2|44=100.00|54=1|55=T009M|59=4|60=20261012-12:21:22.688|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=214|",
+   "replies": [
+    "8=FIXT.1.1|9=229|35=8|34=16|49=DSEME|52=20261012-12:21:22.688|56=TESTBRK|6=100.00|11=CF00015|14=100|17=14|22=4|31=100.00|32=100|37=18|38=100|39=2|44=100.00|48=BD0001000009|54=1|55=T009M|60=20261012-12:21:22.688|150=TRADE|151=0|207=XDHA|1300=MAIN|10=217|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "PASS",
+   "note": "filled 100"
+  },
+  {
+   "id": "TIF-4b",
+   "category": "Validity (59)",
+   "title": "FOK (59=4) insufficient liquidity",
+   "dse_expected": "Whole order cancelled, no partial fill",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=17|49=TESTBRK|50=TRADER1|52=20261012-12:21:22.809|56=DSEME|1=BO1001|11=CF00016|38=100|40=2|44=100.00|54=1|55=T010M|59=4|60=20261012-12:21:22.809|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=198|",
+   "replies": [
+    "8=FIXT.1.1|9=204|35=8|34=17|49=DSEME|52=20261012-12:21:22.809|56=TESTBRK|6=0.00|11=CF00016|14=0|17=15|22=4|37=20|38=100|39=4|44=100.00|48=BD0001000010|54=1|55=T010M|60=20261012-12:21:22.809|150=4|151=0|207=XDHA|1300=MAIN|10=195|"
+   ],
+   "actual": "35=8 150=4 39=4",
+   "verdict": "PASS",
+   "note": "no partial fill: 35=8 150=4 39=4"
+  },
+  {
+   "id": "TIF-6a",
+   "category": "Validity (59)",
+   "title": "GTD (59=6) without expiry date (OMS sends none)",
+   "dse_expected": "Rejected without ExpireDate(432)/ExpireTime(126) — OMS reference says DSE 'will probably reject'",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=18|49=TESTBRK|50=TRADER1|52=20261012-12:21:22.929|56=DSEME|1=BO1001|11=CF00017|38=100|40=2|44=95.00|54=1|55=T011M|59=6|60=20261012-12:21:22.929|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=173|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=18|49=DSEME|52=20261012-12:21:22.930|56=TESTBRK|6=0.00|11=CF00017|14=0|17=16|22=4|37=21|38=100|39=0|44=95.00|48=BD0001000011|54=1|55=T011M|60=20261012-12:21:22.930|150=0|151=100|207=XDHA|1300=MAIN|10=246|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted; with no expiry the order never expires (parseExpire returns zero)"
+  },
+  {
+   "id": "TIF-6b",
+   "category": "Validity (59)",
+   "title": "GTD (59=6) with ExpireTime (126) 3 s ahead — expires",
+   "dse_expected": "Order removed at expiry AND an Execution Report (150=C Expired) is sent",
+   "sent": "8=FIXT.1.1|9=226|35=D|34=19|49=TESTBRK|50=TRADER1|52=20261012-12:21:23.051|56=DSEME|1=BO1001|11=CF00018|38=100|40=2|44=94.00|54=1|55=T011M|59=6|60=20261012-12:21:23.051|126=20261012-12:21:26.051|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=148|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=19|49=DSEME|52=20261012-12:21:23.051|56=TESTBRK|6=0.00|11=CF00018|14=0|17=17|22=4|37=22|38=100|39=0|44=94.00|48=BD0001000011|54=1|55=T011M|60=20261012-12:21:23.051|150=0|151=100|207=XDHA|1300=MAIN|10=239|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "order removed from the book at expiry but NO Execution Report (150=C) was sent — the broker is never told"
+  },
+  {
+   "id": "TIF-6c",
+   "category": "Validity (59)",
+   "title": "GTD (59=6) with ExpireDate (432) only",
+   "dse_expected": "Accepted; expires at end of that date",
+   "sent": "8=FIXT.1.1|9=213|35=D|34=20|49=TESTBRK|50=TRADER1|52=20261012-12:21:27.972|56=DSEME|1=BO1001|11=CF00019|38=100|40=2|44=93.00|54=1|55=T011M|59=6|60=20261012-12:21:27.972|432=20261014|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=023|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=20|49=DSEME|52=20261012-12:21:27.972|56=TESTBRK|6=0.00|11=CF00019|14=0|17=18|22=4|37=23|38=100|39=0|44=93.00|48=BD0001000011|54=1|55=T011M|60=20261012-12:21:27.972|150=0|151=100|207=XDHA|1300=MAIN|10=009|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted and resting"
+  },
+  {
+   "id": "TIF-2",
+   "category": "Validity (59)",
+   "title": "At the Opening (59=2)",
+   "dse_expected": "Honoured as its own validity (not offered by any OMS screen, but the builder can pass it)",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=21|49=TESTBRK|50=TRADER1|52=20261012-12:21:28.093|56=DSEME|1=BO1001|11=CF00020|38=100|40=2|44=92.00|54=1|55=T011M|59=2|60=20261012-12:21:28.093|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=150|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=21|49=DSEME|52=20261012-12:21:28.093|56=TESTBRK|6=0.00|11=CF00020|14=0|17=19|22=4|37=24|38=100|39=0|44=92.00|48=BD0001000011|54=1|55=T011M|60=20261012-12:21:28.093|150=0|151=100|207=XDHA|1300=MAIN|10=249|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted but silently treated as Day (mapTIF default) — semantics not implemented"
+  },
+  {
+   "id": "TIF-5",
+   "category": "Validity (59)",
+   "title": "Good Till Crossing (59=5)",
+   "dse_expected": "Honoured as its own validity (not offered by any OMS screen, but the builder can pass it)",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=22|49=TESTBRK|50=TRADER1|52=20261012-12:21:28.214|56=DSEME|1=BO1001|11=CF00021|38=100|40=2|44=92.00|54=1|55=T011M|59=5|60=20261012-12:21:28.214|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=145|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=22|49=DSEME|52=20261012-12:21:28.214|56=TESTBRK|6=0.00|11=CF00021|14=0|17=20|22=4|37=25|38=100|39=0|44=92.00|48=BD0001000011|54=1|55=T011M|60=20261012-12:21:28.214|150=0|151=100|207=XDHA|1300=MAIN|10=234|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted but silently treated as Day (mapTIF default) — semantics not implemented"
+  },
+  {
+   "id": "TIF-7",
+   "category": "Validity (59)",
+   "title": "At the Close (59=7)",
+   "dse_expected": "Honoured as its own validity (not offered by any OMS screen, but the builder can pass it)",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=23|49=TESTBRK|50=TRADER1|52=20261012-12:21:28.335|56=DSEME|1=BO1001|11=CF00022|38=100|40=2|44=92.00|54=1|55=T011M|59=7|60=20261012-12:21:28.335|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=157|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=23|49=DSEME|52=20261012-12:21:28.335|56=TESTBRK|6=0.00|11=CF00022|14=0|17=21|22=4|37=26|38=100|39=0|44=92.00|48=BD0001000011|54=1|55=T011M|60=20261012-12:21:28.335|150=0|151=100|207=XDHA|1300=MAIN|10=246|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted but silently treated as Day (mapTIF default) — semantics not implemented"
+  },
+  {
+   "id": "TIF-S",
+   "category": "Validity (59)",
+   "title": "Session (59=S) — offered by the OMS trader UI",
+   "dse_expected": "Accepted (the OMS offers it); not a FIX 5.0 SP1/SP2 enum value",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=24|49=TESTBRK|50=TRADER1|52=20261012-12:21:28.455|56=DSEME|1=BO1001|11=CF00023|38=100|40=2|44=91.00|54=1|55=T011M|59=S|60=20261012-12:21:28.455|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=192|",
+   "replies": [
+    "8=FIXT.1.1|9=142|35=3|34=24|49=DSEME|52=20261012-12:21:28.455|56=TESTBRK|57=TRADER1|45=24|58=Value is incorrect (out of range) for this tag|371=59|372=D|373=5|10=068|"
+   ],
+   "actual": "35=3 371=59 372=D 373=5 58=Value is incorrect (out of range) for this tag",
+   "verdict": "GAP",
+   "note": "rejected by the strict dictionary (35=3) — an order the OMS UI allows can never reach the engine"
+  },
+  {
+   "id": "TIF-X",
+   "category": "Validity (59)",
+   "title": "Missing TimeInForce",
+   "dse_expected": "Defaults to Day",
+   "sent": "8=FIXT.1.1|9=195|35=D|34=25|49=TESTBRK|50=TRADER1|52=20261012-12:21:28.576|56=DSEME|1=BO1001|11=CF00024|38=100|40=2|44=90.50|54=1|55=T011M|60=20261012-12:21:28.576|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=220|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=25|49=DSEME|52=20261012-12:21:28.576|56=TESTBRK|6=0.00|11=CF00024|14=0|17=22|22=4|37=27|38=100|39=0|44=90.50|48=BD0001000011|54=1|55=T011M|60=20261012-12:21:28.576|150=0|151=100|207=XDHA|1300=MAIN|10=013|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "SD-1",
+   "category": "Side \u0026 quantity",
+   "title": "Buy (54=1)",
+   "dse_expected": "Accepted",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=26|49=TESTBRK|50=TRADER1|52=20261012-12:21:28.697|56=DSEME|1=BO1001|11=CF00025|38=100|40=2|44=95.00|54=1|55=T012M|59=0|60=20261012-12:21:28.697|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=182|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=26|49=DSEME|52=20261012-12:21:28.697|56=TESTBRK|6=0.00|11=CF00025|14=0|17=23|22=4|37=28|38=100|39=0|44=95.00|48=BD0001000012|54=1|55=T012M|60=20261012-12:21:28.697|150=0|151=100|207=XDHA|1300=MAIN|10=027|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "SD-2",
+   "category": "Side \u0026 quantity",
+   "title": "Sell (54=2)",
+   "dse_expected": "Accepted",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=27|49=TESTBRK|50=TRADER1|52=20261012-12:21:28.818|56=DSEME|1=BO1001|11=CF00026|38=100|40=2|44=105.00|54=2|55=T012M|59=0|60=20261012-12:21:28.818|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=216|",
+   "replies": [
+    "8=FIXT.1.1|9=206|35=8|34=27|49=DSEME|52=20261012-12:21:28.818|56=TESTBRK|6=0.00|11=CF00026|14=0|17=24|22=4|37=29|38=100|39=0|44=105.00|48=BD0001000012|54=2|55=T012M|60=20261012-12:21:28.818|150=0|151=100|207=XDHA|1300=MAIN|10=063|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "SD-3",
+   "category": "Side \u0026 quantity",
+   "title": "Missing Side (54)",
+   "dse_expected": "Rejected",
+   "sent": "8=FIXT.1.1|9=196|35=D|34=28|49=TESTBRK|50=TRADER1|52=20261012-12:21:28.938|56=DSEME|1=BO1001|11=CF00027|38=100|40=2|44=100.00|55=T012M|59=0|60=20261012-12:21:28.938|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=015|",
+   "replies": [
+    "8=FIXT.1.1|9=116|35=3|34=28|49=DSEME|52=20261012-12:21:28.938|56=TESTBRK|57=TRADER1|45=28|58=Required tag missing|371=54|372=D|373=1|10=153|"
+   ],
+   "actual": "35=3 371=54 372=D 373=1 58=Required tag missing",
+   "verdict": "PASS",
+   "note": "rejected: 35=3 371=54 372=D 373=1 58=Required tag missing"
+  },
+  {
+   "id": "SD-4",
+   "category": "Side \u0026 quantity",
+   "title": "Side 54=5 (sell short)",
+   "dse_expected": "Rejected (the OMS reference: no short-sell side)",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=29|49=TESTBRK|50=TRADER1|52=20261012-12:21:29.059|56=DSEME|1=BO1001|11=CF00028|38=100|40=2|44=100.00|54=5|55=T012M|59=0|60=20261012-12:21:29.059|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=214|",
+   "replies": [
+    "8=FIXT.1.1|9=206|35=8|34=29|49=DSEME|52=20261012-12:21:29.059|56=TESTBRK|6=0.00|11=CF00028|14=0|17=25|22=4|37=30|38=100|39=0|44=100.00|48=BD0001000012|54=1|55=T012M|60=20261012-12:21:29.059|150=0|151=100|207=XDHA|1300=MAIN|10=050|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "FAIL",
+   "note": "accepted — any Side other than '2' is treated as a BUY (fixacceptor.go:461-464), so a sell-short would execute as a purchase"
+  },
+  {
+   "id": "QT-1",
+   "category": "Side \u0026 quantity",
+   "title": "OrderQty = 0",
+   "dse_expected": "Rejected",
+   "sent": "8=FIXT.1.1|9=199|35=D|34=30|49=TESTBRK|50=TRADER1|52=20261012-12:21:29.179|56=DSEME|1=BO1001|11=CF00029|38=0|40=2|44=100.00|54=1|55=T012M|59=0|60=20261012-12:21:29.179|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=128|",
+   "replies": [
+    "8=FIXT.1.1|9=241|35=8|34=30|49=DSEME|52=20261012-12:21:29.179|56=TESTBRK|6=0.00|11=CF00029|14=0|17=26|37=0|38=0|39=8|44=100.00|54=1|55=T012M|58=invalid OrderQty (tag 38): 0 — quantity must be greater than zero|60=20261012-12:21:29.179|150=8|151=0|207=XDHA|10=035|"
+   ],
+   "actual": "35=8 150=8 39=8 58=invalid OrderQty (tag 38): 0 — quantity must be greater than zero",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=invalid OrderQty (tag 38): 0 — quantity must be greater than zero"
+  },
+  {
+   "id": "QT-2",
+   "category": "Side \u0026 quantity",
+   "title": "Fractional OrderQty (10.5)",
+   "dse_expected": "Rejected (whole shares only)",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=31|49=TESTBRK|50=TRADER1|52=20261012-12:21:29.300|56=DSEME|1=BO1001|11=CF00030|38=10.5|40=2|44=100.00|54=1|55=T012M|59=0|60=20261012-12:21:29.300|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=226|",
+   "replies": [
+    "8=FIXT.1.1|9=248|35=8|34=31|49=DSEME|52=20261012-12:21:29.301|56=TESTBRK|6=0.00|11=CF00030|14=0|17=27|37=0|38=10|39=8|44=100.00|54=1|55=T012M|58=invalid OrderQty (tag 38): 10.5 — the exchange trades whole shares only|60=20261012-12:21:29.301|150=8|151=0|207=XDHA|10=217|"
+   ],
+   "actual": "35=8 150=8 39=8 58=invalid OrderQty (tag 38): 10.5 — the exchange trades whole shares only",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=invalid OrderQty (tag 38): 10.5 — the exchange trades whole shares only"
+  },
+  {
+   "id": "QT-3",
+   "category": "Side \u0026 quantity",
+   "title": "Negative OrderQty",
+   "dse_expected": "Rejected",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=32|49=TESTBRK|50=TRADER1|52=20261012-12:21:29.421|56=DSEME|1=BO1001|11=CF00031|38=-5|40=2|44=100.00|54=1|55=T012M|59=0|60=20261012-12:21:29.421|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=136|",
+   "replies": [
+    "8=FIXT.1.1|9=242|35=8|34=32|49=DSEME|52=20261012-12:21:29.421|56=TESTBRK|6=0.00|11=CF00031|14=0|17=28|37=0|38=0|39=8|44=100.00|54=1|55=T012M|58=invalid OrderQty (tag 38): -5 — quantity must be greater than zero|60=20261012-12:21:29.421|150=8|151=0|207=XDHA|10=063|"
+   ],
+   "actual": "35=8 150=8 39=8 58=invalid OrderQty (tag 38): -5 — quantity must be greater than zero",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=invalid OrderQty (tag 38): -5 — quantity must be greater than zero"
+  },
+  {
+   "id": "QT-4",
+   "category": "Side \u0026 quantity",
+   "title": "Quantity a multiple of 1000",
+   "dse_expected": "Accepted",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=33|49=TESTBRK|50=TRADER1|52=20261012-12:21:29.542|56=DSEME|1=BO1001|11=CF00032|38=2000|40=2|44=94.00|54=1|55=T012M|59=0|60=20261012-12:21:29.542|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=207|",
+   "replies": [
+    "8=FIXT.1.1|9=207|35=8|34=33|49=DSEME|52=20261012-12:21:29.542|56=TESTBRK|6=0.00|11=CF00032|14=0|17=29|22=4|37=31|38=2000|39=0|44=94.00|48=BD0001000012|54=1|55=T012M|60=20261012-12:21:29.542|150=0|151=2000|207=XDHA|1300=MAIN|10=102|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "QT-5",
+   "category": "Side \u0026 quantity",
+   "title": "Quantity 1500 on a lot-1000 instrument",
+   "dse_expected": "Rejected: '(792) Minimum quantity step: 1000' (observed DSE reject, instrument-dependent)",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=34|49=TESTBRK|50=TRADER1|52=20261012-12:21:29.663|56=DSEME|1=BO1001|11=CF00033|38=1500|40=2|44=94.00|54=1|55=LOT1000|59=0|60=20261012-12:21:29.663|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=091|",
+   "replies": [
+    "8=FIXT.1.1|9=219|35=8|34=34|49=DSEME|52=20261012-12:21:29.663|56=TESTBRK|6=0.00|11=CF00033|14=0|17=30|37=0|38=1500|39=8|44=94.00|54=1|55=LOT1000|58=Minimum quantity step: 1000|60=20261012-12:21:29.663|150=8|151=0|207=XDHA|1300=Main (A)|10=122|"
+   ],
+   "actual": "35=8 150=8 39=8 58=Minimum quantity step: 1000",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=Minimum quantity step: 1000"
+  },
+  {
+   "id": "QT-5b",
+   "category": "Side \u0026 quantity",
+   "title": "Quantity 2000 on a lot-1000 instrument",
+   "dse_expected": "Accepted (whole lots)",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=35|49=TESTBRK|50=TRADER1|52=20261012-12:21:29.784|56=DSEME|1=BO1001|11=CF00034|38=2000|40=2|44=94.00|54=1|55=LOT1000|59=0|60=20261012-12:21:29.784|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=097|",
+   "replies": [
+    "8=FIXT.1.1|9=192|35=8|34=35|49=DSEME|52=20261012-12:21:29.784|56=TESTBRK|6=0.00|11=CF00034|14=0|17=31|37=32|38=2000|39=0|44=94.00|54=1|55=LOT1000|60=20261012-12:21:29.784|150=0|151=2000|207=XDHA|1300=Main (A)|10=027|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "QT-6",
+   "category": "Side \u0026 quantity",
+   "title": "Duplicate ClOrdID (11) resubmitted",
+   "dse_expected": "Rejected as a duplicate order",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=37|49=TESTBRK|50=TRADER1|52=20261012-12:21:30.025|56=DSEME|1=BO1001|11=CF00035|38=100|40=2|44=95.00|54=1|55=T012M|59=0|60=20261012-12:21:29.905|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=156|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=37|49=DSEME|52=20261012-12:21:30.025|56=TESTBRK|6=0.00|11=CF00035|14=0|17=33|22=4|37=34|38=100|39=0|44=95.00|48=BD0001000012|54=1|55=T012M|60=20261012-12:21:30.025|150=0|151=100|207=XDHA|1300=MAIN|10=240|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "second order with the same ClOrdID accepted — no duplicate-ClOrdID check (also breaks cancel/replace by ClOrdID)"
+  },
+  {
+   "id": "QT-7",
+   "category": "Side \u0026 quantity",
+   "title": "Missing Symbol (55)",
+   "dse_expected": "Rejected",
+   "sent": "8=FIXT.1.1|9=192|35=D|34=38|49=TESTBRK|50=TRADER1|52=20261012-12:21:30.146|56=DSEME|1=BO1001|11=CF00036|38=100|40=2|44=100.00|54=1|59=0|60=20261012-12:21:30.146|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=232|",
+   "replies": [
+    "8=FIXT.1.1|9=194|35=8|34=38|49=DSEME|52=20261012-12:21:30.146|56=TESTBRK|6=0.00|11=CF00036|14=0|17=34|37=0|38=100|39=8|44=100.00|54=1|55=|58=missing Symbol (tag 55)|60=20261012-12:21:30.146|150=8|151=0|207=XDHA|10=202|"
+   ],
+   "actual": "35=8 150=8 39=8 58=missing Symbol (tag 55)",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=missing Symbol (tag 55)"
+  },
+  {
+   "id": "QT-8",
+   "category": "Side \u0026 quantity",
+   "title": "Unknown symbol",
+   "dse_expected": "Rejected (not in the security master)",
+   "sent": "8=FIXT.1.1|9=205|35=D|34=39|49=TESTBRK|50=TRADER1|52=20261012-12:21:30.267|56=DSEME|1=BO1001|11=CF00037|38=100|40=2|44=100.00|54=1|55=NOSUCHSYM|59=0|60=20261012-12:21:30.267|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=094|",
+   "replies": [
+    "8=FIXT.1.1|9=256|35=8|34=39|49=DSEME|52=20261012-12:21:30.267|56=TESTBRK|6=0.00|11=CF00037|14=0|17=35|37=0|38=100|39=8|44=100.00|54=1|55=NOSUCHSYM|58=unknown symbol NOSUCHSYM: not in this engine's instrument universe (unknown)|60=20261012-12:21:30.267|150=8|151=0|207=XDHA|10=186|"
+   ],
+   "actual": "35=8 150=8 39=8 58=unknown symbol NOSUCHSYM: not in this engine's instrument universe (unknown)",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=unknown symbol NOSUCHSYM: not in this engine's instrument universe (unknown)"
+  },
+  {
+   "id": "BG-01",
+   "category": "Board group (762)",
+   "title": "762=PUBLIC on a MAIN-board equity",
+   "dse_expected": "Accepted (public market, MAIN board)",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=40|49=TESTBRK|50=TRADER1|52=20261012-12:21:30.387|56=DSEME|1=BO1001|11=CF00038|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:30.387|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=161|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=40|49=DSEME|52=20261012-12:21:30.387|56=TESTBRK|6=0.00|11=CF00038|14=0|17=36|22=4|37=35|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:30.387|150=0|151=100|207=XDHA|1300=MAIN|10=009|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "BG-02",
+   "category": "Board group (762)",
+   "title": "762=ATBPUB on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=41|49=TESTBRK|50=TRADER1|52=20261012-12:21:30.508|56=DSEME|1=BO1001|11=CF00039|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:30.508|453=1|448=CLIENT01|447=C|452=5|529=N|762=ATBPUB|10=152|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=41|49=DSEME|52=20261012-12:21:30.508|56=TESTBRK|6=0.00|11=CF00039|14=0|17=37|22=4|37=36|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:30.508|150=0|151=100|207=XDHA|1300=MAIN|10=003|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-03",
+   "category": "Board group (762)",
+   "title": "762=SPUBLIC on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=42|49=TESTBRK|50=TRADER1|52=20261012-12:21:30.629|56=DSEME|1=BO1001|11=CF00040|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:30.629|453=1|448=CLIENT01|447=C|452=5|529=N|762=SPUBLIC|10=238|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=42|49=DSEME|52=20261012-12:21:30.629|56=TESTBRK|6=0.00|11=CF00040|14=0|17=38|22=4|37=37|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:30.629|150=0|151=100|207=XDHA|1300=MAIN|10=006|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-04",
+   "category": "Board group (762)",
+   "title": "762=BLOCK on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=199|35=D|34=43|49=TESTBRK|50=TRADER1|52=20261012-12:21:30.750|56=DSEME|1=BO1001|11=CF00041|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:30.750|453=1|448=CLIENT01|447=C|452=5|529=N|762=BLOCK|10=079|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=43|49=DSEME|52=20261012-12:21:30.750|56=TESTBRK|6=0.00|11=CF00041|14=0|17=39|22=4|37=38|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:30.750|150=0|151=100|207=XDHA|1300=MAIN|10=000|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-05",
+   "category": "Board group (762)",
+   "title": "762=SBLOCK on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=44|49=TESTBRK|50=TRADER1|52=20261012-12:21:30.871|56=DSEME|1=BO1001|11=CF00042|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:30.871|453=1|448=CLIENT01|447=C|452=5|529=N|762=SBLOCK|10=155|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=44|49=DSEME|52=20261012-12:21:30.871|56=TESTBRK|6=0.00|11=CF00042|14=0|17=40|22=4|37=39|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:30.871|150=0|151=100|207=XDHA|1300=MAIN|10=003|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-06",
+   "category": "Board group (762)",
+   "title": "762=BUYIN on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=199|35=D|34=45|49=TESTBRK|50=TRADER1|52=20261012-12:21:30.992|56=DSEME|1=BO1001|11=CF00043|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:30.992|453=1|448=CLIENT01|447=C|452=5|529=N|762=BUYIN|10=127|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=45|49=DSEME|52=20261012-12:21:30.992|56=TESTBRK|6=0.00|11=CF00043|14=0|17=41|22=4|37=40|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:30.992|150=0|151=100|207=XDHA|1300=MAIN|10=006|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-07",
+   "category": "Board group (762)",
+   "title": "762=ATBBUYIN on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=46|49=TESTBRK|50=TRADER1|52=20261012-12:21:31.112|56=DSEME|1=BO1001|11=CF00044|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:31.112|453=1|448=CLIENT01|447=C|452=5|529=N|762=ATBBUYIN|10=043|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=46|49=DSEME|52=20261012-12:21:31.112|56=TESTBRK|6=0.00|11=CF00044|14=0|17=42|22=4|37=41|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:31.112|150=0|151=100|207=XDHA|1300=MAIN|10=236|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-08",
+   "category": "Board group (762)",
+   "title": "762=SBUYIN on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=47|49=TESTBRK|50=TRADER1|52=20261012-12:21:31.233|56=DSEME|1=BO1001|11=CF00045|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:31.233|453=1|448=CLIENT01|447=C|452=5|529=N|762=SBUYIN|10=175|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=47|49=DSEME|52=20261012-12:21:31.233|56=TESTBRK|6=0.00|11=CF00045|14=0|17=43|22=4|37=42|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:31.233|150=0|151=100|207=XDHA|1300=MAIN|10=248|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-09",
+   "category": "Board group (762)",
+   "title": "762=DEBT on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=198|35=D|34=48|49=TESTBRK|50=TRADER1|52=20261012-12:21:31.354|56=DSEME|1=BO1001|11=CF00046|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:31.354|453=1|448=CLIENT01|447=C|452=5|529=N|762=DEBT|10=014|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=48|49=DSEME|52=20261012-12:21:31.354|56=TESTBRK|6=0.00|11=CF00046|14=0|17=44|22=4|37=43|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:31.354|150=0|151=100|207=XDHA|1300=MAIN|10=004|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-10",
+   "category": "Board group (762)",
+   "title": "762=ATBDEBT on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=49|49=TESTBRK|50=TRADER1|52=20261012-12:21:31.475|56=DSEME|1=BO1001|11=CF00047|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:31.475|453=1|448=CLIENT01|447=C|452=5|529=N|762=ATBDEBT|10=224|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=49|49=DSEME|52=20261012-12:21:31.475|56=TESTBRK|6=0.00|11=CF00047|14=0|17=45|22=4|37=44|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:31.475|150=0|151=100|207=XDHA|1300=MAIN|10=016|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-11",
+   "category": "Board group (762)",
+   "title": "762=SDEBT on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=199|35=D|34=50|49=TESTBRK|50=TRADER1|52=20261012-12:21:31.596|56=DSEME|1=BO1001|11=CF00048|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:31.596|453=1|448=CLIENT01|447=C|452=5|529=N|762=SDEBT|10=109|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=50|49=DSEME|52=20261012-12:21:31.596|56=TESTBRK|6=0.00|11=CF00048|14=0|17=46|22=4|37=45|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:31.596|150=0|151=100|207=XDHA|1300=MAIN|10=019|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-12",
+   "category": "Board group (762)",
+   "title": "762=ALTDBT on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=51|49=TESTBRK|50=TRADER1|52=20261012-12:21:31.717|56=DSEME|1=BO1001|11=CF00049|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:31.717|453=1|448=CLIENT01|447=C|452=5|529=N|762=ALTDBT|10=157|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=51|49=DSEME|52=20261012-12:21:31.717|56=TESTBRK|6=0.00|11=CF00049|14=0|17=47|22=4|37=46|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:31.717|150=0|151=100|207=XDHA|1300=MAIN|10=013|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-13",
+   "category": "Board group (762)",
+   "title": "762=BUYDBT on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=52|49=TESTBRK|50=TRADER1|52=20261012-12:21:31.838|56=DSEME|1=BO1001|11=CF00050|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:31.838|453=1|448=CLIENT01|447=C|452=5|529=N|762=BUYDBT|10=173|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=52|49=DSEME|52=20261012-12:21:31.838|56=TESTBRK|6=0.00|11=CF00050|14=0|17=48|22=4|37=47|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:31.838|150=0|151=100|207=XDHA|1300=MAIN|10=016|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-14",
+   "category": "Board group (762)",
+   "title": "762=YIELDDBT on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=53|49=TESTBRK|50=TRADER1|52=20261012-12:21:31.958|56=DSEME|1=BO1001|11=CF00051|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:31.958|453=1|448=CLIENT01|447=C|452=5|529=N|762=YIELDDBT|10=062|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=53|49=DSEME|52=20261012-12:21:31.959|56=TESTBRK|6=0.00|11=CF00051|14=0|17=49|22=4|37=48|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:31.959|150=0|151=100|207=XDHA|1300=MAIN|10=028|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-15",
+   "category": "Board group (762)",
+   "title": "762=INDEX on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=199|35=D|34=54|49=TESTBRK|50=TRADER1|52=20261012-12:21:32.079|56=DSEME|1=BO1001|11=CF00052|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:32.079|453=1|448=CLIENT01|447=C|452=5|529=N|762=INDEX|10=108|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=54|49=DSEME|52=20261012-12:21:32.079|56=TESTBRK|6=0.00|11=CF00052|14=0|17=50|22=4|37=49|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:32.079|150=0|151=100|207=XDHA|1300=MAIN|10=011|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-16",
+   "category": "Board group (762)",
+   "title": "762=ATBX on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=198|35=D|34=55|49=TESTBRK|50=TRADER1|52=20261012-12:21:32.200|56=DSEME|1=BO1001|11=CF00053|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:32.200|453=1|448=CLIENT01|447=C|452=5|529=N|762=ATBX|10=008|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=55|49=DSEME|52=20261012-12:21:32.201|56=TESTBRK|6=0.00|11=CF00053|14=0|17=51|22=4|37=50|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:32.201|150=0|151=100|207=XDHA|1300=MAIN|10=236|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-17",
+   "category": "Board group (762)",
+   "title": "762=SCPX on a MAIN-board equity",
+   "dse_expected": "Group must match the instrument's board/segment — rejected on a MAIN-board equity",
+   "sent": "8=FIXT.1.1|9=198|35=D|34=56|49=TESTBRK|50=TRADER1|52=20261012-12:21:32.321|56=DSEME|1=BO1001|11=CF00054|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:32.321|453=1|448=CLIENT01|447=C|452=5|529=N|762=SCPX|10=033|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=56|49=DSEME|52=20261012-12:21:32.321|56=TESTBRK|6=0.00|11=CF00054|14=0|17=52|22=4|37=51|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:32.321|150=0|151=100|207=XDHA|1300=MAIN|10=246|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — tag 762 is never read, so board groups are not validated against the instrument"
+  },
+  {
+   "id": "BG-18",
+   "category": "Board group (762)",
+   "title": "762=SPUBLIC on an SME-board equity",
+   "dse_expected": "Accepted",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=57|49=TESTBRK|50=TRADER1|52=20261012-12:21:32.442|56=DSEME|1=BO1001|11=CF00055|38=100|40=2|44=95.00|54=1|55=T014S|59=0|60=20261012-12:21:32.442|453=1|448=CLIENT01|447=C|452=5|529=N|762=SPUBLIC|10=247|",
+   "replies": [
+    "8=FIXT.1.1|9=204|35=8|34=57|49=DSEME|52=20261012-12:21:32.442|56=TESTBRK|6=0.00|11=CF00055|14=0|17=53|22=4|37=52|38=100|39=0|44=95.00|48=BD0001000014|54=1|55=T014S|60=20261012-12:21:32.442|150=0|151=100|207=XDHA|1300=SME|10=201|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "BG-19",
+   "category": "Board group (762)",
+   "title": "762=ATBPUB on an ATB-board equity",
+   "dse_expected": "Accepted",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=58|49=TESTBRK|50=TRADER1|52=20261012-12:21:32.563|56=DSEME|1=BO1001|11=CF00056|38=100|40=2|44=95.00|54=1|55=T015A|59=0|60=20261012-12:21:32.563|453=1|448=CLIENT01|447=C|452=5|529=N|762=ATBPUB|10=155|",
+   "replies": [
+    "8=FIXT.1.1|9=204|35=8|34=58|49=DSEME|52=20261012-12:21:32.563|56=TESTBRK|6=0.00|11=CF00056|14=0|17=54|22=4|37=53|38=100|39=0|44=95.00|48=BD0001000015|54=1|55=T015A|60=20261012-12:21:32.563|150=0|151=100|207=XDHA|1300=ATB|10=183|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "BG-20",
+   "category": "Board group (762)",
+   "title": "Missing 762",
+   "dse_expected": "Accepted (defaults to the instrument's group)",
+   "sent": "8=FIXT.1.1|9=189|35=D|34=59|49=TESTBRK|50=TRADER1|52=20261012-12:21:32.684|56=DSEME|1=BO1001|11=CF00057|38=100|40=2|44=95.00|54=1|55=T013M|59=0|60=20261012-12:21:32.683|453=1|448=CLIENT01|447=C|452=5|529=N|10=035|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=59|49=DSEME|52=20261012-12:21:32.684|56=TESTBRK|6=0.00|11=CF00057|14=0|17=55|22=4|37=54|38=100|39=0|44=95.00|48=BD0001000013|54=1|55=T013M|60=20261012-12:21:32.684|150=0|151=100|207=XDHA|1300=MAIN|10=026|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "EI-1",
+   "category": "ExecInst (18)",
+   "title": "18=Placed (n) on a new order",
+   "dse_expected": "Normal placed order — rests on the book",
+   "sent": "8=FIXT.1.1|9=205|35=D|34=60|49=TESTBRK|50=TRADER1|52=20261012-12:21:32.804|56=DSEME|1=BO1001|11=CF00058|18=n|38=100|40=2|44=95.00|54=1|55=T016M|59=0|60=20261012-12:21:32.804|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=186|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=60|49=DSEME|52=20261012-12:21:32.805|56=TESTBRK|6=0.00|11=CF00058|14=0|17=56|22=4|37=55|38=100|39=0|44=95.00|48=BD0001000016|54=1|55=T016M|60=20261012-12:21:32.805|150=0|151=100|207=XDHA|1300=MAIN|10=017|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PARTIAL",
+   "note": "accepted; instruction not interpreted (tag 18 never read)"
+  },
+  {
+   "id": "EI-2",
+   "category": "ExecInst (18)",
+   "title": "18=Park (S) on a new order",
+   "dse_expected": "Order parked: held off the book, no matching",
+   "sent": "8=FIXT.1.1|9=205|35=D|34=61|49=TESTBRK|50=TRADER1|52=20261012-12:21:32.925|56=DSEME|1=BO1001|11=CF00059|18=S|38=100|40=2|44=95.00|54=1|55=T017M|59=0|60=20261012-12:21:32.925|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=170|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=61|49=DSEME|52=20261012-12:21:32.926|56=TESTBRK|6=0.00|11=CF00059|14=0|17=57|22=4|37=56|38=100|39=0|44=95.00|48=BD0001000017|54=1|55=T017M|60=20261012-12:21:32.926|150=0|151=100|207=XDHA|1300=MAIN|10=031|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted but the order rests on the book — Park is not implemented (tag 18 never read)"
+  },
+  {
+   "id": "EI-3",
+   "category": "ExecInst (18)",
+   "title": "18=Block (w) on a new order",
+   "dse_expected": "Block-board order",
+   "sent": "8=FIXT.1.1|9=205|35=D|34=62|49=TESTBRK|50=TRADER1|52=20261012-12:21:33.046|56=DSEME|1=BO1001|11=CF00060|18=w|38=100|40=2|44=95.00|54=1|55=T018M|59=0|60=20261012-12:21:33.046|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=190|",
+   "replies": [
+    "8=FIXT.1.1|9=142|35=3|34=62|49=DSEME|52=20261012-12:21:33.047|56=TESTBRK|57=TRADER1|45=62|58=Value is incorrect (out of range) for this tag|371=18|372=D|373=5|10=060|"
+   ],
+   "actual": "35=3 371=18 372=D 373=5 58=Value is incorrect (out of range) for this tag",
+   "verdict": "GAP",
+   "note": "rejected — 'w' is not in the engine's tag-18 dictionary enum, so the OMS's DSE-specific instruction never reaches the engine"
+  },
+  {
+   "id": "EI-4",
+   "category": "ExecInst (18)",
+   "title": "18=Block Park (w S) on a new order",
+   "dse_expected": "Block order parked",
+   "sent": "8=FIXT.1.1|9=207|35=D|34=63|49=TESTBRK|50=TRADER1|52=20261012-12:21:33.167|56=DSEME|1=BO1001|11=CF00061|18=w S|38=100|40=2|44=95.00|54=1|55=T019M|59=0|60=20261012-12:21:33.167|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=062|",
+   "replies": [
+    "8=FIXT.1.1|9=142|35=3|34=63|49=DSEME|52=20261012-12:21:33.167|56=TESTBRK|57=TRADER1|45=63|58=Value is incorrect (out of range) for this tag|371=18|372=D|373=5|10=065|"
+   ],
+   "actual": "35=3 371=18 372=D 373=5 58=Value is incorrect (out of range) for this tag",
+   "verdict": "GAP",
+   "note": "rejected — 'w S' is not in the engine's tag-18 dictionary enum, so the OMS's DSE-specific instruction never reaches the engine"
+  },
+  {
+   "id": "EI-5",
+   "category": "ExecInst (18)",
+   "title": "18=q (Unpark) on a modify (35=G)",
+   "dse_expected": "Un-parks the order and places it on the book",
+   "sent": "8=FIXT.1.1|9=196|35=G|34=65|49=TESTBRK|50=TRADER1|52=20261012-12:21:33.409|56=DSEME|1=BO1001|11=CF00063|18=q|38=100|40=2|41=CF00062|44=95.00|54=1|59=0|60=20261012-12:21:33.409|453=1|448=CLIENT01|447=C|452=5|529=N|10=118|",
+   "replies": [
+    "8=FIXT.1.1|9=165|35=8|34=65|49=DSEME|52=20261012-12:21:33.409|56=TESTBRK|6=0.00|11=CF00063|14=0|17=59|37=57|38=100|39=0|54=1|55=T020M|60=20261012-12:21:33.409|150=5|151=100|207=XDHA|10=103|"
+   ],
+   "actual": "35=8 150=5 39=0",
+   "verdict": "PARTIAL",
+   "note": "accepted as an ordinary amend; instruction ignored"
+  },
+  {
+   "id": "EI-6",
+   "category": "ExecInst (18)",
+   "title": "18=w q (Unpark) on a modify (35=G)",
+   "dse_expected": "Un-parks the order and places it on the book",
+   "sent": "8=FIXT.1.1|9=198|35=G|34=67|49=TESTBRK|50=TRADER1|52=20261012-12:21:33.651|56=DSEME|1=BO1001|11=CF00065|18=w q|38=100|40=2|41=CF00064|44=95.00|54=1|59=0|60=20261012-12:21:33.651|453=1|448=CLIENT01|447=C|452=5|529=N|10=019|",
+   "replies": [
+    "8=FIXT.1.1|9=142|35=3|34=67|49=DSEME|52=20261012-12:21:33.651|56=TESTBRK|57=TRADER1|45=67|58=Value is incorrect (out of range) for this tag|371=18|372=G|373=5|10=074|"
+   ],
+   "actual": "35=3 371=18 372=G 373=5 58=Value is incorrect (out of range) for this tag",
+   "verdict": "GAP",
+   "note": "rejected — Unpark ('w q') cannot be sent through the dictionary-validated session"
+  },
+  {
+   "id": "QO-1",
+   "category": "Quantity options",
+   "title": "DisplayQty (1138=30) iceberg on a 100-lot (the OMS's tag)",
+   "dse_expected": "Only 30 shown on the book",
+   "sent": "8=FIXT.1.1|9=208|35=D|34=68|49=TESTBRK|50=TRADER1|52=20261012-12:21:33.772|56=DSEME|1=BO1001|11=CF00066|38=100|40=2|44=90.00|54=1|55=T021M|59=0|60=20261012-12:21:33.772|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|1138=30|10=030|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=68|49=DSEME|52=20261012-12:21:33.772|56=TESTBRK|6=0.00|11=CF00066|14=0|17=61|22=4|37=59|38=100|39=0|44=90.00|48=BD0001000021|54=1|55=T021M|60=20261012-12:21:33.772|150=0|151=100|207=XDHA|1300=MAIN|10=019|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "book shows 100 — tag 1138 is ignored (the engine reads tag 111 MaxFloor instead), so the iceberg is not applied to OMS orders"
+  },
+  {
+   "id": "QO-2",
+   "category": "Quantity options",
+   "title": "MaxFloor (111=30) iceberg (engine's own tag)",
+   "dse_expected": "(not sent by the OMS) 30 shown",
+   "sent": "8=FIXT.1.1|9=207|35=D|34=69|49=TESTBRK|50=TRADER1|52=20261012-12:21:33.893|56=DSEME|1=BO1001|11=CF00067|38=100|40=2|44=90.00|54=1|55=T022M|59=0|60=20261012-12:21:33.893|111=30|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=238|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=69|49=DSEME|52=20261012-12:21:33.893|56=TESTBRK|6=0.00|11=CF00067|14=0|17=62|22=4|37=60|38=100|39=0|44=90.00|48=BD0001000022|54=1|55=T022M|60=20261012-12:21:33.893|150=0|151=100|207=XDHA|1300=MAIN|10=024|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "INFO",
+   "note": "111 honoured — book shows 30"
+  },
+  {
+   "id": "QO-3",
+   "category": "Quantity options",
+   "title": "MinQty (110) greater than OrderQty (500 \u003e 100)",
+   "dse_expected": "Rejected",
+   "sent": "8=FIXT.1.1|9=208|35=D|34=70|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.013|56=DSEME|1=BO1001|11=CF00068|38=100|40=2|44=90.00|54=1|55=T023M|59=0|60=20261012-12:21:34.013|110=500|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=252|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=70|49=DSEME|52=20261012-12:21:34.013|56=TESTBRK|6=0.00|11=CF00068|14=0|17=63|22=4|37=61|38=100|39=0|44=90.00|48=BD0001000023|54=1|55=T023M|60=20261012-12:21:34.013|150=0|151=100|207=XDHA|1300=MAIN|10=247|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — MinQty (110) is ignored"
+  },
+  {
+   "id": "QO-4",
+   "category": "Quantity options",
+   "title": "MinQty (110=50) with only 30 available",
+   "dse_expected": "No fill (minimum quantity cannot be met)",
+   "sent": "8=FIXT.1.1|9=208|35=D|34=71|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.134|56=DSEME|1=BO1001|11=CF00069|38=100|40=2|44=100.00|54=1|55=T024M|59=0|60=20261012-12:21:34.134|110=50|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=255|",
+   "replies": [
+    "8=FIXT.1.1|9=228|35=8|34=71|49=DSEME|52=20261012-12:21:34.134|56=TESTBRK|6=100.00|11=CF00069|14=30|17=64|22=4|31=100.00|32=30|37=63|38=100|39=1|44=100.00|48=BD0001000024|54=1|55=T024M|60=20261012-12:21:34.134|150=TRADE|151=70|207=XDHA|1300=MAIN|10=165|"
+   ],
+   "actual": "35=8 150=TRADE 39=1 14=30",
+   "verdict": "GAP",
+   "note": "filled below the minimum quantity — MinQty (110) is ignored"
+  },
+  {
+   "id": "TG-1",
+   "category": "Tags \u0026 reports",
+   "title": "Party group 453 (448/447/452) present",
+   "dse_expected": "Accepted",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=72|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.255|56=DSEME|1=BO1001|11=CF00070|38=100|40=2|44=90.00|54=1|55=T025M|59=0|60=20261012-12:21:34.255|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=156|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=72|49=DSEME|52=20261012-12:21:34.255|56=TESTBRK|6=0.00|11=CF00070|14=0|17=65|22=4|37=64|38=100|39=0|44=90.00|48=BD0001000025|54=1|55=T025M|60=20261012-12:21:34.255|150=0|151=100|207=XDHA|1300=MAIN|10=011|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "TG-2",
+   "category": "Tags \u0026 reports",
+   "title": "No party group",
+   "dse_expected": "Accepted",
+   "sent": "8=FIXT.1.1|9=169|35=D|34=73|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.376|56=DSEME|1=BO1001|11=CF00071|38=100|40=2|44=90.00|54=1|55=T025M|59=0|60=20261012-12:21:34.376|529=N|762=PUBLIC|10=125|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=73|49=DSEME|52=20261012-12:21:34.376|56=TESTBRK|6=0.00|11=CF00071|14=0|17=66|22=4|37=65|38=100|39=0|44=90.00|48=BD0001000025|54=1|55=T025M|60=20261012-12:21:34.376|150=0|151=100|207=XDHA|1300=MAIN|10=023|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "TG-3",
+   "category": "Tags \u0026 reports",
+   "title": "OrderRestrictions 529=N (non-standard)",
+   "dse_expected": "Accepted (DSE accepted it in logged traffic)",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=74|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.496|56=DSEME|1=BO1001|11=CF00072|38=100|40=2|44=90.00|54=1|55=T025M|59=0|60=20261012-12:21:34.496|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=174|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=74|49=DSEME|52=20261012-12:21:34.497|56=TESTBRK|6=0.00|11=CF00072|14=0|17=67|22=4|37=66|38=100|39=0|44=90.00|48=BD0001000025|54=1|55=T025M|60=20261012-12:21:34.497|150=0|151=100|207=XDHA|1300=MAIN|10=035|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "TG-4",
+   "category": "Tags \u0026 reports",
+   "title": "Missing Account (1)",
+   "dse_expected": "Accepted or rejected per DSE (BO ID required by the OMS)",
+   "sent": "8=FIXT.1.1|9=191|35=D|34=75|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.617|56=DSEME|11=CF00073|38=100|40=2|44=90.00|54=1|55=T025M|59=0|60=20261012-12:21:34.617|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=237|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=75|49=DSEME|52=20261012-12:21:34.617|56=TESTBRK|6=0.00|11=CF00073|14=0|17=68|22=4|37=67|38=100|39=0|44=90.00|48=BD0001000025|54=1|55=T025M|60=20261012-12:21:34.617|150=0|151=100|207=XDHA|1300=MAIN|10=027|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "INFO",
+   "note": "engine: 35=8 150=0 39=0"
+  },
+  {
+   "id": "TG-5",
+   "category": "Tags \u0026 reports",
+   "title": "Missing TransactTime (60)",
+   "dse_expected": "Rejected (required field)",
+   "sent": "8=FIXT.1.1|9=175|35=D|34=76|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.738|56=DSEME|1=BO1001|11=CF00074|38=100|40=2|44=90.00|54=1|55=T025M|59=0|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=235|",
+   "replies": [
+    "8=FIXT.1.1|9=116|35=3|34=76|49=DSEME|52=20261012-12:21:34.738|56=TESTBRK|57=TRADER1|45=76|58=Required tag missing|371=60|372=D|373=1|10=151|"
+   ],
+   "actual": "35=3 371=60 372=D 373=1 58=Required tag missing",
+   "verdict": "PASS",
+   "note": "rejected: 35=3 371=60 372=D 373=1 58=Required tag missing"
+  },
+  {
+   "id": "TG-6",
+   "category": "Tags \u0026 reports",
+   "title": "Missing ClOrdID (11)",
+   "dse_expected": "Rejected",
+   "sent": "8=FIXT.1.1|9=189|35=D|34=77|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.859|56=DSEME|1=BO1001|38=100|40=2|44=90.00|54=1|55=T025M|59=0|60=20261012-12:21:34.859|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=165|",
+   "replies": [
+    "8=FIXT.1.1|9=116|35=3|34=77|49=DSEME|52=20261012-12:21:34.860|56=TESTBRK|57=TRADER1|45=77|58=Required tag missing|371=11|372=D|373=1|10=145|"
+   ],
+   "actual": "35=3 371=11 372=D 373=1 58=Required tag missing",
+   "verdict": "PASS",
+   "note": "rejected: 35=3 371=11 372=D 373=1 58=Required tag missing"
+  },
+  {
+   "id": "ER-1",
+   "category": "Tags \u0026 reports",
+   "title": "Fill ER carries FIX-required tags (37,17,150,39,55,54,151,14,11)",
+   "dse_expected": "All present",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=78|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.981|56=DSEME|1=BO1001|11=CF00076|38=100|40=2|44=100.00|54=1|55=T026M|59=0|60=20261012-12:21:34.981|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=222|",
+   "replies": [
+    "8=FIXT.1.1|9=229|35=8|34=78|49=DSEME|52=20261012-12:21:34.981|56=TESTBRK|6=100.00|11=CF00076|14=100|17=69|22=4|31=100.00|32=100|37=69|38=100|39=2|44=100.00|48=BD0001000026|54=1|55=T026M|60=20261012-12:21:34.981|150=TRADE|151=0|207=XDHA|1300=MAIN|10=244|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "PASS",
+   "note": "all present"
+  },
+  {
+   "id": "ER-2",
+   "category": "Tags \u0026 reports",
+   "title": "Fill ER ExecType (150)",
+   "dse_expected": "150=F (Trade)",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=78|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.981|56=DSEME|1=BO1001|11=CF00076|38=100|40=2|44=100.00|54=1|55=T026M|59=0|60=20261012-12:21:34.981|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=222|",
+   "replies": [
+    "8=FIXT.1.1|9=229|35=8|34=78|49=DSEME|52=20261012-12:21:34.981|56=TESTBRK|6=100.00|11=CF00076|14=100|17=69|22=4|31=100.00|32=100|37=69|38=100|39=2|44=100.00|48=BD0001000026|54=1|55=T026M|60=20261012-12:21:34.981|150=TRADE|151=0|207=XDHA|1300=MAIN|10=244|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "FAIL",
+   "note": "150=TRADE — not a valid FIX 5.0 value (must be 'F')"
+  },
+  {
+   "id": "ER-3",
+   "category": "Tags \u0026 reports",
+   "title": "ER echoes Account (1)",
+   "dse_expected": "Echoed (OMS correlates by BO ID)",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=78|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.981|56=DSEME|1=BO1001|11=CF00076|38=100|40=2|44=100.00|54=1|55=T026M|59=0|60=20261012-12:21:34.981|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=222|",
+   "replies": [
+    "8=FIXT.1.1|9=229|35=8|34=78|49=DSEME|52=20261012-12:21:34.981|56=TESTBRK|6=100.00|11=CF00076|14=100|17=69|22=4|31=100.00|32=100|37=69|38=100|39=2|44=100.00|48=BD0001000026|54=1|55=T026M|60=20261012-12:21:34.981|150=TRADE|151=0|207=XDHA|1300=MAIN|10=244|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "GAP",
+   "note": "tag 1 not echoed on the execution report"
+  },
+  {
+   "id": "ER-4",
+   "category": "Tags \u0026 reports",
+   "title": "ER echoes OrdType (40) / TimeInForce (59)",
+   "dse_expected": "Echoed",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=78|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.981|56=DSEME|1=BO1001|11=CF00076|38=100|40=2|44=100.00|54=1|55=T026M|59=0|60=20261012-12:21:34.981|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=222|",
+   "replies": [
+    "8=FIXT.1.1|9=229|35=8|34=78|49=DSEME|52=20261012-12:21:34.981|56=TESTBRK|6=100.00|11=CF00076|14=100|17=69|22=4|31=100.00|32=100|37=69|38=100|39=2|44=100.00|48=BD0001000026|54=1|55=T026M|60=20261012-12:21:34.981|150=TRADE|151=0|207=XDHA|1300=MAIN|10=244|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "GAP",
+   "note": "tags 40/59 not echoed"
+  },
+  {
+   "id": "ER-5",
+   "category": "Tags \u0026 reports",
+   "title": "ER carries last fill price/qty (31/32)",
+   "dse_expected": "31 and 32 on a fill",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=78|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.981|56=DSEME|1=BO1001|11=CF00076|38=100|40=2|44=100.00|54=1|55=T026M|59=0|60=20261012-12:21:34.981|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=222|",
+   "replies": [
+    "8=FIXT.1.1|9=229|35=8|34=78|49=DSEME|52=20261012-12:21:34.981|56=TESTBRK|6=100.00|11=CF00076|14=100|17=69|22=4|31=100.00|32=100|37=69|38=100|39=2|44=100.00|48=BD0001000026|54=1|55=T026M|60=20261012-12:21:34.981|150=TRADE|151=0|207=XDHA|1300=MAIN|10=244|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "PASS",
+   "note": "present"
+  },
+  {
+   "id": "ER-6",
+   "category": "Tags \u0026 reports",
+   "title": "ER carries average price (6) and cumulative qty (14)",
+   "dse_expected": "Both present",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=78|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.981|56=DSEME|1=BO1001|11=CF00076|38=100|40=2|44=100.00|54=1|55=T026M|59=0|60=20261012-12:21:34.981|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=222|",
+   "replies": [
+    "8=FIXT.1.1|9=229|35=8|34=78|49=DSEME|52=20261012-12:21:34.981|56=TESTBRK|6=100.00|11=CF00076|14=100|17=69|22=4|31=100.00|32=100|37=69|38=100|39=2|44=100.00|48=BD0001000026|54=1|55=T026M|60=20261012-12:21:34.981|150=TRADE|151=0|207=XDHA|1300=MAIN|10=244|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "PASS",
+   "note": "present"
+  },
+  {
+   "id": "ER-7",
+   "category": "Tags \u0026 reports",
+   "title": "ER carries security id (48/22) and board",
+   "dse_expected": "Instrument identification present",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=78|49=TESTBRK|50=TRADER1|52=20261012-12:21:34.981|56=DSEME|1=BO1001|11=CF00076|38=100|40=2|44=100.00|54=1|55=T026M|59=0|60=20261012-12:21:34.981|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=222|",
+   "replies": [
+    "8=FIXT.1.1|9=229|35=8|34=78|49=DSEME|52=20261012-12:21:34.981|56=TESTBRK|6=100.00|11=CF00076|14=100|17=69|22=4|31=100.00|32=100|37=69|38=100|39=2|44=100.00|48=BD0001000026|54=1|55=T026M|60=20261012-12:21:34.981|150=TRADE|151=0|207=XDHA|1300=MAIN|10=244|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "PASS",
+   "note": "present"
+  },
+  {
+   "id": "ER-8",
+   "category": "Tags \u0026 reports",
+   "title": "Reject ER carries OrdRejReason (103) and Text (58)",
+   "dse_expected": "103 + 58 on every rejected order",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=80|49=TESTBRK|50=TRADER1|52=20261012-12:21:35.223|56=DSEME|1=BO1001|11=CF00078|38=100|40=2|44=50.00|54=1|55=T026M|59=0|60=20261012-12:21:35.223|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=152|",
+   "replies": [
+    "8=FIXT.1.1|9=278|35=8|34=80|49=DSEME|52=20261012-12:21:35.223|56=TESTBRK|6=0.00|11=CF00078|14=0|17=71|22=4|37=70|38=100|39=8|44=50.00|48=BD0001000026|54=1|55=T026M|58=price band: 50.00 outside +/-10.00% limit [90.00-110.00] of prev 100.00|60=20261012-12:21:35.223|150=8|151=0|207=XDHA|1300=MAIN|10=191|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 50.00 outside +/-10.00% limit [90.00-110.00] of prev 100.00",
+   "verdict": "PARTIAL",
+   "note": "Text (58) present but OrdRejReason (103) is never set"
+  },
+  {
+   "id": "PT-1",
+   "category": "Price band / tick",
+   "title": "Price on tick (100.10)",
+   "dse_expected": "Accepted",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=81|49=TESTBRK|50=TRADER1|52=20261012-12:21:35.344|56=DSEME|1=BO1001|11=CF00079|38=100|40=2|44=100.10|54=1|55=T027M|59=0|60=20261012-12:21:35.344|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=209|",
+   "replies": [
+    "8=FIXT.1.1|9=206|35=8|34=81|49=DSEME|52=20261012-12:21:35.344|56=TESTBRK|6=0.00|11=CF00079|14=0|17=72|22=4|37=71|38=100|39=0|44=100.10|48=BD0001000027|54=1|55=T027M|60=20261012-12:21:35.344|150=0|151=100|207=XDHA|1300=MAIN|10=062|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PT-2",
+   "category": "Price band / tick",
+   "title": "Price off tick (100.05)",
+   "dse_expected": "Rejected: off-tick",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=82|49=TESTBRK|50=TRADER1|52=20261012-12:21:35.465|56=DSEME|1=BO1001|11=CF00080|38=100|40=2|44=100.05|54=1|55=T027M|59=0|60=20261012-12:21:35.465|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=214|",
+   "replies": [
+    "8=FIXT.1.1|9=257|35=8|34=82|49=DSEME|52=20261012-12:21:35.465|56=TESTBRK|6=0.00|11=CF00080|14=0|17=73|22=4|37=72|38=100|39=8|44=100.05|48=BD0001000027|54=1|55=T027M|58=off-tick: 100.0500 is not a multiple of tick 0.10|60=20261012-12:21:35.465|150=8|151=0|207=XDHA|1300=MAIN|10=175|"
+   ],
+   "actual": "35=8 150=8 39=8 58=off-tick: 100.0500 is not a multiple of tick 0.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=off-tick: 100.0500 is not a multiple of tick 0.10"
+  },
+  {
+   "id": "PT-3",
+   "category": "Price band / tick",
+   "title": "Price 100.02 (sub-paisa tick)",
+   "dse_expected": "Rejected: off-tick",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=83|49=TESTBRK|50=TRADER1|52=20261012-12:21:35.586|56=DSEME|1=BO1001|11=CF00081|38=100|40=2|44=100.02|54=1|55=T027M|59=0|60=20261012-12:21:35.586|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=221|",
+   "replies": [
+    "8=FIXT.1.1|9=257|35=8|34=83|49=DSEME|52=20261012-12:21:35.586|56=TESTBRK|6=0.00|11=CF00081|14=0|17=74|22=4|37=73|38=100|39=8|44=100.02|48=BD0001000027|54=1|55=T027M|58=off-tick: 100.0200 is not a multiple of tick 0.10|60=20261012-12:21:35.586|150=8|151=0|207=XDHA|1300=MAIN|10=181|"
+   ],
+   "actual": "35=8 150=8 39=8 58=off-tick: 100.0200 is not a multiple of tick 0.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=off-tick: 100.0200 is not a multiple of tick 0.10"
+  },
+  {
+   "id": "PB-01a",
+   "category": "Price band / tick",
+   "title": "prev 100.00 ±10.00%: upper limit 110.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=84|49=TESTBRK|50=TRADER1|52=20261012-12:21:35.706|56=DSEME|1=BO1001|11=CF00082|38=100|40=2|44=110.00|54=1|55=T028M|59=0|60=20261012-12:21:35.706|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=211|",
+   "replies": [
+    "8=FIXT.1.1|9=206|35=8|34=84|49=DSEME|52=20261012-12:21:35.707|56=TESTBRK|6=0.00|11=CF00082|14=0|17=75|22=4|37=74|38=100|39=0|44=110.00|48=BD0001000028|54=1|55=T028M|60=20261012-12:21:35.707|150=0|151=100|207=XDHA|1300=MAIN|10=073|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-01b",
+   "category": "Price band / tick",
+   "title": "prev 100.00 ±10.00%: above upper 110.10",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=85|49=TESTBRK|50=TRADER1|52=20261012-12:21:35.827|56=DSEME|1=BO1001|11=CF00083|38=100|40=2|44=110.10|54=1|55=T028M|59=0|60=20261012-12:21:35.827|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=222|",
+   "replies": [
+    "8=FIXT.1.1|9=280|35=8|34=85|49=DSEME|52=20261012-12:21:35.827|56=TESTBRK|6=0.00|11=CF00083|14=0|17=76|22=4|37=75|38=100|39=8|44=110.10|48=BD0001000028|54=1|55=T028M|58=price band: 110.10 outside +/-10.00% limit [90.00-110.00] of prev 100.00|60=20261012-12:21:35.827|150=8|151=0|207=XDHA|1300=MAIN|10=055|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 110.10 outside +/-10.00% limit [90.00-110.00] of prev 100.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 110.10 outside +/-10.00% limit [90.00-110.00] of prev 100.00"
+  },
+  {
+   "id": "PB-01c",
+   "category": "Price band / tick",
+   "title": "prev 100.00 ±10.00%: lower limit 90.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=86|49=TESTBRK|50=TRADER1|52=20261012-12:21:35.948|56=DSEME|1=BO1001|11=CF00084|38=100|40=2|44=90.00|54=1|55=T028M|59=0|60=20261012-12:21:35.948|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=189|",
+   "replies": [
+    "8=FIXT.1.1|9=205|35=8|34=86|49=DSEME|52=20261012-12:21:35.948|56=TESTBRK|6=0.00|11=CF00084|14=0|17=77|22=4|37=76|38=100|39=0|44=90.00|48=BD0001000028|54=1|55=T028M|60=20261012-12:21:35.948|150=0|151=100|207=XDHA|1300=MAIN|10=053|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-01d",
+   "category": "Price band / tick",
+   "title": "prev 100.00 ±10.00%: below lower 89.90",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=87|49=TESTBRK|50=TRADER1|52=20261012-12:21:36.069|56=DSEME|1=BO1001|11=CF00085|38=100|40=2|44=89.90|54=1|55=T028M|59=0|60=20261012-12:21:36.069|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=198|",
+   "replies": [
+    "8=FIXT.1.1|9=278|35=8|34=87|49=DSEME|52=20261012-12:21:36.069|56=TESTBRK|6=0.00|11=CF00085|14=0|17=78|22=4|37=77|38=100|39=8|44=89.90|48=BD0001000028|54=1|55=T028M|58=price band: 89.90 outside +/-10.00% limit [90.00-110.00] of prev 100.00|60=20261012-12:21:36.069|150=8|151=0|207=XDHA|1300=MAIN|10=018|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 89.90 outside +/-10.00% limit [90.00-110.00] of prev 100.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 89.90 outside +/-10.00% limit [90.00-110.00] of prev 100.00"
+  },
+  {
+   "id": "PB-02a",
+   "category": "Price band / tick",
+   "title": "prev 200.00 ±10.00%: upper limit 220.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=88|49=TESTBRK|50=TRADER1|52=20261012-12:21:36.190|56=DSEME|1=BO1001|11=CF00086|38=100|40=2|44=220.00|54=1|55=T029M|59=0|60=20261012-12:21:36.190|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=218|",
+   "replies": [
+    "8=FIXT.1.1|9=206|35=8|34=88|49=DSEME|52=20261012-12:21:36.191|56=TESTBRK|6=0.00|11=CF00086|14=0|17=79|22=4|37=78|38=100|39=0|44=220.00|48=BD0001000029|54=1|55=T029M|60=20261012-12:21:36.191|150=0|151=100|207=XDHA|1300=MAIN|10=089|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-02b",
+   "category": "Price band / tick",
+   "title": "prev 200.00 ±10.00%: above upper 220.10",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=89|49=TESTBRK|50=TRADER1|52=20261012-12:21:36.312|56=DSEME|1=BO1001|11=CF00087|38=100|40=2|44=220.10|54=1|55=T029M|59=0|60=20261012-12:21:36.312|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=213|",
+   "replies": [
+    "8=FIXT.1.1|9=281|35=8|34=89|49=DSEME|52=20261012-12:21:36.312|56=TESTBRK|6=0.00|11=CF00087|14=0|17=80|22=4|37=79|38=100|39=8|44=220.10|48=BD0001000029|54=1|55=T029M|58=price band: 220.10 outside +/-10.00% limit [180.00-220.00] of prev 200.00|60=20261012-12:21:36.312|150=8|151=0|207=XDHA|1300=MAIN|10=100|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 220.10 outside +/-10.00% limit [180.00-220.00] of prev 200.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 220.10 outside +/-10.00% limit [180.00-220.00] of prev 200.00"
+  },
+  {
+   "id": "PB-02c",
+   "category": "Price band / tick",
+   "title": "prev 200.00 ±10.00%: lower limit 180.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=90|49=TESTBRK|50=TRADER1|52=20261012-12:21:36.433|56=DSEME|1=BO1001|11=CF00088|38=100|40=2|44=180.00|54=1|55=T029M|59=0|60=20261012-12:21:36.433|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=218|",
+   "replies": [
+    "8=FIXT.1.1|9=206|35=8|34=90|49=DSEME|52=20261012-12:21:36.433|56=TESTBRK|6=0.00|11=CF00088|14=0|17=81|22=4|37=80|38=100|39=0|44=180.00|48=BD0001000029|54=1|55=T029M|60=20261012-12:21:36.433|150=0|151=100|207=XDHA|1300=MAIN|10=073|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-02d",
+   "category": "Price band / tick",
+   "title": "prev 200.00 ±10.00%: below lower 179.90",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=91|49=TESTBRK|50=TRADER1|52=20261012-12:21:36.554|56=DSEME|1=BO1001|11=CF00089|38=100|40=2|44=179.90|54=1|55=T029M|59=0|60=20261012-12:21:36.554|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=245|",
+   "replies": [
+    "8=FIXT.1.1|9=281|35=8|34=91|49=DSEME|52=20261012-12:21:36.554|56=TESTBRK|6=0.00|11=CF00089|14=0|17=82|22=4|37=81|38=100|39=8|44=179.90|48=BD0001000029|54=1|55=T029M|58=price band: 179.90 outside +/-10.00% limit [180.00-220.00] of prev 200.00|60=20261012-12:21:36.554|150=8|151=0|207=XDHA|1300=MAIN|10=148|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 179.90 outside +/-10.00% limit [180.00-220.00] of prev 200.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 179.90 outside +/-10.00% limit [180.00-220.00] of prev 200.00"
+  },
+  {
+   "id": "PB-03a",
+   "category": "Price band / tick",
+   "title": "prev 200.10 ±8.75%: upper limit 217.60",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=92|49=TESTBRK|50=TRADER1|52=20261012-12:21:36.675|56=DSEME|1=BO1001|11=CF00090|38=100|40=2|44=217.60|54=1|55=T030M|59=0|60=20261012-12:21:36.675|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=228|",
+   "replies": [
+    "8=FIXT.1.1|9=206|35=8|34=92|49=DSEME|52=20261012-12:21:36.676|56=TESTBRK|6=0.00|11=CF00090|14=0|17=83|22=4|37=82|38=100|39=0|44=217.60|48=BD0001000030|54=1|55=T030M|60=20261012-12:21:36.676|150=0|151=100|207=XDHA|1300=MAIN|10=081|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-03b",
+   "category": "Price band / tick",
+   "title": "prev 200.10 ±8.75%: above upper 217.70",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=93|49=TESTBRK|50=TRADER1|52=20261012-12:21:36.797|56=DSEME|1=BO1001|11=CF00091|38=100|40=2|44=217.70|54=1|55=T030M|59=0|60=20261012-12:21:36.797|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=241|",
+   "replies": [
+    "8=FIXT.1.1|9=280|35=8|34=93|49=DSEME|52=20261012-12:21:36.797|56=TESTBRK|6=0.00|11=CF00091|14=0|17=84|22=4|37=83|38=100|39=8|44=217.70|48=BD0001000030|54=1|55=T030M|58=price band: 217.70 outside +/-8.75% limit [182.59-217.61] of prev 200.10|60=20261012-12:21:36.797|150=8|151=0|207=XDHA|1300=MAIN|10=131|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 217.70 outside +/-8.75% limit [182.59-217.61] of prev 200.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 217.70 outside +/-8.75% limit [182.59-217.61] of prev 200.10"
+  },
+  {
+   "id": "PB-03c",
+   "category": "Price band / tick",
+   "title": "prev 200.10 ±8.75%: lower limit 182.60",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=94|49=TESTBRK|50=TRADER1|52=20261012-12:21:36.918|56=DSEME|1=BO1001|11=CF00092|38=100|40=2|44=182.60|54=1|55=T030M|59=0|60=20261012-12:21:36.918|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=233|",
+   "replies": [
+    "8=FIXT.1.1|9=206|35=8|34=94|49=DSEME|52=20261012-12:21:36.918|56=TESTBRK|6=0.00|11=CF00092|14=0|17=85|22=4|37=84|38=100|39=0|44=182.60|48=BD0001000030|54=1|55=T030M|60=20261012-12:21:36.918|150=0|151=100|207=XDHA|1300=MAIN|10=088|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-03d",
+   "category": "Price band / tick",
+   "title": "prev 200.10 ±8.75%: below lower 182.50",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=95|49=TESTBRK|50=TRADER1|52=20261012-12:21:37.038|56=DSEME|1=BO1001|11=CF00093|38=100|40=2|44=182.50|54=1|55=T030M|59=0|60=20261012-12:21:37.038|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=222|",
+   "replies": [
+    "8=FIXT.1.1|9=280|35=8|34=95|49=DSEME|52=20261012-12:21:37.038|56=TESTBRK|6=0.00|11=CF00093|14=0|17=86|22=4|37=85|38=100|39=8|44=182.50|48=BD0001000030|54=1|55=T030M|58=price band: 182.50 outside +/-8.75% limit [182.59-217.61] of prev 200.10|60=20261012-12:21:37.038|150=8|151=0|207=XDHA|1300=MAIN|10=115|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 182.50 outside +/-8.75% limit [182.59-217.61] of prev 200.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 182.50 outside +/-8.75% limit [182.59-217.61] of prev 200.10"
+  },
+  {
+   "id": "PB-04a",
+   "category": "Price band / tick",
+   "title": "prev 300.00 ±8.75%: upper limit 326.20",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=96|49=TESTBRK|50=TRADER1|52=20261012-12:21:37.159|56=DSEME|1=BO1001|11=CF00094|38=100|40=2|44=326.20|54=1|55=T031M|59=0|60=20261012-12:21:37.159|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=230|",
+   "replies": [
+    "8=FIXT.1.1|9=206|35=8|34=96|49=DSEME|52=20261012-12:21:37.159|56=TESTBRK|6=0.00|11=CF00094|14=0|17=87|22=4|37=86|38=100|39=0|44=326.20|48=BD0001000031|54=1|55=T031M|60=20261012-12:21:37.159|150=0|151=100|207=XDHA|1300=MAIN|10=090|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-04b",
+   "category": "Price band / tick",
+   "title": "prev 300.00 ±8.75%: above upper 326.30",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=97|49=TESTBRK|50=TRADER1|52=20261012-12:21:37.280|56=DSEME|1=BO1001|11=CF00095|38=100|40=2|44=326.30|54=1|55=T031M|59=0|60=20261012-12:21:37.280|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=223|",
+   "replies": [
+    "8=FIXT.1.1|9=280|35=8|34=97|49=DSEME|52=20261012-12:21:37.280|56=TESTBRK|6=0.00|11=CF00095|14=0|17=88|22=4|37=87|38=100|39=8|44=326.30|48=BD0001000031|54=1|55=T031M|58=price band: 326.30 outside +/-8.75% limit [273.75-326.25] of prev 300.00|60=20261012-12:21:37.280|150=8|151=0|207=XDHA|1300=MAIN|10=119|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 326.30 outside +/-8.75% limit [273.75-326.25] of prev 300.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 326.30 outside +/-8.75% limit [273.75-326.25] of prev 300.00"
+  },
+  {
+   "id": "PB-04c",
+   "category": "Price band / tick",
+   "title": "prev 300.00 ±8.75%: lower limit 273.80",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=98|49=TESTBRK|50=TRADER1|52=20261012-12:21:37.401|56=DSEME|1=BO1001|11=CF00096|38=100|40=2|44=273.80|54=1|55=T031M|59=0|60=20261012-12:21:37.401|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=221|",
+   "replies": [
+    "8=FIXT.1.1|9=206|35=8|34=98|49=DSEME|52=20261012-12:21:37.402|56=TESTBRK|6=0.00|11=CF00096|14=0|17=89|22=4|37=88|38=100|39=0|44=273.80|48=BD0001000031|54=1|55=T031M|60=20261012-12:21:37.402|150=0|151=100|207=XDHA|1300=MAIN|10=087|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-04d",
+   "category": "Price band / tick",
+   "title": "prev 300.00 ±8.75%: below lower 273.70",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=99|49=TESTBRK|50=TRADER1|52=20261012-12:21:37.523|56=DSEME|1=BO1001|11=CF00097|38=100|40=2|44=273.70|54=1|55=T031M|59=0|60=20261012-12:21:37.523|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=232|",
+   "replies": [
+    "8=FIXT.1.1|9=280|35=8|34=99|49=DSEME|52=20261012-12:21:37.523|56=TESTBRK|6=0.00|11=CF00097|14=0|17=90|22=4|37=89|38=100|39=8|44=273.70|48=BD0001000031|54=1|55=T031M|58=price band: 273.70 outside +/-8.75% limit [273.75-326.25] of prev 300.00|60=20261012-12:21:37.523|150=8|151=0|207=XDHA|1300=MAIN|10=128|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 273.70 outside +/-8.75% limit [273.75-326.25] of prev 300.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 273.70 outside +/-8.75% limit [273.75-326.25] of prev 300.00"
+  },
+  {
+   "id": "PB-05a",
+   "category": "Price band / tick",
+   "title": "prev 500.00 ±8.75%: upper limit 543.70",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=100|49=TESTBRK|50=TRADER1|52=20261012-12:21:37.644|56=DSEME|1=BO1001|11=CF00098|38=100|40=2|44=543.70|54=1|55=T032M|59=0|60=20261012-12:21:37.644|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=018|",
+   "replies": [
+    "8=FIXT.1.1|9=207|35=8|34=100|49=DSEME|52=20261012-12:21:37.644|56=TESTBRK|6=0.00|11=CF00098|14=0|17=91|22=4|37=90|38=100|39=0|44=543.70|48=BD0001000032|54=1|55=T032M|60=20261012-12:21:37.644|150=0|151=100|207=XDHA|1300=MAIN|10=125|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-05b",
+   "category": "Price band / tick",
+   "title": "prev 500.00 ±8.75%: above upper 543.80",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=101|49=TESTBRK|50=TRADER1|52=20261012-12:21:37.765|56=DSEME|1=BO1001|11=CF00099|38=100|40=2|44=543.80|54=1|55=T032M|59=0|60=20261012-12:21:37.765|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=029|",
+   "replies": [
+    "8=FIXT.1.1|9=281|35=8|34=101|49=DSEME|52=20261012-12:21:37.765|56=TESTBRK|6=0.00|11=CF00099|14=0|17=92|22=4|37=91|38=100|39=8|44=543.80|48=BD0001000032|54=1|55=T032M|58=price band: 543.80 outside +/-8.75% limit [456.25-543.75] of prev 500.00|60=20261012-12:21:37.765|150=8|151=0|207=XDHA|1300=MAIN|10=184|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 543.80 outside +/-8.75% limit [456.25-543.75] of prev 500.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 543.80 outside +/-8.75% limit [456.25-543.75] of prev 500.00"
+  },
+  {
+   "id": "PB-05c",
+   "category": "Price band / tick",
+   "title": "prev 500.00 ±8.75%: lower limit 456.30",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=102|49=TESTBRK|50=TRADER1|52=20261012-12:21:37.886|56=DSEME|1=BO1001|11=CF00100|38=100|40=2|44=456.30|54=1|55=T032M|59=0|60=20261012-12:21:37.886|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=019|",
+   "replies": [
+    "8=FIXT.1.1|9=207|35=8|34=102|49=DSEME|52=20261012-12:21:37.886|56=TESTBRK|6=0.00|11=CF00100|14=0|17=93|22=4|37=92|38=100|39=0|44=456.30|48=BD0001000032|54=1|55=T032M|60=20261012-12:21:37.886|150=0|151=100|207=XDHA|1300=MAIN|10=130|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-05d",
+   "category": "Price band / tick",
+   "title": "prev 500.00 ±8.75%: below lower 456.20",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=103|49=TESTBRK|50=TRADER1|52=20261012-12:21:38.007|56=DSEME|1=BO1001|11=CF00101|38=100|40=2|44=456.20|54=1|55=T032M|59=0|60=20261012-12:21:38.007|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=248|",
+   "replies": [
+    "8=FIXT.1.1|9=281|35=8|34=103|49=DSEME|52=20261012-12:21:38.007|56=TESTBRK|6=0.00|11=CF00101|14=0|17=94|22=4|37=93|38=100|39=8|44=456.20|48=BD0001000032|54=1|55=T032M|58=price band: 456.20 outside +/-8.75% limit [456.25-543.75] of prev 500.00|60=20261012-12:21:38.007|150=8|151=0|207=XDHA|1300=MAIN|10=148|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 456.20 outside +/-8.75% limit [456.25-543.75] of prev 500.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 456.20 outside +/-8.75% limit [456.25-543.75] of prev 500.00"
+  },
+  {
+   "id": "PB-06a",
+   "category": "Price band / tick",
+   "title": "prev 500.10 ±7.50%: upper limit 537.60",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=104|49=TESTBRK|50=TRADER1|52=20261012-12:21:38.128|56=DSEME|1=BO1001|11=CF00102|38=100|40=2|44=537.60|54=1|55=T033M|59=0|60=20261012-12:21:38.128|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=007|",
+   "replies": [
+    "8=FIXT.1.1|9=207|35=8|34=104|49=DSEME|52=20261012-12:21:38.129|56=TESTBRK|6=0.00|11=CF00102|14=0|17=95|22=4|37=94|38=100|39=0|44=537.60|48=BD0001000033|54=1|55=T033M|60=20261012-12:21:38.129|150=0|151=100|207=XDHA|1300=MAIN|10=125|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-06b",
+   "category": "Price band / tick",
+   "title": "prev 500.10 ±7.50%: above upper 537.70",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=105|49=TESTBRK|50=TRADER1|52=20261012-12:21:38.250|56=DSEME|1=BO1001|11=CF00103|38=100|40=2|44=537.70|54=1|55=T033M|59=0|60=20261012-12:21:38.250|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=002|",
+   "replies": [
+    "8=FIXT.1.1|9=281|35=8|34=105|49=DSEME|52=20261012-12:21:38.250|56=TESTBRK|6=0.00|11=CF00103|14=0|17=96|22=4|37=95|38=100|39=8|44=537.70|48=BD0001000033|54=1|55=T033M|58=price band: 537.70 outside +/-7.50% limit [462.59-537.61] of prev 500.10|60=20261012-12:21:38.250|150=8|151=0|207=XDHA|1300=MAIN|10=163|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 537.70 outside +/-7.50% limit [462.59-537.61] of prev 500.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 537.70 outside +/-7.50% limit [462.59-537.61] of prev 500.10"
+  },
+  {
+   "id": "PB-06c",
+   "category": "Price band / tick",
+   "title": "prev 500.10 ±7.50%: lower limit 462.60",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=106|49=TESTBRK|50=TRADER1|52=20261012-12:21:38.371|56=DSEME|1=BO1001|11=CF00104|38=100|40=2|44=462.60|54=1|55=T033M|59=0|60=20261012-12:21:38.371|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=008|",
+   "replies": [
+    "8=FIXT.1.1|9=207|35=8|34=106|49=DSEME|52=20261012-12:21:38.371|56=TESTBRK|6=0.00|11=CF00104|14=0|17=97|22=4|37=96|38=100|39=0|44=462.60|48=BD0001000033|54=1|55=T033M|60=20261012-12:21:38.371|150=0|151=100|207=XDHA|1300=MAIN|10=128|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-06d",
+   "category": "Price band / tick",
+   "title": "prev 500.10 ±7.50%: below lower 462.50",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=107|49=TESTBRK|50=TRADER1|52=20261012-12:21:38.492|56=DSEME|1=BO1001|11=CF00105|38=100|40=2|44=462.50|54=1|55=T033M|59=0|60=20261012-12:21:38.492|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=017|",
+   "replies": [
+    "8=FIXT.1.1|9=281|35=8|34=107|49=DSEME|52=20261012-12:21:38.492|56=TESTBRK|6=0.00|11=CF00105|14=0|17=98|22=4|37=97|38=100|39=8|44=462.50|48=BD0001000033|54=1|55=T033M|58=price band: 462.50 outside +/-7.50% limit [462.59-537.61] of prev 500.10|60=20261012-12:21:38.492|150=8|151=0|207=XDHA|1300=MAIN|10=177|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 462.50 outside +/-7.50% limit [462.59-537.61] of prev 500.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 462.50 outside +/-7.50% limit [462.59-537.61] of prev 500.10"
+  },
+  {
+   "id": "PB-07a",
+   "category": "Price band / tick",
+   "title": "prev 800.00 ±7.50%: upper limit 860.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=108|49=TESTBRK|50=TRADER1|52=20261012-12:21:38.613|56=DSEME|1=BO1001|11=CF00106|38=100|40=2|44=860.00|54=1|55=T034M|59=0|60=20261012-12:21:38.613|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=007|",
+   "replies": [
+    "8=FIXT.1.1|9=207|35=8|34=108|49=DSEME|52=20261012-12:21:38.613|56=TESTBRK|6=0.00|11=CF00106|14=0|17=99|22=4|37=98|38=100|39=0|44=860.00|48=BD0001000034|54=1|55=T034M|60=20261012-12:21:38.613|150=0|151=100|207=XDHA|1300=MAIN|10=132|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-07b",
+   "category": "Price band / tick",
+   "title": "prev 800.00 ±7.50%: above upper 860.10",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=109|49=TESTBRK|50=TRADER1|52=20261012-12:21:38.734|56=DSEME|1=BO1001|11=CF00107|38=100|40=2|44=860.10|54=1|55=T034M|59=0|60=20261012-12:21:38.734|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=018|",
+   "replies": [
+    "8=FIXT.1.1|9=282|35=8|34=109|49=DSEME|52=20261012-12:21:38.734|56=TESTBRK|6=0.00|11=CF00107|14=0|17=100|22=4|37=99|38=100|39=8|44=860.10|48=BD0001000034|54=1|55=T034M|58=price band: 860.10 outside +/-7.50% limit [740.00-860.00] of prev 800.00|60=20261012-12:21:38.734|150=8|151=0|207=XDHA|1300=MAIN|10=191|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 860.10 outside +/-7.50% limit [740.00-860.00] of prev 800.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 860.10 outside +/-7.50% limit [740.00-860.00] of prev 800.00"
+  },
+  {
+   "id": "PB-07c",
+   "category": "Price band / tick",
+   "title": "prev 800.00 ±7.50%: lower limit 740.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=110|49=TESTBRK|50=TRADER1|52=20261012-12:21:38.855|56=DSEME|1=BO1001|11=CF00108|38=100|40=2|44=740.00|54=1|55=T034M|59=0|60=20261012-12:21:38.855|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=015|",
+   "replies": [
+    "8=FIXT.1.1|9=209|35=8|34=110|49=DSEME|52=20261012-12:21:38.855|56=TESTBRK|6=0.00|11=CF00108|14=0|17=101|22=4|37=100|38=100|39=0|44=740.00|48=BD0001000034|54=1|55=T034M|60=20261012-12:21:38.855|150=0|151=100|207=XDHA|1300=MAIN|10=206|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-07d",
+   "category": "Price band / tick",
+   "title": "prev 800.00 ±7.50%: below lower 739.90",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=111|49=TESTBRK|50=TRADER1|52=20261012-12:21:38.977|56=DSEME|1=BO1001|11=CF00109|38=100|40=2|44=739.90|54=1|55=T034M|59=0|60=20261012-12:21:38.977|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=044|",
+   "replies": [
+    "8=FIXT.1.1|9=283|35=8|34=111|49=DSEME|52=20261012-12:21:38.977|56=TESTBRK|6=0.00|11=CF00109|14=0|17=102|22=4|37=101|38=100|39=8|44=739.90|48=BD0001000034|54=1|55=T034M|58=price band: 739.90 outside +/-7.50% limit [740.00-860.00] of prev 800.00|60=20261012-12:21:38.977|150=8|151=0|207=XDHA|1300=MAIN|10=009|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 739.90 outside +/-7.50% limit [740.00-860.00] of prev 800.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 739.90 outside +/-7.50% limit [740.00-860.00] of prev 800.00"
+  },
+  {
+   "id": "PB-08a",
+   "category": "Price band / tick",
+   "title": "prev 1000.00 ±7.50%: upper limit 1075.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=112|49=TESTBRK|50=TRADER1|52=20261012-12:21:39.097|56=DSEME|1=BO1001|11=CF00110|38=100|40=2|44=1075.00|54=1|55=T035M|59=0|60=20261012-12:21:39.097|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=060|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=112|49=DSEME|52=20261012-12:21:39.097|56=TESTBRK|6=0.00|11=CF00110|14=0|17=103|22=4|37=102|38=100|39=0|44=1075.00|48=BD0001000035|54=1|55=T035M|60=20261012-12:21:39.097|150=0|151=100|207=XDHA|1300=MAIN|10=247|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-08b",
+   "category": "Price band / tick",
+   "title": "prev 1000.00 ±7.50%: above upper 1075.10",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=113|49=TESTBRK|50=TRADER1|52=20261012-12:21:39.217|56=DSEME|1=BO1001|11=CF00111|38=100|40=2|44=1075.10|54=1|55=T035M|59=0|60=20261012-12:21:39.217|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=051|",
+   "replies": [
+    "8=FIXT.1.1|9=287|35=8|34=113|49=DSEME|52=20261012-12:21:39.218|56=TESTBRK|6=0.00|11=CF00111|14=0|17=104|22=4|37=103|38=100|39=8|44=1075.10|48=BD0001000035|54=1|55=T035M|58=price band: 1075.10 outside +/-7.50% limit [925.00-1075.00] of prev 1000.00|60=20261012-12:21:39.218|150=8|151=0|207=XDHA|1300=MAIN|10=153|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 1075.10 outside +/-7.50% limit [925.00-1075.00] of prev 1000.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 1075.10 outside +/-7.50% limit [925.00-1075.00] of prev 1000.00"
+  },
+  {
+   "id": "PB-08c",
+   "category": "Price band / tick",
+   "title": "prev 1000.00 ±7.50%: lower limit 925.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=114|49=TESTBRK|50=TRADER1|52=20261012-12:21:39.338|56=DSEME|1=BO1001|11=CF00112|38=100|40=2|44=925.00|54=1|55=T035M|59=0|60=20261012-12:21:39.338|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=014|",
+   "replies": [
+    "8=FIXT.1.1|9=209|35=8|34=114|49=DSEME|52=20261012-12:21:39.339|56=TESTBRK|6=0.00|11=CF00112|14=0|17=105|22=4|37=104|38=100|39=0|44=925.00|48=BD0001000035|54=1|55=T035M|60=20261012-12:21:39.339|150=0|151=100|207=XDHA|1300=MAIN|10=216|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-08d",
+   "category": "Price band / tick",
+   "title": "prev 1000.00 ±7.50%: below lower 924.90",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=115|49=TESTBRK|50=TRADER1|52=20261012-12:21:39.459|56=DSEME|1=BO1001|11=CF00113|38=100|40=2|44=924.90|54=1|55=T035M|59=0|60=20261012-12:21:39.459|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=032|",
+   "replies": [
+    "8=FIXT.1.1|9=285|35=8|34=115|49=DSEME|52=20261012-12:21:39.459|56=TESTBRK|6=0.00|11=CF00113|14=0|17=106|22=4|37=105|38=100|39=8|44=924.90|48=BD0001000035|54=1|55=T035M|58=price band: 924.90 outside +/-7.50% limit [925.00-1075.00] of prev 1000.00|60=20261012-12:21:39.459|150=8|151=0|207=XDHA|1300=MAIN|10=097|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 924.90 outside +/-7.50% limit [925.00-1075.00] of prev 1000.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 924.90 outside +/-7.50% limit [925.00-1075.00] of prev 1000.00"
+  },
+  {
+   "id": "PB-09a",
+   "category": "Price band / tick",
+   "title": "prev 1000.10 ±6.25%: upper limit 1062.60",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=116|49=TESTBRK|50=TRADER1|52=20261012-12:21:39.580|56=DSEME|1=BO1001|11=CF00114|38=100|40=2|44=1062.60|54=1|55=T036M|59=0|60=20261012-12:21:39.580|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=065|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=116|49=DSEME|52=20261012-12:21:39.580|56=TESTBRK|6=0.00|11=CF00114|14=0|17=107|22=4|37=106|38=100|39=0|44=1062.60|48=BD0001000036|54=1|55=T036M|60=20261012-12:21:39.580|150=0|151=100|207=XDHA|1300=MAIN|10=005|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-09b",
+   "category": "Price band / tick",
+   "title": "prev 1000.10 ±6.25%: above upper 1062.70",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=117|49=TESTBRK|50=TRADER1|52=20261012-12:21:39.701|56=DSEME|1=BO1001|11=CF00115|38=100|40=2|44=1062.70|54=1|55=T036M|59=0|60=20261012-12:21:39.701|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=058|",
+   "replies": [
+    "8=FIXT.1.1|9=287|35=8|34=117|49=DSEME|52=20261012-12:21:39.702|56=TESTBRK|6=0.00|11=CF00115|14=0|17=108|22=4|37=107|38=100|39=8|44=1062.70|48=BD0001000036|54=1|55=T036M|58=price band: 1062.70 outside +/-6.25% limit [937.59-1062.61] of prev 1000.10|60=20261012-12:21:39.702|150=8|151=0|207=XDHA|1300=MAIN|10=193|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 1062.70 outside +/-6.25% limit [937.59-1062.61] of prev 1000.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 1062.70 outside +/-6.25% limit [937.59-1062.61] of prev 1000.10"
+  },
+  {
+   "id": "PB-09c",
+   "category": "Price band / tick",
+   "title": "prev 1000.10 ±6.25%: lower limit 937.60",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=118|49=TESTBRK|50=TRADER1|52=20261012-12:21:39.822|56=DSEME|1=BO1001|11=CF00116|38=100|40=2|44=937.60|54=1|55=T036M|59=0|60=20261012-12:21:39.822|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=028|",
+   "replies": [
+    "8=FIXT.1.1|9=209|35=8|34=118|49=DSEME|52=20261012-12:21:39.822|56=TESTBRK|6=0.00|11=CF00116|14=0|17=109|22=4|37=108|38=100|39=0|44=937.60|48=BD0001000036|54=1|55=T036M|60=20261012-12:21:39.822|150=0|151=100|207=XDHA|1300=MAIN|10=237|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-09d",
+   "category": "Price band / tick",
+   "title": "prev 1000.10 ±6.25%: below lower 937.50",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=119|49=TESTBRK|50=TRADER1|52=20261012-12:21:39.943|56=DSEME|1=BO1001|11=CF00117|38=100|40=2|44=937.50|54=1|55=T036M|59=0|60=20261012-12:21:39.943|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=037|",
+   "replies": [
+    "8=FIXT.1.1|9=285|35=8|34=119|49=DSEME|52=20261012-12:21:39.943|56=TESTBRK|6=0.00|11=CF00117|14=0|17=110|22=4|37=109|38=100|39=8|44=937.50|48=BD0001000036|54=1|55=T036M|58=price band: 937.50 outside +/-6.25% limit [937.59-1062.61] of prev 1000.10|60=20261012-12:21:39.943|150=8|151=0|207=XDHA|1300=MAIN|10=124|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 937.50 outside +/-6.25% limit [937.59-1062.61] of prev 1000.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 937.50 outside +/-6.25% limit [937.59-1062.61] of prev 1000.10"
+  },
+  {
+   "id": "PB-10a",
+   "category": "Price band / tick",
+   "title": "prev 1500.00 ±6.25%: upper limit 1593.70",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=120|49=TESTBRK|50=TRADER1|52=20261012-12:21:40.064|56=DSEME|1=BO1001|11=CF00118|38=100|40=2|44=1593.70|54=1|55=T037M|59=0|60=20261012-12:21:40.064|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=053|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=120|49=DSEME|52=20261012-12:21:40.064|56=TESTBRK|6=0.00|11=CF00118|14=0|17=111|22=4|37=110|38=100|39=0|44=1593.70|48=BD0001000037|54=1|55=T037M|60=20261012-12:21:40.064|150=0|151=100|207=XDHA|1300=MAIN|10=240|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-10b",
+   "category": "Price band / tick",
+   "title": "prev 1500.00 ±6.25%: above upper 1593.80",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=121|49=TESTBRK|50=TRADER1|52=20261012-12:21:40.184|56=DSEME|1=BO1001|11=CF00119|38=100|40=2|44=1593.80|54=1|55=T037M|59=0|60=20261012-12:21:40.184|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=062|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=121|49=DSEME|52=20261012-12:21:40.185|56=TESTBRK|6=0.00|11=CF00119|14=0|17=112|22=4|37=111|38=100|39=8|44=1593.80|48=BD0001000037|54=1|55=T037M|58=price band: 1593.80 outside +/-6.25% limit [1406.25-1593.75] of prev 1500.00|60=20261012-12:21:40.185|150=8|151=0|207=XDHA|1300=MAIN|10=250|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 1593.80 outside +/-6.25% limit [1406.25-1593.75] of prev 1500.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 1593.80 outside +/-6.25% limit [1406.25-1593.75] of prev 1500.00"
+  },
+  {
+   "id": "PB-10c",
+   "category": "Price band / tick",
+   "title": "prev 1500.00 ±6.25%: lower limit 1406.30",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=122|49=TESTBRK|50=TRADER1|52=20261012-12:21:40.306|56=DSEME|1=BO1001|11=CF00120|38=100|40=2|44=1406.30|54=1|55=T037M|59=0|60=20261012-12:21:40.306|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=035|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=122|49=DSEME|52=20261012-12:21:40.306|56=TESTBRK|6=0.00|11=CF00120|14=0|17=113|22=4|37=112|38=100|39=0|44=1406.30|48=BD0001000037|54=1|55=T037M|60=20261012-12:21:40.306|150=0|151=100|207=XDHA|1300=MAIN|10=226|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-10d",
+   "category": "Price band / tick",
+   "title": "prev 1500.00 ±6.25%: below lower 1406.20",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=123|49=TESTBRK|50=TRADER1|52=20261012-12:21:40.426|56=DSEME|1=BO1001|11=CF00121|38=100|40=2|44=1406.20|54=1|55=T037M|59=0|60=20261012-12:21:40.426|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=042|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=123|49=DSEME|52=20261012-12:21:40.426|56=TESTBRK|6=0.00|11=CF00121|14=0|17=114|22=4|37=113|38=100|39=8|44=1406.20|48=BD0001000037|54=1|55=T037M|58=price band: 1406.20 outside +/-6.25% limit [1406.25-1593.75] of prev 1500.00|60=20261012-12:21:40.426|150=8|151=0|207=XDHA|1300=MAIN|10=219|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 1406.20 outside +/-6.25% limit [1406.25-1593.75] of prev 1500.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 1406.20 outside +/-6.25% limit [1406.25-1593.75] of prev 1500.00"
+  },
+  {
+   "id": "PB-11a",
+   "category": "Price band / tick",
+   "title": "prev 2000.00 ±6.25%: upper limit 2125.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=124|49=TESTBRK|50=TRADER1|52=20261012-12:21:40.547|56=DSEME|1=BO1001|11=CF00122|38=100|40=2|44=2125.00|54=1|55=T038M|59=0|60=20261012-12:21:40.547|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=050|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=124|49=DSEME|52=20261012-12:21:40.547|56=TESTBRK|6=0.00|11=CF00122|14=0|17=115|22=4|37=114|38=100|39=0|44=2125.00|48=BD0001000038|54=1|55=T038M|60=20261012-12:21:40.547|150=0|151=100|207=XDHA|1300=MAIN|10=246|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-11b",
+   "category": "Price band / tick",
+   "title": "prev 2000.00 ±6.25%: above upper 2125.10",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=125|49=TESTBRK|50=TRADER1|52=20261012-12:21:40.667|56=DSEME|1=BO1001|11=CF00123|38=100|40=2|44=2125.10|54=1|55=T038M|59=0|60=20261012-12:21:40.667|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=059|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=125|49=DSEME|52=20261012-12:21:40.668|56=TESTBRK|6=0.00|11=CF00123|14=0|17=116|22=4|37=115|38=100|39=8|44=2125.10|48=BD0001000038|54=1|55=T038M|58=price band: 2125.10 outside +/-6.25% limit [1875.00-2125.00] of prev 2000.00|60=20261012-12:21:40.668|150=8|151=0|207=XDHA|1300=MAIN|10=220|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 2125.10 outside +/-6.25% limit [1875.00-2125.00] of prev 2000.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 2125.10 outside +/-6.25% limit [1875.00-2125.00] of prev 2000.00"
+  },
+  {
+   "id": "PB-11c",
+   "category": "Price band / tick",
+   "title": "prev 2000.00 ±6.25%: lower limit 1875.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=126|49=TESTBRK|50=TRADER1|52=20261012-12:21:40.788|56=DSEME|1=BO1001|11=CF00124|38=100|40=2|44=1875.00|54=1|55=T038M|59=0|60=20261012-12:21:40.788|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=079|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=126|49=DSEME|52=20261012-12:21:40.788|56=TESTBRK|6=0.00|11=CF00124|14=0|17=117|22=4|37=116|38=100|39=0|44=1875.00|48=BD0001000038|54=1|55=T038M|60=20261012-12:21:40.788|150=0|151=100|207=XDHA|1300=MAIN|10=023|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-11d",
+   "category": "Price band / tick",
+   "title": "prev 2000.00 ±6.25%: below lower 1874.90",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=127|49=TESTBRK|50=TRADER1|52=20261012-12:21:40.909|56=DSEME|1=BO1001|11=CF00125|38=100|40=2|44=1874.90|54=1|55=T038M|59=0|60=20261012-12:21:40.909|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=079|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=127|49=DSEME|52=20261012-12:21:40.909|56=TESTBRK|6=0.00|11=CF00125|14=0|17=118|22=4|37=117|38=100|39=8|44=1874.90|48=BD0001000038|54=1|55=T038M|58=price band: 1874.90 outside +/-6.25% limit [1875.00-2125.00] of prev 2000.00|60=20261012-12:21:40.909|150=8|151=0|207=XDHA|1300=MAIN|10=004|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 1874.90 outside +/-6.25% limit [1875.00-2125.00] of prev 2000.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 1874.90 outside +/-6.25% limit [1875.00-2125.00] of prev 2000.00"
+  },
+  {
+   "id": "PB-12a",
+   "category": "Price band / tick",
+   "title": "prev 2000.10 ±5.00%: upper limit 2100.10",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=128|49=TESTBRK|50=TRADER1|52=20261012-12:21:41.029|56=DSEME|1=BO1001|11=CF00126|38=100|40=2|44=2100.10|54=1|55=T039M|59=0|60=20261012-12:21:41.029|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=045|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=128|49=DSEME|52=20261012-12:21:41.029|56=TESTBRK|6=0.00|11=CF00126|14=0|17=119|22=4|37=118|38=100|39=0|44=2100.10|48=BD0001000039|54=1|55=T039M|60=20261012-12:21:41.029|150=0|151=100|207=XDHA|1300=MAIN|10=250|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-12b",
+   "category": "Price band / tick",
+   "title": "prev 2000.10 ±5.00%: above upper 2100.20",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=129|49=TESTBRK|50=TRADER1|52=20261012-12:21:41.150|56=DSEME|1=BO1001|11=CF00127|38=100|40=2|44=2100.20|54=1|55=T039M|59=0|60=20261012-12:21:41.150|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=038|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=129|49=DSEME|52=20261012-12:21:41.151|56=TESTBRK|6=0.00|11=CF00127|14=0|17=120|22=4|37=119|38=100|39=8|44=2100.20|48=BD0001000039|54=1|55=T039M|58=price band: 2100.20 outside +/-5.00% limit [1900.09-2100.11] of prev 2000.10|60=20261012-12:21:41.151|150=8|151=0|207=XDHA|1300=MAIN|10=179|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 2100.20 outside +/-5.00% limit [1900.09-2100.11] of prev 2000.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 2100.20 outside +/-5.00% limit [1900.09-2100.11] of prev 2000.10"
+  },
+  {
+   "id": "PB-12c",
+   "category": "Price band / tick",
+   "title": "prev 2000.10 ±5.00%: lower limit 1900.10",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=130|49=TESTBRK|50=TRADER1|52=20261012-12:21:41.271|56=DSEME|1=BO1001|11=CF00128|38=100|40=2|44=1900.10|54=1|55=T039M|59=0|60=20261012-12:21:41.271|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=045|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=130|49=DSEME|52=20261012-12:21:41.271|56=TESTBRK|6=0.00|11=CF00128|14=0|17=121|22=4|37=120|38=100|39=0|44=1900.10|48=BD0001000039|54=1|55=T039M|60=20261012-12:21:41.271|150=0|151=100|207=XDHA|1300=MAIN|10=236|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-12d",
+   "category": "Price band / tick",
+   "title": "prev 2000.10 ±5.00%: below lower 1900.00",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=131|49=TESTBRK|50=TRADER1|52=20261012-12:21:41.391|56=DSEME|1=BO1001|11=CF00129|38=100|40=2|44=1900.00|54=1|55=T039M|59=0|60=20261012-12:21:41.391|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=052|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=131|49=DSEME|52=20261012-12:21:41.391|56=TESTBRK|6=0.00|11=CF00129|14=0|17=122|22=4|37=121|38=100|39=8|44=1900.00|48=BD0001000039|54=1|55=T039M|58=price band: 1900.00 outside +/-5.00% limit [1900.09-2100.11] of prev 2000.10|60=20261012-12:21:41.391|150=8|151=0|207=XDHA|1300=MAIN|10=191|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 1900.00 outside +/-5.00% limit [1900.09-2100.11] of prev 2000.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 1900.00 outside +/-5.00% limit [1900.09-2100.11] of prev 2000.10"
+  },
+  {
+   "id": "PB-13a",
+   "category": "Price band / tick",
+   "title": "prev 3000.00 ±5.00%: upper limit 3150.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=132|49=TESTBRK|50=TRADER1|52=20261012-12:21:41.512|56=DSEME|1=BO1001|11=CF00130|38=100|40=2|44=3150.00|54=1|55=T040M|59=0|60=20261012-12:21:41.512|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=026|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=132|49=DSEME|52=20261012-12:21:41.513|56=TESTBRK|6=0.00|11=CF00130|14=0|17=123|22=4|37=122|38=100|39=0|44=3150.00|48=BD0001000040|54=1|55=T040M|60=20261012-12:21:41.512|150=0|151=100|207=XDHA|1300=MAIN|10=214|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-13b",
+   "category": "Price band / tick",
+   "title": "prev 3000.00 ±5.00%: above upper 3150.10",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=133|49=TESTBRK|50=TRADER1|52=20261012-12:21:41.633|56=DSEME|1=BO1001|11=CF00131|38=100|40=2|44=3150.10|54=1|55=T040M|59=0|60=20261012-12:21:41.633|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=037|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=133|49=DSEME|52=20261012-12:21:41.634|56=TESTBRK|6=0.00|11=CF00131|14=0|17=124|22=4|37=123|38=100|39=8|44=3150.10|48=BD0001000040|54=1|55=T040M|58=price band: 3150.10 outside +/-5.00% limit [2850.00-3150.00] of prev 3000.00|60=20261012-12:21:41.634|150=8|151=0|207=XDHA|1300=MAIN|10=174|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 3150.10 outside +/-5.00% limit [2850.00-3150.00] of prev 3000.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 3150.10 outside +/-5.00% limit [2850.00-3150.00] of prev 3000.00"
+  },
+  {
+   "id": "PB-13c",
+   "category": "Price band / tick",
+   "title": "prev 3000.00 ±5.00%: lower limit 2850.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=134|49=TESTBRK|50=TRADER1|52=20261012-12:21:41.754|56=DSEME|1=BO1001|11=CF00132|38=100|40=2|44=2850.00|54=1|55=T040M|59=0|60=20261012-12:21:41.754|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=052|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=134|49=DSEME|52=20261012-12:21:41.755|56=TESTBRK|6=0.00|11=CF00132|14=0|17=125|22=4|37=124|38=100|39=0|44=2850.00|48=BD0001000040|54=1|55=T040M|60=20261012-12:21:41.755|150=0|151=100|207=XDHA|1300=MAIN|10=245|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-13d",
+   "category": "Price band / tick",
+   "title": "prev 3000.00 ±5.00%: below lower 2849.90",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=135|49=TESTBRK|50=TRADER1|52=20261012-12:21:41.876|56=DSEME|1=BO1001|11=CF00133|38=100|40=2|44=2849.90|54=1|55=T040M|59=0|60=20261012-12:21:41.876|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=081|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=135|49=DSEME|52=20261012-12:21:41.876|56=TESTBRK|6=0.00|11=CF00133|14=0|17=126|22=4|37=125|38=100|39=8|44=2849.90|48=BD0001000040|54=1|55=T040M|58=price band: 2849.90 outside +/-5.00% limit [2850.00-3150.00] of prev 3000.00|60=20261012-12:21:41.876|150=8|151=0|207=XDHA|1300=MAIN|10=242|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 2849.90 outside +/-5.00% limit [2850.00-3150.00] of prev 3000.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 2849.90 outside +/-5.00% limit [2850.00-3150.00] of prev 3000.00"
+  },
+  {
+   "id": "PB-14a",
+   "category": "Price band / tick",
+   "title": "prev 5000.00 ±5.00%: upper limit 5250.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=136|49=TESTBRK|50=TRADER1|52=20261012-12:21:41.996|56=DSEME|1=BO1001|11=CF00134|38=100|40=2|44=5250.00|54=1|55=T041M|59=0|60=20261012-12:21:41.996|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=070|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=136|49=DSEME|52=20261012-12:21:41.997|56=TESTBRK|6=0.00|11=CF00134|14=0|17=127|22=4|37=126|38=100|39=0|44=5250.00|48=BD0001000041|54=1|55=T041M|60=20261012-12:21:41.997|150=0|151=100|207=XDHA|1300=MAIN|10=012|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-14b",
+   "category": "Price band / tick",
+   "title": "prev 5000.00 ±5.00%: above upper 5250.10",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=137|49=TESTBRK|50=TRADER1|52=20261012-12:21:42.117|56=DSEME|1=BO1001|11=CF00135|38=100|40=2|44=5250.10|54=1|55=T041M|59=0|60=20261012-12:21:42.117|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=045|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=137|49=DSEME|52=20261012-12:21:42.117|56=TESTBRK|6=0.00|11=CF00135|14=0|17=128|22=4|37=127|38=100|39=8|44=5250.10|48=BD0001000041|54=1|55=T041M|58=price band: 5250.10 outside +/-5.00% limit [4750.00-5250.00] of prev 5000.00|60=20261012-12:21:42.117|150=8|151=0|207=XDHA|1300=MAIN|10=198|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 5250.10 outside +/-5.00% limit [4750.00-5250.00] of prev 5000.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 5250.10 outside +/-5.00% limit [4750.00-5250.00] of prev 5000.00"
+  },
+  {
+   "id": "PB-14c",
+   "category": "Price band / tick",
+   "title": "prev 5000.00 ±5.00%: lower limit 4750.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=138|49=TESTBRK|50=TRADER1|52=20261012-12:21:42.238|56=DSEME|1=BO1001|11=CF00136|38=100|40=2|44=4750.00|54=1|55=T041M|59=0|60=20261012-12:21:42.238|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=058|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=138|49=DSEME|52=20261012-12:21:42.238|56=TESTBRK|6=0.00|11=CF00136|14=0|17=129|22=4|37=128|38=100|39=0|44=4750.00|48=BD0001000041|54=1|55=T041M|60=20261012-12:21:42.238|150=0|151=100|207=XDHA|1300=MAIN|10=002|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-14d",
+   "category": "Price band / tick",
+   "title": "prev 5000.00 ±5.00%: below lower 4749.90",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=139|49=TESTBRK|50=TRADER1|52=20261012-12:21:42.359|56=DSEME|1=BO1001|11=CF00137|38=100|40=2|44=4749.90|54=1|55=T041M|59=0|60=20261012-12:21:42.359|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=085|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=139|49=DSEME|52=20261012-12:21:42.360|56=TESTBRK|6=0.00|11=CF00137|14=0|17=130|22=4|37=129|38=100|39=8|44=4749.90|48=BD0001000041|54=1|55=T041M|58=price band: 4749.90 outside +/-5.00% limit [4750.00-5250.00] of prev 5000.00|60=20261012-12:21:42.360|150=8|151=0|207=XDHA|1300=MAIN|10=237|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 4749.90 outside +/-5.00% limit [4750.00-5250.00] of prev 5000.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 4749.90 outside +/-5.00% limit [4750.00-5250.00] of prev 5000.00"
+  },
+  {
+   "id": "PB-15a",
+   "category": "Price band / tick",
+   "title": "prev 5000.10 ±3.75%: upper limit 5187.60",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=140|49=TESTBRK|50=TRADER1|52=20261012-12:21:42.481|56=DSEME|1=BO1001|11=CF00138|38=100|40=2|44=5187.60|54=1|55=T042M|59=0|60=20261012-12:21:42.481|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=065|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=140|49=DSEME|52=20261012-12:21:42.481|56=TESTBRK|6=0.00|11=CF00138|14=0|17=131|22=4|37=130|38=100|39=0|44=5187.60|48=BD0001000042|54=1|55=T042M|60=20261012-12:21:42.481|150=0|151=100|207=XDHA|1300=MAIN|10=252|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-15b",
+   "category": "Price band / tick",
+   "title": "prev 5000.10 ±3.75%: above upper 5187.70",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=141|49=TESTBRK|50=TRADER1|52=20261012-12:21:42.601|56=DSEME|1=BO1001|11=CF00139|38=100|40=2|44=5187.70|54=1|55=T042M|59=0|60=20261012-12:21:42.601|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=056|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=141|49=DSEME|52=20261012-12:21:42.601|56=TESTBRK|6=0.00|11=CF00139|14=0|17=132|22=4|37=131|38=100|39=8|44=5187.70|48=BD0001000042|54=1|55=T042M|58=price band: 5187.70 outside +/-3.75% limit [4812.60-5187.60] of prev 5000.10|60=20261012-12:21:42.601|150=8|151=0|207=XDHA|1300=MAIN|10=246|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 5187.70 outside +/-3.75% limit [4812.60-5187.60] of prev 5000.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 5187.70 outside +/-3.75% limit [4812.60-5187.60] of prev 5000.10"
+  },
+  {
+   "id": "PB-15c",
+   "category": "Price band / tick",
+   "title": "prev 5000.10 ±3.75%: lower limit 4812.60",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=142|49=TESTBRK|50=TRADER1|52=20261012-12:21:42.722|56=DSEME|1=BO1001|11=CF00140|38=100|40=2|44=4812.60|54=1|55=T042M|59=0|60=20261012-12:21:42.722|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=050|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=142|49=DSEME|52=20261012-12:21:42.722|56=TESTBRK|6=0.00|11=CF00140|14=0|17=133|22=4|37=132|38=100|39=0|44=4812.60|48=BD0001000042|54=1|55=T042M|60=20261012-12:21:42.722|150=0|151=100|207=XDHA|1300=MAIN|10=241|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-15d",
+   "category": "Price band / tick",
+   "title": "prev 5000.10 ±3.75%: below lower 4812.50",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=143|49=TESTBRK|50=TRADER1|52=20261012-12:21:42.843|56=DSEME|1=BO1001|11=CF00141|38=100|40=2|44=4812.50|54=1|55=T042M|59=0|60=20261012-12:21:42.843|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=059|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=143|49=DSEME|52=20261012-12:21:42.843|56=TESTBRK|6=0.00|11=CF00141|14=0|17=134|22=4|37=133|38=100|39=8|44=4812.50|48=BD0001000042|54=1|55=T042M|58=price band: 4812.50 outside +/-3.75% limit [4812.60-5187.60] of prev 5000.10|60=20261012-12:21:42.843|150=8|151=0|207=XDHA|1300=MAIN|10=245|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 4812.50 outside +/-3.75% limit [4812.60-5187.60] of prev 5000.10",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 4812.50 outside +/-3.75% limit [4812.60-5187.60] of prev 5000.10"
+  },
+  {
+   "id": "PB-16a",
+   "category": "Price band / tick",
+   "title": "prev 8000.00 ±3.75%: upper limit 8300.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=144|49=TESTBRK|50=TRADER1|52=20261012-12:21:42.964|56=DSEME|1=BO1001|11=CF00142|38=100|40=2|44=8300.00|54=1|55=T043M|59=0|60=20261012-12:21:42.964|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=061|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=144|49=DSEME|52=20261012-12:21:42.964|56=TESTBRK|6=0.00|11=CF00142|14=0|17=135|22=4|37=134|38=100|39=0|44=8300.00|48=BD0001000043|54=1|55=T043M|60=20261012-12:21:42.964|150=0|151=100|207=XDHA|1300=MAIN|10=001|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-16b",
+   "category": "Price band / tick",
+   "title": "prev 8000.00 ±3.75%: above upper 8300.10",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=145|49=TESTBRK|50=TRADER1|52=20261012-12:21:43.085|56=DSEME|1=BO1001|11=CF00143|38=100|40=2|44=8300.10|54=1|55=T043M|59=0|60=20261012-12:21:43.085|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=054|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=145|49=DSEME|52=20261012-12:21:43.085|56=TESTBRK|6=0.00|11=CF00143|14=0|17=136|22=4|37=135|38=100|39=8|44=8300.10|48=BD0001000043|54=1|55=T043M|58=price band: 8300.10 outside +/-3.75% limit [7700.00-8300.00] of prev 8000.00|60=20261012-12:21:43.085|150=8|151=0|207=XDHA|1300=MAIN|10=216|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 8300.10 outside +/-3.75% limit [7700.00-8300.00] of prev 8000.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 8300.10 outside +/-3.75% limit [7700.00-8300.00] of prev 8000.00"
+  },
+  {
+   "id": "PB-16c",
+   "category": "Price band / tick",
+   "title": "prev 8000.00 ±3.75%: lower limit 7700.00",
+   "dse_expected": "Accepted at the limit",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=146|49=TESTBRK|50=TRADER1|52=20261012-12:21:43.206|56=DSEME|1=BO1001|11=CF00144|38=100|40=2|44=7700.00|54=1|55=T043M|59=0|60=20261012-12:21:43.206|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=048|",
+   "replies": [
+    "8=FIXT.1.1|9=210|35=8|34=146|49=DSEME|52=20261012-12:21:43.206|56=TESTBRK|6=0.00|11=CF00144|14=0|17=137|22=4|37=136|38=100|39=0|44=7700.00|48=BD0001000043|54=1|55=T043M|60=20261012-12:21:43.206|150=0|151=100|207=XDHA|1300=MAIN|10=248|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "PB-16d",
+   "category": "Price band / tick",
+   "title": "prev 8000.00 ±3.75%: below lower 7699.90",
+   "dse_expected": "Rejected: price outside the band",
+   "sent": "8=FIXT.1.1|9=203|35=D|34=147|49=TESTBRK|50=TRADER1|52=20261012-12:21:43.326|56=DSEME|1=BO1001|11=CF00145|38=100|40=2|44=7699.90|54=1|55=T043M|59=0|60=20261012-12:21:43.326|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=082|",
+   "replies": [
+    "8=FIXT.1.1|9=288|35=8|34=147|49=DSEME|52=20261012-12:21:43.326|56=TESTBRK|6=0.00|11=CF00145|14=0|17=138|22=4|37=137|38=100|39=8|44=7699.90|48=BD0001000043|54=1|55=T043M|58=price band: 7699.90 outside +/-3.75% limit [7700.00-8300.00] of prev 8000.00|60=20261012-12:21:43.326|150=8|151=0|207=XDHA|1300=MAIN|10=020|"
+   ],
+   "actual": "35=8 150=8 39=8 58=price band: 7699.90 outside +/-3.75% limit [7700.00-8300.00] of prev 8000.00",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=price band: 7699.90 outside +/-3.75% limit [7700.00-8300.00] of prev 8000.00"
+  },
+  {
+   "id": "PT-4",
+   "category": "Price band / tick",
+   "title": "Market order ignores the price band",
+   "dse_expected": "DSE applies circuit limits to execution prices",
+   "sent": "8=FIXT.1.1|9=192|35=D|34=148|49=TESTBRK|50=TRADER1|52=20261012-12:21:43.447|56=DSEME|1=BO1001|11=CF00146|38=100|40=1|54=1|55=T044M|59=0|60=20261012-12:21:43.447|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=071|",
+   "replies": [
+    "8=FIXT.1.1|9=222|35=8|34=148|49=DSEME|52=20261012-12:21:43.447|56=TESTBRK|6=109.00|11=CF00146|14=100|17=139|22=4|31=109.00|32=100|37=139|38=100|39=2|48=BD0001000044|54=1|55=T044M|60=20261012-12:21:43.447|150=TRADE|151=0|207=XDHA|1300=MAIN|10=188|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "INFO",
+   "note": "market orders skip band/tick checks (engine.go:297 applies them to limits only): 35=8 150=TRADE 39=2 14=100"
+  },
+  {
+   "id": "PT-5",
+   "category": "Price band / tick",
+   "title": "Order on a halted instrument",
+   "dse_expected": "Rejected",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=149|49=TESTBRK|50=TRADER1|52=20261012-12:21:43.568|56=DSEME|1=BO1001|11=CF00147|38=100|40=2|44=95.00|54=1|55=T045M|59=0|60=20261012-12:21:43.568|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=236|",
+   "replies": [
+    "8=FIXT.1.1|9=231|35=8|34=149|49=DSEME|52=20261012-12:21:43.568|56=TESTBRK|6=0.00|11=CF00147|14=0|17=140|22=4|37=0|38=100|39=8|44=95.00|48=BD0001000045|54=1|55=T045M|58=trading halted in T045M|60=20261012-12:21:43.568|150=8|151=0|207=XDHA|1300=MAIN|10=113|"
+   ],
+   "actual": "35=8 150=8 39=8 58=trading halted in T045M",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=trading halted in T045M"
+  },
+  {
+   "id": "PT-6",
+   "category": "Price band / tick",
+   "title": "Order after the halt is lifted",
+   "dse_expected": "Accepted",
+   "sent": "8=FIXT.1.1|9=201|35=D|34=150|49=TESTBRK|50=TRADER1|52=20261012-12:21:43.689|56=DSEME|1=BO1001|11=CF00148|38=100|40=2|44=95.00|54=1|55=T045M|59=0|60=20261012-12:21:43.689|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=237|",
+   "replies": [
+    "8=FIXT.1.1|9=208|35=8|34=150|49=DSEME|52=20261012-12:21:43.689|56=TESTBRK|6=0.00|11=CF00148|14=0|17=141|22=4|37=140|38=100|39=0|44=95.00|48=BD0001000045|54=1|55=T045M|60=20261012-12:21:43.689|150=0|151=100|207=XDHA|1300=MAIN|10=182|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted"
+  },
+  {
+   "id": "CM-1",
+   "category": "Cancel / modify / status",
+   "title": "Cancel a resting order (35=F)",
+   "dse_expected": "Execution Report 150=4 Cancelled",
+   "sent": "8=FIXT.1.1|9=145|35=F|34=152|49=TESTBRK|50=TRADER1|52=20261012-12:21:43.931|56=DSEME|1=BO1001|11=CF00150|38=100|41=CF00149|54=1|55=T046M|60=20261012-12:21:43.931|10=183|",
+   "replies": [
+    "8=FIXT.1.1|9=164|35=8|34=152|49=DSEME|52=20261012-12:21:43.931|56=TESTBRK|6=0.00|11=CF00150|14=0|17=143|37=141|38=0|39=4|54=1|55=T046M|60=20261012-12:21:43.931|150=4|151=0|207=XDHA|10=047|"
+   ],
+   "actual": "35=8 150=4 39=4",
+   "verdict": "PASS",
+   "note": "cancelled"
+  },
+  {
+   "id": "CM-2",
+   "category": "Cancel / modify / status",
+   "title": "Cancel an unknown order",
+   "dse_expected": "Order Cancel Reject (35=9)",
+   "sent": "8=FIXT.1.1|9=144|35=F|34=153|49=TESTBRK|50=TRADER1|52=20261012-12:21:44.051|56=DSEME|1=BO1001|11=CF00151|38=100|41=NOSUCH|54=1|55=T046M|60=20261012-12:21:44.051|10=245|",
+   "replies": [
+    "8=FIXT.1.1|9=128|35=9|34=153|49=DSEME|52=20261012-12:21:44.051|56=TESTBRK|11=CF00151|39=8|41=NOSUCH|58=unknown or already-done order|102=1|434=1|10=147|"
+   ],
+   "actual": "35=9 58=unknown or already-done order 102=1",
+   "verdict": "PASS",
+   "note": "35=9"
+  },
+  {
+   "id": "CM-3",
+   "category": "Cancel / modify / status",
+   "title": "35=9 carries OrderID (37) — required by FIX",
+   "dse_expected": "37 present on the reject",
+   "sent": "8=FIXT.1.1|9=145|35=F|34=154|49=TESTBRK|50=TRADER1|52=20261012-12:21:44.172|56=DSEME|1=BO1001|11=CF00152|38=100|41=NOSUCH2|54=1|55=T046M|60=20261012-12:21:44.172|10=050|",
+   "replies": [
+    "8=FIXT.1.1|9=129|35=9|34=154|49=DSEME|52=20261012-12:21:44.172|56=TESTBRK|11=CF00152|39=8|41=NOSUCH2|58=unknown or already-done order|102=1|434=1|10=204|"
+   ],
+   "actual": "35=9 58=unknown or already-done order 102=1",
+   "verdict": "FAIL",
+   "note": "35=9 has no OrderID (37) — fixacceptor.go:531-543"
+  },
+  {
+   "id": "CM-4",
+   "category": "Cancel / modify / status",
+   "title": "Modify price WITHOUT Symbol/762 (as the OMS sends 35=G)",
+   "dse_expected": "Execution Report 150=5 Replaced",
+   "sent": "8=FIXT.1.1|9=192|35=G|34=156|49=TESTBRK|50=TRADER1|52=20261012-12:21:44.414|56=DSEME|1=BO1001|11=CF00154|38=100|40=2|41=CF00153|44=96.00|54=1|59=0|60=20261012-12:21:44.414|453=1|448=CLIENT01|447=C|452=5|529=N|10=138|",
+   "replies": [
+    "8=FIXT.1.1|9=168|35=8|34=156|49=DSEME|52=20261012-12:21:44.414|56=TESTBRK|6=0.00|11=CF00154|14=0|17=145|37=142|38=100|39=0|54=1|55=T046M|60=20261012-12:21:44.414|150=5|151=100|207=XDHA|10=247|"
+   ],
+   "actual": "35=8 150=5 39=0",
+   "verdict": "PASS",
+   "note": "replaced"
+  },
+  {
+   "id": "CM-5",
+   "category": "Cancel / modify / status",
+   "title": "Modify quantity 100 -\u003e 60",
+   "dse_expected": "150=5 Replaced with the new quantity",
+   "sent": "8=FIXT.1.1|9=191|35=G|34=158|49=TESTBRK|50=TRADER1|52=20261012-12:21:44.655|56=DSEME|1=BO1001|11=CF00156|38=60|40=2|41=CF00155|44=95.00|54=1|59=0|60=20261012-12:21:44.655|453=1|448=CLIENT01|447=C|452=5|529=N|10=113|",
+   "replies": [
+    "8=FIXT.1.1|9=166|35=8|34=158|49=DSEME|52=20261012-12:21:44.655|56=TESTBRK|6=0.00|11=CF00156|14=0|17=147|37=143|38=60|39=0|54=1|55=T046M|60=20261012-12:21:44.655|150=5|151=60|207=XDHA|10=180|"
+   ],
+   "actual": "35=8 150=5 39=0",
+   "verdict": "PASS",
+   "note": "replaced"
+  },
+  {
+   "id": "CM-6",
+   "category": "Cancel / modify / status",
+   "title": "Modify an unknown order",
+   "dse_expected": "35=9",
+   "sent": "8=FIXT.1.1|9=193|35=G|34=159|49=TESTBRK|50=TRADER1|52=20261012-12:21:44.776|56=DSEME|1=BO1001|11=CF00157|38=100|40=2|41=NOSUCH3|44=100.00|54=1|59=0|60=20261012-12:21:44.776|453=1|448=CLIENT01|447=C|452=5|529=N|10=074|",
+   "replies": [
+    "8=FIXT.1.1|9=129|35=9|34=159|49=DSEME|52=20261012-12:21:44.776|56=TESTBRK|11=CF00157|39=8|41=NOSUCH3|58=unknown or already-done order|102=1|434=2|10=226|"
+   ],
+   "actual": "35=9 58=unknown or already-done order 102=1",
+   "verdict": "PASS",
+   "note": "35=9"
+  },
+  {
+   "id": "CM-7",
+   "category": "Cancel / modify / status",
+   "title": "Modify to a price off tick (96.05)",
+   "dse_expected": "Rejected: off-tick",
+   "sent": "8=FIXT.1.1|9=192|35=G|34=161|49=TESTBRK|50=TRADER1|52=20261012-12:21:45.017|56=DSEME|1=BO1001|11=CF00159|38=100|40=2|41=CF00158|44=96.05|54=1|59=0|60=20261012-12:21:45.017|453=1|448=CLIENT01|447=C|452=5|529=N|10=149|",
+   "replies": [
+    "8=FIXT.1.1|9=168|35=8|34=161|49=DSEME|52=20261012-12:21:45.018|56=TESTBRK|6=0.00|11=CF00159|14=0|17=149|37=144|38=100|39=0|54=1|55=T046M|60=20261012-12:21:45.018|150=5|151=100|207=XDHA|10=000|"
+   ],
+   "actual": "35=8 150=5 39=0",
+   "verdict": "GAP",
+   "note": "accepted — replace does not re-run the tick check"
+  },
+  {
+   "id": "CM-8",
+   "category": "Cancel / modify / status",
+   "title": "Modify to a price outside the band (150.00)",
+   "dse_expected": "Rejected: outside price band",
+   "sent": "8=FIXT.1.1|9=193|35=G|34=163|49=TESTBRK|50=TRADER1|52=20261012-12:21:45.260|56=DSEME|1=BO1001|11=CF00161|38=100|40=2|41=CF00160|44=150.00|54=1|59=0|60=20261012-12:21:45.260|453=1|448=CLIENT01|447=C|452=5|529=N|10=172|",
+   "replies": [
+    "8=FIXT.1.1|9=168|35=8|34=163|49=DSEME|52=20261012-12:21:45.260|56=TESTBRK|6=0.00|11=CF00161|14=0|17=151|37=145|38=100|39=0|54=1|55=T046M|60=20261012-12:21:45.260|150=5|151=100|207=XDHA|10=243|"
+   ],
+   "actual": "35=8 150=5 39=0",
+   "verdict": "GAP",
+   "note": "accepted — replace does not re-run the price-band check, so an order can be amended to any price"
+  },
+  {
+   "id": "CM-9",
+   "category": "Cancel / modify / status",
+   "title": "Modify using the latest ClOrdID chain (replace a replaced order)",
+   "dse_expected": "Accepted",
+   "sent": "8=FIXT.1.1|9=192|35=G|34=166|49=TESTBRK|50=TRADER1|52=20261012-12:21:45.622|56=DSEME|1=BO1001|11=CF00164|38=100|40=2|41=CF00163|44=96.00|54=1|59=0|60=20261012-12:21:45.622|453=1|448=CLIENT01|447=C|452=5|529=N|10=145|",
+   "replies": [
+    "8=FIXT.1.1|9=168|35=8|34=166|49=DSEME|52=20261012-12:21:45.622|56=TESTBRK|6=0.00|11=CF00164|14=0|17=154|37=146|38=100|39=0|54=1|55=T046M|60=20261012-12:21:45.622|150=5|151=100|207=XDHA|10=001|"
+   ],
+   "actual": "35=8 150=5 39=0",
+   "verdict": "PASS",
+   "note": "replaced"
+  },
+  {
+   "id": "CM-10",
+   "category": "Cancel / modify / status",
+   "title": "Replace ER echoes OrigClOrdID (41)",
+   "dse_expected": "41 echoed on the replace/cancel ER",
+   "sent": "8=FIXT.1.1|9=192|35=G|34=168|49=TESTBRK|50=TRADER1|52=20261012-12:21:45.864|56=DSEME|1=BO1001|11=CF00166|38=100|40=2|41=CF00165|44=95.50|54=1|59=0|60=20261012-12:21:45.864|453=1|448=CLIENT01|447=C|452=5|529=N|10=171|",
+   "replies": [
+    "8=FIXT.1.1|9=168|35=8|34=168|49=DSEME|52=20261012-12:21:45.864|56=TESTBRK|6=0.00|11=CF00166|14=0|17=156|37=147|38=100|39=0|54=1|55=T046M|60=20261012-12:21:45.864|150=5|151=100|207=XDHA|10=024|"
+   ],
+   "actual": "35=8 150=5 39=0",
+   "verdict": "GAP",
+   "note": "OrigClOrdID (41) not echoed on the execution report"
+  },
+  {
+   "id": "CM-11",
+   "category": "Cancel / modify / status",
+   "title": "Order Status Request (35=H) on a live order",
+   "dse_expected": "Execution Report with the current status (150=I)",
+   "sent": "8=FIXT.1.1|9=101|35=H|34=170|49=TESTBRK|50=TRADER1|52=20261012-12:21:46.106|56=DSEME|11=CF00167|54=1|55=T046M|790=ST1|10=123|",
+   "replies": null,
+   "actual": "no response",
+   "verdict": "GAP",
+   "note": "no reply — 35=H is not handled (fixacceptor.go:403-410); the OMS cannot reconcile order state"
+  },
+  {
+   "id": "CM-12",
+   "category": "Cancel / modify / status",
+   "title": "Order Status Request (35=H) on an unknown order",
+   "dse_expected": "Reject (35=8 150=8 or 35=j)",
+   "sent": "8=FIXT.1.1|9=101|35=H|34=171|49=TESTBRK|50=TRADER1|52=20261012-12:21:46.806|56=DSEME|11=NOSUCH4|54=1|55=T046M|790=ST2|10=001|",
+   "replies": null,
+   "actual": "no response",
+   "verdict": "GAP",
+   "note": "no reply — 35=H is not handled"
+  },
+  {
+   "id": "CM-13",
+   "category": "Cancel / modify / status",
+   "title": "Modify a parked stop order",
+   "dse_expected": "(not used by the OMS) Replaced",
+   "sent": "8=FIXT.1.1|9=193|35=G|34=173|49=TESTBRK|50=TRADER1|52=20261012-12:21:47.626|56=DSEME|1=BO1001|11=CF00169|38=100|40=3|41=CF00168|54=1|59=0|60=20261012-12:21:47.626|99=105.00|453=1|448=CLIENT01|447=C|452=5|529=N|10=216|",
+   "replies": [
+    "8=FIXT.1.1|9=129|35=9|34=171|49=DSEME|52=20261012-12:21:47.627|56=TESTBRK|11=CF00169|39=8|41=CF00168|58=unknown or already-done order|102=1|434=2|10=098|"
+   ],
+   "actual": "35=9 58=unknown or already-done order 102=1",
+   "verdict": "INFO",
+   "note": "engine: 35=9 58=unknown or already-done order 102=1"
+  },
+  {
+   "id": "PH-1",
+   "category": "Phases",
+   "title": "Limit order during Pre-Open",
+   "dse_expected": "Accepted into the call auction, no matching",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=174|49=TESTBRK|50=TRADER1|52=20261012-12:21:47.748|56=DSEME|1=BO1001|11=CF00170|38=100|40=2|44=100.00|54=1|55=T048M|59=0|60=20261012-12:21:47.748|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=021|",
+   "replies": [
+    "8=FIXT.1.1|9=178|35=8|34=172|49=DSEME|52=20261012-12:21:47.748|56=TESTBRK|6=0.00|11=CF00170|14=0|17=159|37=151|38=100|39=0|44=100.00|54=1|55=T048M|60=20261012-12:21:47.748|150=0|151=100|207=XDHA|10=213|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "PASS",
+   "note": "accepted, not matched"
+  },
+  {
+   "id": "PH-2",
+   "category": "Phases",
+   "title": "Market order during Pre-Open",
+   "dse_expected": "Rejected (no market orders in the auction)",
+   "sent": "8=FIXT.1.1|9=192|35=D|34=175|49=TESTBRK|50=TRADER1|52=20261012-12:21:47.868|56=DSEME|1=BO1001|11=CF00171|38=100|40=1|54=1|55=T048M|59=0|60=20261012-12:21:47.868|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=095|",
+   "replies": [
+    "8=FIXT.1.1|9=256|35=8|34=173|49=DSEME|52=20261012-12:21:47.868|56=TESTBRK|6=0.00|11=CF00171|14=0|17=160|37=152|38=100|39=8|54=1|55=T048M|58=market orders are not accepted during the Pre-Open call auction — send a limit order|60=20261012-12:21:47.868|150=8|151=0|207=XDHA|10=120|"
+   ],
+   "actual": "35=8 150=8 39=8 58=market orders are not accepted during the Pre-Open call auction — send a limit order",
+   "verdict": "PASS",
+   "note": "rejected: 35=8 150=8 39=8 58=market orders are not accepted during the Pre-Open call auction — send a limit order"
+  },
+  {
+   "id": "PH-3",
+   "category": "Phases",
+   "title": "Limit far outside the band during Pre-Open",
+   "dse_expected": "Rejected — circuit limits apply in every session",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=176|49=TESTBRK|50=TRADER1|52=20261012-12:21:47.989|56=DSEME|1=BO1001|11=CF00172|38=100|40=2|44=150.00|54=1|55=T049M|59=0|60=20261012-12:21:47.989|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=045|",
+   "replies": [
+    "8=FIXT.1.1|9=178|35=8|34=174|49=DSEME|52=20261012-12:21:47.989|56=TESTBRK|6=0.00|11=CF00172|14=0|17=161|37=153|38=100|39=0|44=150.00|54=1|55=T049M|60=20261012-12:21:47.989|150=0|151=100|207=XDHA|10=232|"
+   ],
+   "actual": "35=8 150=0 39=0",
+   "verdict": "GAP",
+   "note": "accepted — Pre-Open skips the tick and price-band checks (engine.go:278-289 returns before them)"
+  },
+  {
+   "id": "PH-4",
+   "category": "Phases",
+   "title": "Uncross at the Pre-Open -\u003e Continuous transition",
+   "dse_expected": "Matching orders trade at the equilibrium price",
+   "sent": "(phase change)",
+   "replies": null,
+   "actual": "no response",
+   "verdict": "GAP",
+   "note": "the crossed order was executed in the uncross but the broker received NO Execution Report — auction fills are not reported over FIX"
+  },
+  {
+   "id": "PH-5",
+   "category": "Phases",
+   "title": "GTC order survives a phase change",
+   "dse_expected": "Still on the book",
+   "sent": "(phase change)",
+   "replies": null,
+   "actual": "no response",
+   "verdict": "PASS",
+   "note": "still resting"
+  },
+  {
+   "id": "MT-1",
+   "category": "Matching",
+   "title": "Buy limit crosses the best ask — price improvement",
+   "dse_expected": "Executes at the resting (better) price 100.00",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=178|49=TESTBRK|50=TRADER1|52=20261012-12:21:49.132|56=DSEME|1=BO1001|11=CF00174|38=100|40=2|44=100.20|54=1|55=T051M|59=0|60=20261012-12:21:49.132|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=003|",
+   "replies": [
+    "8=FIXT.1.1|9=232|35=8|34=176|49=DSEME|52=20261012-12:21:49.132|56=TESTBRK|6=100.00|11=CF00174|14=100|17=163|22=4|31=100.00|32=100|37=157|38=100|39=2|44=100.20|48=BD0001000051|54=1|55=T051M|60=20261012-12:21:49.132|150=TRADE|151=0|207=XDHA|1300=MAIN|10=103|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "PASS",
+   "note": "executed at 100.00"
+  },
+  {
+   "id": "MT-2",
+   "category": "Matching",
+   "title": "Price-time priority (two asks at the same price)",
+   "dse_expected": "Earlier order fills first",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=181|49=TESTBRK|50=TRADER1|52=20261012-12:21:49.494|56=DSEME|1=BO1001|11=CF00177|38=100|40=2|44=101.00|54=1|55=T052M|59=0|60=20261012-12:21:49.494|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=022|",
+   "replies": [
+    "8=FIXT.1.1|9=232|35=8|34=179|49=DSEME|52=20261012-12:21:49.494|56=TESTBRK|6=101.00|11=CF00177|14=100|17=166|22=4|31=101.00|32=100|37=160|38=100|39=2|44=101.00|48=BD0001000052|54=1|55=T052M|60=20261012-12:21:49.494|150=TRADE|151=0|207=XDHA|1300=MAIN|10=131|"
+   ],
+   "actual": "35=8 150=TRADE 39=2 14=100",
+   "verdict": "PASS",
+   "note": "first order filled, second still resting"
+  },
+  {
+   "id": "MT-3",
+   "category": "Matching",
+   "title": "Partial fill then rest (day limit)",
+   "dse_expected": "Fills 40, rests the remaining 60",
+   "sent": "8=FIXT.1.1|9=202|35=D|34=182|49=TESTBRK|50=TRADER1|52=20261012-12:21:49.615|56=DSEME|1=BO1001|11=CF00178|38=100|40=2|44=100.00|54=1|55=T053M|59=0|60=20261012-12:21:49.615|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=014|",
+   "replies": [
+    "8=FIXT.1.1|9=231|35=8|34=180|49=DSEME|52=20261012-12:21:49.615|56=TESTBRK|6=100.00|11=CF00178|14=40|17=167|22=4|31=100.00|32=40|37=162|38=100|39=1|44=100.00|48=BD0001000053|54=1|55=T053M|60=20261012-12:21:49.615|150=TRADE|151=60|207=XDHA|1300=MAIN|10=078|"
+   ],
+   "actual": "35=8 150=TRADE 39=1 14=40",
+   "verdict": "PASS",
+   "note": "filled 40, 60 resting"
+  },
+  {
+   "id": "ST-1",
+   "category": "Rules not modelled",
+   "title": "Day orders expire at market close",
+   "dse_expected": "Day orders are removed at close and reported",
+   "sent": "(code inspection)",
+   "replies": null,
+   "actual": "engine.go:35 — 'this continuous sim has no EOD cutoff': Day and GTC behave identically; nothing purges Day orders",
+   "verdict": "GAP",
+   "note": "no end-of-day processing"
+  },
+  {
+   "id": "ST-2",
+   "category": "Rules not modelled",
+   "title": "Post-close session: Market order priced at the close price",
+   "dse_expected": "DSE requires the close price on market orders after close",
+   "sent": "(code inspection)",
+   "replies": null,
+   "actual": "engine has only the phases 'Pre-Open' and 'Continuous Trading' (engine.go:161, 627-641); no post-close/close-price handling",
+   "verdict": "GAP",
+   "note": "phase not modelled"
+  },
+  {
+   "id": "ST-3",
+   "category": "Rules not modelled",
+   "title": "Automatic circuit breaker / volatility halt",
+   "dse_expected": "Instrument halts on breaching limits; DSE halts per board rules",
+   "sent": "(code inspection)",
+   "replies": null,
+   "actual": "only a static price-band check plus the manual per-symbol halt added in the admin console; no automatic trigger",
+   "verdict": "GAP",
+   "note": "not modelled"
+  },
+  {
+   "id": "ST-4",
+   "category": "Rules not modelled",
+   "title": "Category-based rules (A/B/G/N/Z) and board-specific rules",
+   "dse_expected": "Different lot sizes / bands / sessions by category and board",
+   "sent": "(code inspection)",
+   "replies": null,
+   "actual": "Instrument has Board/ISIN/Tick only; no category, market lot, face value; band tiers are board-independent",
+   "verdict": "GAP",
+   "note": "not modelled"
+  },
+  {
+   "id": "ST-5",
+   "category": "Rules not modelled",
+   "title": "Pre-trade RMS (buying power, holdings, position limit) on the FIX path",
+   "dse_expected": "OMS-side check; the exchange simulator should also enforce",
+   "sent": "(code inspection)",
+   "replies": null,
+   "actual": "rms.go RiskEngine.Check is called only from bench.go:352, never from the FIX acceptor",
+   "verdict": "INFO",
+   "note": "OMS performs these checks; the ME does not duplicate them"
+  },
+  {
+   "id": "ST-6",
+   "category": "Rules not modelled",
+   "title": "Order-status / execution-report replay on reconnect",
+   "dse_expected": "Missed ERs recoverable (ResendRequest honoured)",
+   "sent": "(code inspection)",
+   "replies": null,
+   "actual": "in-memory message store only (quickfix.NewMemoryStoreFactory) with ResetOnLogon=Y — nothing survives a reconnect",
+   "verdict": "INFO",
+   "note": "by design for a simulator"
+  },
+  {
+   "id": "SS-1",
+   "category": "Session messages",
+   "title": "Logon (35=A) with ResetSeqNumFlag 141=Y",
+   "dse_expected": "Session established",
+   "sent": "(code inspection)",
+   "replies": null,
+   "actual": "initiator sent 141=Y (ResetOnLogon=Y); session reached logged-on state",
+   "verdict": "PASS",
+   "note": "session established"
+  },
+  {
+   "id": "SS-2",
+   "category": "Session messages",
+   "title": "TestRequest (35=1, 112=PING)",
+   "dse_expected": "Heartbeat (35=0) echoing 112",
+   "sent": "",
+   "replies": [
+    "8=FIXT.1.1|9=65|35=0|34=2|49=DSEME|52=20261012-12:21:51.000|56=TESTBRK2|112=PING|10=207|"
+   ],
+   "actual": "35=0",
+   "verdict": "PASS",
+   "note": "Heartbeat with TestReqID PING"
+  },
+  {
+   "id": "SS-3",
+   "category": "Session messages",
+   "title": "ResendRequest (35=2, 7=1, 16=0)",
+   "dse_expected": "Missed messages resent or gap-filled",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=5|49=TESTBRK2|50=TRADER1|52=20261012-12:21:51.363|56=DSEME|1=BO1001|11=CF00181|38=100|40=2|44=95.00|54=1|55=T056M|59=0|60=20261012-12:21:51.363|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=164|",
+   "replies": [
+    "8=FIXT.1.1|9=98|35=4|34=1|43=Y|49=DSEME|52=20261012-12:21:51.485|56=TESTBRK2|122=20261012-12:21:51.485|36=3|123=Y|10=235",
+    "8=FIXT.1.1|9=238|35=8|34=3|43=Y|49=DSEME|52=20261012-12:21:51.485|56=TESTBRK2|122=20261012-12:21:51.122|6=0.00|11=CF00179|14=0|17=168|22=4|37=163|38=100|39=0|44=95.00|48=BD0001000054|54=1|55=T054M|60=20261012-12:21:51.122|150=0|151=100|207=XDHA|1300=MAIN|10=111",
+    "8=FIXT.1.1|9=238|35=8|34=4|43=Y|49=DSEME|52=20261012-12:21:51.485|56=TESTBRK2|122=20261012-12:21:51.242|6=0.00|11=CF00180|14=0|17=169|22=4|37=164|38=100|39=0|44=95.00|48=BD0001000055|54=1|55=T055M|60=20261012-12:21:51.242|150=0|151=100|207=XDHA|1300=MAIN|10=114",
+    "8=FIXT.1.1|9=238|35=8|34=5|43=Y|49=DSEME|52=20261012-12:21:51.485|56=TESTBRK2|122=20261012-12:21:51.364|6=0.00|11=CF00181|14=0|17=170|22=4|37=165|38=100|39=0|44=95.00|48=BD0001000056|54=1|55=T056M|60=20261012-12:21:51.364|150=0|151=100|207=XDHA|1300=MAIN|10=121"
+   ],
+   "actual": "35=(log) ; 35=(log) ; 35=(log) ; 35=(log)",
+   "verdict": "PASS",
+   "note": "resend or gap-fill received"
+  },
+  {
+   "id": "SS-4",
+   "category": "Session messages",
+   "title": "SequenceReset (35=4, 123=N, 36=5000)",
+   "dse_expected": "Accepted; peer's expected sequence moves",
+   "sent": "8=FIXT.1.1|9=200|35=D|34=5|49=TESTBRK2|50=TRADER1|52=20261012-12:21:51.363|56=DSEME|1=BO1001|11=CF00181|38=100|40=2|44=95.00|54=1|55=T056M|59=0|60=20261012-12:21:51.363|453=1|448=CLIENT01|447=C|452=5|529=N|762=PUBLIC|10=164|",
+   "replies": null,
+   "actual": "no response",
+   "verdict": "PASS",
+   "note": "accepted with no reject"
+  },
+  {
+   "id": "SS-5",
+   "category": "Session messages",
+   "title": "Logout (35=5)",
+   "dse_expected": "Logout acknowledged, session closed",
+   "sent": "",
+   "replies": [
+    "8=FIXT.1.1|9=56|35=5|34=2|49=DSEME|52=20261012-12:21:55.001|56=TESTBRK3|10=218|"
+   ],
+   "actual": "35=5",
+   "verdict": "PASS",
+   "note": "Logout acknowledged"
+  },
+  {
+   "id": "SS-6",
+   "category": "Session messages",
+   "title": "Heartbeat (35=0) interval 30 s",
+   "dse_expected": "Sent automatically",
+   "sent": "(code inspection)",
+   "replies": null,
+   "actual": "handled by the QuickFIX session layer (HeartBtInt negotiated at logon)",
+   "verdict": "PASS",
+   "note": "session layer"
+  }
+ ],
+ "total": 184
+}

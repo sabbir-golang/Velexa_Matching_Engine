@@ -24,7 +24,7 @@ var meItchAuth = &itchAuth{creds: map[string]string{}}
 func loadItchAuth() *itchAuth {
 	a := &itchAuth{
 		enabled: strings.EqualFold(envOr("ME_ITCH_AUTH", "off"), "on"),
-		path:    envOr("ME_ITCH_AUTH_FILE", "/opt/velexa-sim-me/itch_brokers.json"),
+		path:    envOr("ME_ITCH_AUTH_FILE", stateFile("itch_brokers.json")),
 		creds:   map[string]string{},
 	}
 	if b, err := os.ReadFile(a.path); err == nil {

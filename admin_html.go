@@ -140,7 +140,9 @@ font-size:13px;font-weight:600;cursor:pointer;transition:border .12s,background 
 .btn.ghost{background:transparent}
 .btn.danger{color:var(--red)}.btn.danger:hover{border-color:var(--red)}
 input.f{padding:10px 12px;background:#0b1119;border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:13px;outline:none;width:100%;transition:border .15s}
-input.f:focus{border-color:var(--acc)}
+input.f:focus,select.f:focus{border-color:var(--acc)}
+select.f{padding:10px 36px 10px 12px;background:#0b1119 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237d8a9c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:13px;font-family:inherit;outline:none;width:100%;appearance:none;-webkit-appearance:none;cursor:pointer;color-scheme:dark;transition:border .15s}
+select.f option{background:#131a24;color:var(--ink)}
 label.fl{display:block;font-size:11px;color:var(--mut);margin:0 0 6px;font-weight:600}
 .field{margin-bottom:14px}
 .note{color:var(--mut);font-size:12.5px;margin:0 0 16px;line-height:1.6}
@@ -157,8 +159,45 @@ label.fl{display:block;font-size:11px;color:var(--mut);margin:0 0 6px;font-weigh
 .benchframe iframe{width:100%;height:calc(100vh - 142px);min-height:480px;border:0;display:block}
 /* iframe views (Simulator / Trade) fill the page — trim the wrap's bottom padding */
 body.iframeview .wrap{padding-bottom:12px}
+.tt-bar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.tt-frame{border:0;border-radius:0;box-shadow:none;background:transparent;overflow:visible}
+.tt-frame iframe{height:760px;min-height:480px}
 .benchframe:fullscreen{border:0;border-radius:0}
 .benchframe:fullscreen iframe{height:100vh}
+/* instruments page */
+.exp{position:relative}
+.exp-menu{display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:240px;background:var(--panel);border:1px solid var(--line2);border-radius:11px;box-shadow:0 14px 40px rgba(0,0,0,.5);z-index:30;padding:6px}
+.exp-menu.on{display:block}
+.exp-menu button{display:flex;flex-direction:column;align-items:flex-start;width:100%;background:none;border:0;color:var(--ink);padding:8px 11px;border-radius:8px;cursor:pointer;text-align:left;font-size:13px}
+.exp-menu button:hover{background:#1a2431}
+.exp-menu button span{color:var(--mut);font-size:11.5px;margin-top:1px}
+.exp-note{border-top:1px solid var(--line);margin-top:4px;padding:8px 11px 4px;color:var(--mut);font-size:11.5px}
+.in-grid{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px;align-items:start;margin-top:16px}
+@media(max-width:1100px){.in-grid{grid-template-columns:1fr}}
+.card-hd{display:flex;align-items:center;gap:12px;padding:15px 18px;flex-wrap:wrap}
+.card-hd h3{margin:0;font-size:15px;letter-spacing:-.01em}.card-hd .sp{flex:1}
+.in-search{display:flex;align-items:center;gap:8px;background:#0b1119;border:1px solid var(--line);border-radius:9px;padding:0 11px;min-width:230px}
+.in-search svg{width:15px;height:15px;stroke:var(--mut);fill:none;stroke-width:2;flex:none}
+.in-search input{background:none;border:0;outline:0;color:var(--ink);font-size:13px;padding:9px 0;width:100%}
+.in-search:focus-within{border-color:var(--acc)}
+input.f::placeholder{text-transform:none}
+.in-chips{display:flex;gap:6px;flex-wrap:wrap;padding:12px 18px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.in-chips .btn.sm{padding:4px 11px;font-size:12px;font-weight:600}
+.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;vertical-align:-3px;margin-right:5px}
+.code-tag{font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:#1a2431;border:1px solid var(--line);border-radius:5px;padding:2px 7px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:20px}
+.pill .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.active{background:rgba(74,222,128,.13);color:var(--grn)}.pill.halted{background:rgba(248,113,113,.13);color:var(--red)}
+.pill.pending{background:rgba(234,176,77,.15);color:var(--amber)}
+.ib{background:transparent;border:1px solid var(--line);color:var(--mut);width:30px;height:30px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.ib svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}.ib:hover{border-color:var(--acc);color:var(--ink)}
+.ib.warn{color:var(--amber)}.ib.up{color:var(--grn)}.ib.del:hover{border-color:var(--red);color:var(--red)}
+.cls-row{display:flex;align-items:center;gap:10px;padding:11px 16px;border-top:1px solid var(--line);font-size:13px}
+.cls-row:first-child{border-top:0}.cls-row .d{width:7px;height:7px;border-radius:50%;flex:none}.cls-row .c{margin-left:auto;color:var(--mut);font-size:11.5px;font-family:"IBM Plex Mono",monospace}
+.kpi .sub{margin-top:9px;font-size:11.5px;color:var(--mut)}.kpi .sub .pill{padding:2px 9px;font-size:11px}
+.mcard .modal-ico{width:38px;height:38px;border-radius:11px;background:rgba(77,208,177,.14);color:var(--acc);display:flex;align-items:center;justify-content:center;flex:none}
+.mcard .modal-ico svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2}
+.mcard .mft{display:flex;justify-content:flex-end;gap:9px;margin-top:6px}
 /* detail modal */
 .modal{display:none;position:fixed;inset:0;background:rgba(4,7,12,.74);z-index:50;padding:30px 16px;overflow-y:auto}
 .modal.on{display:flex;align-items:flex-start;justify-content:center}
@@ -195,6 +234,7 @@ body.iframeview .wrap{padding-bottom:12px}
    <div class="navitem" data-v="trade"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l3-4 3 2 4-6"/></svg>Trade Terminal</div>
    <div class="navitem" data-v="sessions"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>FIX Sessions<span class="badge" id="navSess"></span></div>
    <div class="navitem" data-v="sim"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>Simulator</div>
+   <div class="navitem" data-v="instruments"><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>Instruments</div>
    <div class="navgrp">Access</div>
    <div class="navitem" data-v="creds"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4M18 5l2 2M15 8l2 2"/></svg>Broker Credentials</div>
    <div class="navitem" data-v="access"><svg viewBox="0 0 24 24"><path d="M12 2 4 6v6c0 5 3.4 7.7 8 10 4.6-2.3 8-5 8-10V6z"/></svg>OMS IP Allowlist</div>
@@ -234,15 +274,7 @@ body.iframeview .wrap{padding-bottom:12px}
    </section>
 
    <section class="view" id="view-trade">
-    <div class="simbar">
-     <div class="row">
-      <span class="muted">Live market terminal — order book, trade tape &amp; manual order entry</span>
-      <span style="flex:1"></span>
-      <button class="btn sm ghost" onclick="reloadTrade()">↻ Reload</button>
-      <a class="btn sm ghost" href="/" target="_blank">New tab ↗</a>
-     </div>
-    </div>
-    <div class="benchframe"><iframe id="tradeIframe" title="Trade terminal"></iframe></div>
+    <div class="benchframe tt-frame"><iframe id="tradeIframe" title="Trade terminal"></iframe></div>
    </section>
 
    <section class="view" id="view-sim">
@@ -286,6 +318,67 @@ body.iframeview .wrap{padding-bottom:12px}
     <h2>Registered brokers <span id="brokerCount" class="muted" style="font-weight:400;font-size:11px;text-transform:none;letter-spacing:0"></span></h2>
     <div class="filterbar"><input class="fi" id="f_broker" placeholder="Search company, SenderCompID or ITCH user…" style="min-width:320px" oninput="applyFilters()"></div>
     <div class="panel"><table><thead><tr><th>Company</th><th>SenderCompID</th><th>ITCH user</th><th>Created</th><th class="right">Actions</th></tr></thead><tbody id="brokerList"></tbody></table></div>
+   </section>
+
+   <section class="view" id="view-instruments">
+    <div class="kpis">
+     <div class="kpi"><div class="l" style="margin:0 0 8px">Listed instruments</div><div class="v" id="ik_total">&ndash;</div><div class="sub">across all boards</div></div>
+     <div class="kpi grn"><div class="l" style="margin:0 0 8px">Equity &mdash; main board</div><div class="v" id="ik_main">&ndash;</div><div class="sub"><span class="pill active"><span class="d"></span>tradable</span></div></div>
+     <div class="kpi blue"><div class="l" style="margin:0 0 8px">Bonds &amp; Sukuk</div><div class="v" id="ik_bonds">&ndash;</div><div class="sub">yield based</div></div>
+     <div class="kpi amber"><div class="l" style="margin:0 0 8px">Pending listing</div><div class="v" id="ik_pending">&ndash;</div><div class="sub"><span class="pill pending"><span class="d"></span>awaiting approval</span></div></div>
+    </div>
+    <div class="in-grid">
+     <div class="panel">
+      <div class="card-hd">
+       <h3>Instruments</h3><span class="muted" style="font-size:12px" id="in_count"></span><span class="sp"></span>
+       <label class="in-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="f_instr" placeholder="Search symbol or name&hellip;" oninput="renderInstr()"></label>
+       <div class="exp"><button class="btn ghost" onclick="toggleExport(event)"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Export</button>
+        <div class="exp-menu" id="exp_menu">
+         <button onclick="exportInstr('xml')"><b>XML</b><span>DSE end-of-day ticker file</span></button>
+         <button onclick="exportInstr('csv')"><b>CSV</b><span>Spreadsheet</span></button>
+         <button onclick="exportInstr('json')"><b>JSON</b><span>Re-importable master</span></button>
+         <div class="exp-note" id="exp_note"></div>
+        </div></div>
+       <button class="btn acc" onclick="openInstr()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>List instrument</button>
+      </div>
+      <div class="in-chips" id="in_chips"></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Symbol</th><th>Name</th><th>Class</th><th>Board</th><th>Sector</th><th class="right">Lot</th><th class="right">Tick &#2547;</th><th>Status</th><th class="right"></th></tr></thead><tbody id="instrList"></tbody></table></div>
+     </div>
+     <div class="panel">
+      <div class="card-hd" style="padding:14px 16px"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--mut);fill:none;stroke-width:2"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg><h3>Asset Classes</h3></div>
+      <div id="in_classes"></div>
+      <div class="muted" style="font-size:11.5px;padding:11px 16px;border-top:1px solid var(--line);line-height:1.5">Listed scrips get an order book, ITCH id and market-making bots immediately and show in the Trade Terminal. Changes are saved to the instrument master file.</div>
+     </div>
+    </div>
+    <div class="modal" id="instModal" onclick="if(event.target==this)closeInstr()">
+     <div class="mcard" style="max-width:540px">
+      <div class="mh">
+       <div class="modal-ico"><svg viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></div>
+       <div><h3 id="in_title">List instrument</h3><p class="msub">A listed security on the exchange</p></div>
+       <button class="close" onclick="closeInstr()">&#10005;</button>
+      </div>
+      <div style="height:18px"></div>
+      <div class="grid2">
+       <div class="field"><label class="fl">Symbol *</label><input class="f mono" id="in_symbol" placeholder="e.g. GP" style="text-transform:uppercase"></div>
+       <div class="field"><label class="fl">Status</label><select class="f" id="in_status"><option value="active">Active</option><option value="halted">Halted</option><option value="pending">Pending</option></select></div>
+      </div>
+      <div class="field"><label class="fl">Name *</label><input class="f" id="in_name" placeholder="e.g. Grameenphone Ltd."></div>
+      <div class="grid2">
+       <div class="field"><label class="fl">Asset class</label><select class="f" id="in_class"></select></div>
+       <div class="field"><label class="fl">Board</label><select class="f" id="in_board"></select></div>
+      </div>
+      <div class="grid2">
+       <div class="field"><label class="fl">Sector</label><select class="f" id="in_sector"></select></div>
+       <div class="field"><label class="fl">Market lot</label><input class="f mono" id="in_lot" type="number" min="1" step="1" value="1"></div>
+      </div>
+      <div class="grid2">
+       <div class="field"><label class="fl">Tick size &#2547;</label><input class="f mono" id="in_tick" type="number" min="0" step="0.01" value="0.10"></div>
+       <div class="field"><label class="fl">Previous close &#2547; *</label><input class="f mono" id="in_prev" type="number" min="0" step="0.1" placeholder="e.g. 320.50"></div>
+      </div>
+      <div class="field"><label class="fl">ISIN</label><input class="f mono" id="in_isin" placeholder="optional, e.g. BD0001GP0007" style="text-transform:uppercase"></div>
+      <div class="mft"><button class="btn ghost" onclick="closeInstr()">Cancel</button><button class="btn acc" id="in_save" onclick="saveInstr()">Save</button></div>
+     </div>
+    </div>
    </section>
 
    <section class="view" id="view-access">
@@ -338,7 +431,7 @@ body.iframeview .wrap{padding-bottom:12px}
 <script>
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]})}
 function j(p,o){return fetch("/admin/api/"+p,o).then(function(r){return r.json()})}
-var titles={dash:["Dashboard","Live engine status"],trade:["Trade Terminal","Live order book, trade tape &amp; order entry"],sessions:["FIX Sessions","Connected brokers &amp; controls"],sim:["Simulator","Benchmark &amp; live order generation"],creds:["Broker Credentials","Issue &amp; manage FIX/ITCH access"],access:["External OMS Access","Source-IP allowlist for the plain-FIX gateway"],msglog:["Message Log","FIX message trace — every order in &amp; out"],diag:["Diagnostics","Auth state &amp; event log"]};
+var titles={dash:["Dashboard","Live engine status"],trade:["Trade Terminal","Live order book, trade tape &amp; order entry"],sessions:["FIX Sessions","Connected brokers &amp; controls"],sim:["Simulator","Benchmark &amp; live order generation"],creds:["Broker Credentials","Issue &amp; manage FIX/ITCH access"],instruments:["Instruments","List &amp; manage tradeable securities (DSE board, tick, previous close)"],access:["External OMS Access","Source-IP allowlist for the plain-FIX gateway"],msglog:["Message Log","FIX message trace — every order in &amp; out"],diag:["Diagnostics","Auth state &amp; event log"]};
 function show(v){
  document.querySelectorAll(".navitem").forEach(function(n){n.classList.toggle("on",n.dataset.v==v)});
  document.querySelectorAll(".view").forEach(function(s){s.classList.remove("on")});
@@ -346,9 +439,10 @@ function show(v){
  document.getElementById("pageTitle").innerHTML=titles[v][0];document.getElementById("pageSub").innerHTML=titles[v][1];
  document.body.classList.toggle("iframeview",v=="sim"||v=="trade");
  if(v=="sim"){var f=document.getElementById("benchIframe");if(!f.getAttribute("src"))f.src="/bench"}
- if(v=="trade"){var t=document.getElementById("tradeIframe");if(!t.getAttribute("src"))t.src="/"}
+ if(v=="trade"){var t=document.getElementById("tradeIframe");if(!t.getAttribute("src"))t.src="/?embed=1"}
  if(v=="msglog"){loadMsgLog()}
  if(v=="access"){loadAllow()}
+ if(v=="instruments"){loadInstr()}
 }
 function goFull(id){var el=document.getElementById(id);if(el.requestFullscreen)el.requestFullscreen();else if(el.webkitRequestFullscreen)el.webkitRequestFullscreen()}
 function msgTypeName(t){var n={D:"NewOrder","8":"ExecReport",F:"Cancel",G:"Replace","3":"Reject","9":"CxlReject",A:"Logon","5":"Logout","2":"ResendReq","4":"SeqReset",j:"BizReject"};return (n[t]||"msg")+" ("+t+")"}
@@ -362,7 +456,10 @@ function loadMsgLog(){
  });
 }
 function reloadBench(){document.getElementById("benchIframe").src="/bench"}
-function reloadTrade(){document.getElementById("tradeIframe").src="/"}
+window.addEventListener("message",function(e){
+ if(e.origin!==location.origin||!e.data||e.data.type!=="tt-height")return;
+ var f=document.getElementById("tradeIframe");if(f)f.style.height=Math.max(480,Math.ceil(e.data.h)+4)+"px"});
+function reloadTrade(){document.getElementById("tradeIframe").src="/?embed=1&t="+Date.now()}
 var aside=document.querySelector("aside"),bd=document.getElementById("backdrop");
 function toggleNav(open){aside.classList.toggle("open",open);bd.classList.toggle("on",open)}
 document.getElementById("hamb").onclick=function(){toggleNav(!aside.classList.contains("open"))};
@@ -411,6 +508,89 @@ function renderStatus(d){
   document.getElementById("audit").innerHTML=ad||"<tr><td colspan=4 class='pad16 muted'>No matching records.</td></tr>";
   setc("audit_cnt",ac+" records");
 }
+function toast(msg,err,warn){
+ var el=document.getElementById("toast");
+ if(!el){el=document.createElement("div");el.id="toast";el.style.cssText="position:fixed;right:20px;bottom:20px;max-width:420px;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.4;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.4);color:#fff;transition:opacity .2s";document.body.appendChild(el)}
+ el.style.background=err?"#b4323c":(warn?"#a8741a":"#1f8f6e");
+ el.textContent=msg+(warn?" — Warning: "+warn:"");el.style.opacity=1;
+ clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity=0},warn||err?8000:3500)}
+var _in=[],_cls=[],_board="",_class="";
+var ASSET=[["EQ","Equity"],["MF","Mutual Fund"],["CB","Corporate Bond"],["DB","Debenture"]];
+var ASSET_LABEL={};ASSET.forEach(function(x){ASSET_LABEL[x[0]]=x[1]});
+var IB_GEAR='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+var IB_POWER='<svg viewBox="0 0 24 24"><path d="M18.4 6.6a9 9 0 1 1-12.8 0M12 2v10"/></svg>';
+var IB_X='<svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+var SECTORS=[["Bank","Bank"],["Cement","Cement"],["Ceramic","Ceramic"],["CorpBond","Corporate Bond"],["Debenture","Debenture"],["Engineering","Engineering"],["Financial In","Financial Institutions"],["FoodAllied","Food & Allied"],["FuelPower","Fuel & Power"],["Insurance","Insurance"],["IT","IT"],["Jute","Jute"],["Misc","Miscellaneous"],["MutFund","Mutual Fund"],["PaperPrint","Paper & Printing"],["PharmaChem","Pharmaceuticals & Chemicals"],["ServRealEst","Services & Real Estate"],["Tannery","Tannery"],["Telecom","Telecom"],["Textile","Textile"],["TravelLeisur","Travel & Leisure"]];
+var SECTOR_LABEL={};SECTORS.forEach(function(x){SECTOR_LABEL[x[0]]=x[1]});
+var BOARDS=["Main (A)","Main (B)","Main (N)","Main (Z)","Bond","Mutual Fund","SME / ATB"];
+function loadInstr(){j("instruments").then(function(d){
+ _in=d.rows||[];_cls=d.classes||[];var s=d.summary||{};
+ setc("ik_total",(s.total||0).toLocaleString());setc("ik_main",(s.main_equity||0).toLocaleString());
+ setc("ik_bonds",(s.bonds||0).toLocaleString());setc("ik_pending",(s.pending||0).toLocaleString());
+ document.getElementById("in_classes").innerHTML=_cls.map(function(c){return "<div class=cls-row style='cursor:pointer"+(_class==c.code?";background:rgba(77,208,177,.08)":"")+"' onclick=\"setClass('"+esc(c.code)+"')\" title='Filter by "+esc(c.label)+"'><span class=d style='background:"+esc(c.color)+"'></span><span style='font-weight:500'>"+esc(c.label)+"</span><span class=c>"+c.count+" listed</span></div>"}).join("");
+ renderInstr()})}
+function renderInstr(){
+ var seen={},boards=[];_in.forEach(function(r){if(!seen[r.board]){seen[r.board]=1;boards.push(r.board)}});
+ boards.sort();if(_board&&!seen[_board])_board="";
+ document.getElementById("in_chips").innerHTML=["All"].concat(boards).map(function(b){
+  var on=(b=="All"&&!_board)||b==_board;
+  return "<button class='btn sm "+(on?"acc":"ghost")+"' onclick=\"setBoard('"+(b=="All"?"":esc(b))+"')\">"+esc(b)+"</button>"}).join("");
+ var f=flt("f_instr"),rows="",n=0;
+ _in.forEach(function(r){
+  if(_board&&r.board!=_board)return;
+  if(_class&&r.asset_class!=_class)return;
+  if(!hit(r.symbol+" "+r.name,f))return;n++;
+  var st=r.status||"active",lbl=st.charAt(0).toUpperCase()+st.slice(1);
+  var pw=st=="active"?"<button class='ib warn' title='Halt' onclick=\"haltInstr('"+esc(r.symbol)+"',true)\">"+IB_POWER+"</button>":"<button class='ib up' title='Activate' onclick=\"haltInstr('"+esc(r.symbol)+"',false)\">"+IB_POWER+"</button>";
+  rows+="<tr><td><span class=code-tag>"+esc(r.symbol)+"</span></td><td style='font-weight:600'>"+esc(r.name)+"</td><td class=muted>"+esc(ASSET_LABEL[r.asset_class]||r.asset_class||"")+"</td><td class=muted>"+esc(r.board)+"</td><td class=muted>"+(r.sector?esc(SECTOR_LABEL[r.sector]||r.sector):"&mdash;")+"</td><td class='right mono'>"+r.lot+"</td><td class='right mono'>"+Number(r.tick||0).toFixed(2)+"</td><td><span class='pill "+st+"'><span class=d></span>"+lbl+"</span></td><td class=right style='white-space:nowrap'><button class=ib title='Edit' onclick=\"openInstr('"+esc(r.symbol)+"')\">"+IB_GEAR+"</button> "+pw+" <button class='ib del' title='Delist' onclick=\"delistInstr('"+esc(r.symbol)+"')\">"+IB_X+"</button></td></tr>"});
+ document.getElementById("instrList").innerHTML=rows||"<tr><td colspan=9 style='text-align:center;padding:34px' class=muted>No instruments"+(f||_board||_class?" match the filter":"")+".</td></tr>";
+ setc("in_count",n+(f||_board||_class?" match":" shown"));
+}
+function setBoard(b){_board=b;renderInstr()}
+function toggleExport(e){e.stopPropagation();var m=document.getElementById("exp_menu");m.classList.toggle("on");
+ if(m.classList.contains("on")){var n=_in.filter(function(r){return(!_board||r.board==_board)&&(!_class||r.asset_class==_class)&&hit(r.symbol+" "+r.name,flt("f_instr"))}).length;
+  setc("exp_note","Exports the "+n+" instrument"+(n==1?"":"s")+" currently shown"+(_board||_class||flt("f_instr")?" (filters applied).":" (all)."))}}
+function exportInstr(fmt){document.getElementById("exp_menu").classList.remove("on");
+ var u="/admin/api/instruments/export?format="+fmt+"&board="+encodeURIComponent(_board)+"&class="+encodeURIComponent(_class)+"&q="+encodeURIComponent(document.getElementById("f_instr").value.trim());
+ toast("Preparing "+fmt.toUpperCase()+" export…",false);window.location=u}
+document.addEventListener("click",function(){var m=document.getElementById("exp_menu");if(m)m.classList.remove("on")});
+function setClass(c){_class=_class==c?"":c;loadInstr()}
+var _editing="";
+function openInstr(sym){
+ var r=sym?_in.filter(function(x){return x.symbol==sym})[0]:null;_editing=r?r.symbol:"";
+ var bs=BOARDS.slice();if(r&&bs.indexOf(r.board)<0)bs.push(r.board);
+ document.getElementById("in_board").innerHTML=bs.map(function(b){return "<option>"+esc(b)+"</option>"}).join("");
+ var secs=SECTORS.slice();if(r&&r.sector&&!SECTOR_LABEL[r.sector])secs.push([r.sector,r.sector]);
+ document.getElementById("in_sector").innerHTML="<option value=''>&mdash; Select sector &mdash;</option>"+secs.map(function(x){return "<option value=\""+esc(x[0])+"\">"+esc(x[1])+"</option>"}).join("");
+ document.getElementById("in_class").innerHTML=ASSET.map(function(x){return "<option value=\""+x[0]+"\">"+esc(x[1])+"</option>"}).join("");
+ var v=function(i,x){document.getElementById(i).value=x==null?"":x};
+ v("in_symbol",r?r.symbol:"");document.getElementById("in_symbol").disabled=!!r;
+ v("in_name",r?r.name:"");v("in_class",r?r.asset_class:"EQ");v("in_board",r?r.board:"Main (A)");v("in_sector",r?r.sector:"");
+ v("in_lot",r?r.lot:1);v("in_tick",r?Number(r.tick).toFixed(2):"0.10");v("in_prev",r?r.prev:"");v("in_isin",r?r.isin:"");
+ v("in_status",r?r.status:"active");
+ setc("in_title",r?"Edit "+r.symbol:"List instrument");
+ document.getElementById("instModal").classList.add("on");
+ setTimeout(function(){document.getElementById(r?"in_name":"in_symbol").focus()},30)}
+function closeInstr(){document.getElementById("instModal").classList.remove("on")}
+function saveInstr(){
+ var g=function(i){return document.getElementById(i).value.trim()};
+ var body={Symbol:g("in_symbol"),Name:g("in_name"),AssetClass:g("in_class"),Board:g("in_board"),Sector:g("in_sector"),Status:g("in_status"),ISIN:g("in_isin"),
+  Lot:parseInt(g("in_lot"),10)||1,Tick:parseFloat(g("in_tick"))||0,Prev:parseFloat(g("in_prev"))||0};
+ if(!body.Symbol){toast("Symbol is required",true);return}
+ if(!body.Name){toast("Name is required",true);return}
+ var edit=!!_editing;
+ j(edit?"instrument/update":"instrument/add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(d){
+  if(!d.ok){toast(d.error||"Failed",true);return}
+  closeInstr();
+  toast(edit?"Saved "+body.Symbol:"Listed "+body.Symbol+" — now live in the Trade Terminal",false,d.warning);
+  loadInstr()})}
+function haltInstr(sym,h){if(!confirm((h?"Halt trading on ":"Activate trading on ")+sym+"?"))return;
+ j("instrument/halt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({Symbol:sym,Halted:h})}).then(function(d){
+  if(!d.ok)toast(d.error||"Failed",true);else toast(sym+(h?" halted":" activated"),false,d.warning);loadInstr()})}
+function delistInstr(sym){if(!confirm("Delist "+sym+"? It stops trading and is removed from the directory."))return;
+ j("instrument/delist",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({Symbol:sym})}).then(function(d){
+  if(!d.ok)toast(d.error||"Failed",true);else toast(sym+" delisted",false,d.warning);loadInstr()})}
+document.addEventListener("keydown",function(e){if(e.key=="Escape")closeInstr()});
 function loadAllow(){j("allowlist").then(function(d){
  var rows="";(d.list||[]).forEach(function(r){
   rows+="<tr><td class=mono>"+esc(r.ip)+"</td><td>"+(r.label?esc(r.label):"<span class=muted>&mdash;</span>")+"</td><td class=right><button class='btn sm danger' onclick=\"delAllow('"+esc(r.ip)+"')\">Remove</button></td></tr>"});

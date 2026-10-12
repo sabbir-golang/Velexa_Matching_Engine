@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -77,6 +78,7 @@ type ExecReport struct {
 	AvgPx     float64 `json:"avg_px"`
 	LastPx    float64 `json:"last_px"`
 	LastQty   int64   `json:"last_qty"`
+	OrderQty  int64   `json:"order_qty,omitempty"` // qty ordered; survives a reject, where filled+leaves is 0
 	Board     string  `json:"board,omitempty"`
 	ISIN      string  `json:"isin,omitempty"`
 	Reason    string  `json:"reason,omitempty"`
@@ -125,9 +127,15 @@ type MarketData struct {
 // Engine serializes all matching on a single goroutine reading from submit.
 type Engine struct {
 	mu       sync.RWMutex
-	books    map[string]*Book
-	md       map[string]*MarketData
-	instr    []Instrument
+	// books/md/instr are copy-on-write snapshots: their contents are mutated in
+	// place (a *Book, a *MarketData), but the containers themselves are only
+	// ever replaced. Listing an instrument swaps in freshly built ones under the
+	// engine lock, so the feed, gateway and bench goroutines keep reading them
+	// lock-free. instrList is published last — see listInstruments.
+	booksMap  atomic.Pointer[map[string]*Book]
+	mdMap     atomic.Pointer[map[string]*MarketData]
+	instrList atomic.Pointer[[]Instrument]
+	obIDs     atomic.Pointer[map[string]int] // symbol -> ITCH orderbook id
 	trades   []Trade // recent ring (newest last)
 	seq        uint64
 	tradeSeq   uint64
@@ -145,9 +153,6 @@ type Engine struct {
 
 func NewEngine(instr []Instrument, bus *Bus) *Engine {
 	e := &Engine{
-		books:   map[string]*Book{},
-		md:      map[string]*MarketData{},
-		instr:   instr,
 		submit:  make(chan *Order, 4096),
 		ctrl:    make(chan func(), 256),
 		open:    map[string]*Order{},
@@ -156,18 +161,44 @@ func NewEngine(instr []Instrument, bus *Bus) *Engine {
 		phase:   "Continuous Trading",
 		running: true,
 	}
+	books := map[string]*Book{}
+	md := map[string]*MarketData{}
+	obs := map[string]int{}
 	base := 0.0
-	for _, in := range instr {
-		e.books[in.Symbol] = newBook(in.Symbol)
-		e.md[in.Symbol] = &MarketData{Symbol: in.Symbol, Name: in.Name, Prev: in.Prev, Open: in.Prev, Last: in.Prev, High: in.Prev, Low: in.Prev, Bid: 0, Ask: 0, Ref: in.Prev}
+	for i, in := range instr {
+		books[in.Symbol] = newBook(in.Symbol)
+		md[in.Symbol] = newMarketData(in)
+		obs[in.Symbol] = obIDBase + i
 		base += in.Prev
 	}
+	list := append([]Instrument(nil), instr...)
+	e.booksMap.Store(&books)
+	e.mdMap.Store(&md)
+	e.instrList.Store(&list)
+	e.obIDs.Store(&obs)
 	e.indexPrev = base
 	e.index = base
 	return e
 }
 
-func (e *Engine) book(sym string) *Book { return e.books[sym] }
+func newMarketData(in Instrument) *MarketData {
+	return &MarketData{Symbol: in.Symbol, Name: in.Name, Prev: in.Prev, Open: in.Prev,
+		Last: in.Prev, High: in.Prev, Low: in.Prev, Bid: 0, Ask: 0, Ref: in.Prev}
+}
+
+// obIDBase is where DSE-ITCH orderbook ids start; a symbol's id is this plus its
+// position in the instrument list, which is stable because the list only grows.
+const obIDBase = 100001
+
+// orderBookID is the single source of the symbol -> ITCH orderbook id mapping,
+// shared by the ITCH gateway, the SoupBinTCP feed and the live bench. It tracks
+// instruments listed after boot; a symbol with no book has no id (0).
+func (e *Engine) orderBookID(sym string) int { return (*e.obIDs.Load())[sym] }
+
+func (e *Engine) book(sym string) *Book       { return (*e.booksMap.Load())[sym] }
+func (e *Engine) mdOf(sym string) *MarketData { return (*e.mdMap.Load())[sym] }
+func (e *Engine) instr() []Instrument         { return *e.instrList.Load() }
+func (e *Engine) listed(sym string) bool      { return e.mdOf(sym) != nil }
 
 func (e *Engine) run() {
 	tick := time.NewTicker(700 * time.Millisecond)
@@ -178,6 +209,9 @@ func (e *Engine) run() {
 			e.mu.Lock()
 			if e.running {
 				e.process(o) // process() branches on the session phase
+			} else {
+				e.replyTo(o, &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+					Status: "REJECTED", Reason: "matching engine is halted"})
 			}
 			e.mu.Unlock()
 		case fn := <-e.ctrl:
@@ -214,8 +248,27 @@ func bandPctFor(prev float64) float64 {
 }
 
 func (e *Engine) process(o *Order) {
-	b := e.book(o.Symbol)
-	if b == nil {
+	if e.book(o.Symbol) == nil {
+		e.replyTo(o, &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+			Status: "REJECTED", Reason: "unknown symbol " + o.Symbol + ": not in this engine's instrument universe"})
+		return
+	}
+	if m := metaFor(o.Symbol); !m.tradable() {
+		reason := "trading halted in " + o.Symbol
+		switch {
+		case m.Delisted:
+			reason = o.Symbol + " is delisted"
+		case m.Pending:
+			reason = o.Symbol + " is not yet open for trading (listing pending approval)"
+		}
+		e.replyTo(o, &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+			Status: "REJECTED", Board: m.Board, ISIN: m.ISIN, Reason: reason})
+		return
+	} else if m.Lot > 1 && o.Qty%int64(m.Lot) != 0 && strings.HasPrefix(o.Actor, "FIX:") {
+		// DSE market lot: external orders must be a whole number of lots.
+		e.replyTo(o, &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+			Status: "REJECTED", Board: m.Board, ISIN: m.ISIN,
+			Reason: fmt.Sprintf("Minimum quantity step: %d", m.Lot)})
 		return
 	}
 	if o.ID == 0 {
@@ -241,7 +294,8 @@ func (e *Engine) process(o *Order) {
 				Side: o.Side, Status: "NEW", LeavesQty: o.Qty + o.Hidden})
 		} else {
 			e.replyTo(o, &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol,
-				Side: o.Side, Status: "REJECTED"}) // no market orders during accumulation
+				Side: o.Side, Status: "REJECTED", // no market orders during accumulation
+				Reason: "market orders are not accepted during the Pre-Open call auction — send a limit order"})
 		}
 		return
 	}
@@ -253,7 +307,7 @@ func (e *Engine) process(o *Order) {
 	//   2. Price band — DSE circuit-breaker: a tiered +/- limit around the prev
 	//      close (10%% <= Tk200, tapering to 3.75%% for high-priced scrips).
 	if o.Type == Limit && o.Price > 0 && strings.HasPrefix(o.Actor, "FIX:") {
-		m := instrMeta[o.Symbol]
+		m := metaFor(o.Symbol)
 		board := m.Board
 		if board == "" {
 			board = "MAIN"
@@ -269,7 +323,7 @@ func (e *Engine) process(o *Order) {
 			return
 		}
 		anchor := 0.0
-		if md := e.md[o.Symbol]; md != nil {
+		if md := e.mdOf(o.Symbol); md != nil {
 			anchor = md.Prev
 			if anchor <= 0 {
 				anchor = md.Last
@@ -289,7 +343,7 @@ func (e *Engine) process(o *Order) {
 
 	rep := e.match(o)
 	if rep != nil {
-		if m := instrMeta[o.Symbol]; m.Board != "" || m.ISIN != "" {
+		if m := metaFor(o.Symbol); m.Board != "" || m.ISIN != "" {
 			rep.Board, rep.ISIN = m.Board, m.ISIN
 		}
 	}
@@ -302,6 +356,9 @@ func (e *Engine) replyTo(o *Order, rep *ExecReport) {
 	if rep != nil && rep.Price == 0 {
 		rep.Price = o.Price // echo limit price so the blotter "Price" column shows it
 	}
+	if rep != nil && rep.OrderQty == 0 {
+		rep.OrderQty = o.OrigQty // echo OrderQty even on a reject, where filled+leaves is 0
+	}
 	if o.reply != nil {
 		o.reply <- rep
 	}
@@ -312,7 +369,7 @@ func (e *Engine) replyTo(o *Order, rep *ExecReport) {
 // the aggressor's ExecutionReport. The engine lock must be held.
 func (e *Engine) match(o *Order) *ExecReport {
 	b := e.book(o.Symbol)
-	md := e.md[o.Symbol]
+	md := e.mdOf(o.Symbol)
 
 	// Fill-Or-Kill: the whole quantity must be available now, or nothing trades.
 	if o.TIF == FOK && b.canFill(o.Side, o.Type, o.Price, o.Qty) < o.Qty {
@@ -368,7 +425,7 @@ func (e *Engine) match(o *Order) *ExecReport {
 	}
 	e.refreshTop(o.Symbol)
 
-	var status string
+	var status, reason string
 	var leaves int64
 	if rested {
 		leaves = remaining
@@ -387,7 +444,10 @@ func (e *Engine) match(o *Order) *ExecReport {
 		case o.TIF == IOC || o.TIF == FOK:
 			status = "CANCELED"
 		default:
+			// A market order that found an empty book: it never rests, so there
+			// is nothing to report but a reject — say what was missing.
 			status = "REJECTED"
+			reason = "no liquidity: no resting " + string(oppositeSide(o.Side)) + " orders on " + o.Symbol
 		}
 	}
 	avg := 0.0
@@ -395,7 +455,7 @@ func (e *Engine) match(o *Order) *ExecReport {
 		avg = round2(notional / float64(cumQty))
 	}
 	rep := &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
-		Status: status, Fills: fills, FilledQty: cumQty, LeavesQty: leaves, AvgPx: avg}
+		Status: status, Fills: fills, FilledQty: cumQty, LeavesQty: leaves, AvgPx: avg, Reason: reason}
 	if n := len(fills); n > 0 {
 		rep.LastPx = fills[n-1].Price
 		rep.LastQty = fills[n-1].Qty
@@ -469,7 +529,7 @@ func (e *Engine) triggerStops(sym string) {
 	if len(pend) == 0 {
 		return
 	}
-	last := e.md[sym].Last
+	last := e.mdOf(sym).Last
 	if last <= 0 {
 		return
 	}
@@ -582,7 +642,7 @@ func (e *Engine) SetPhase(phase string) string {
 		prev := e.phase
 		e.phase = phase
 		if prev == "Pre-Open" && phase == "Continuous Trading" {
-			for _, in := range e.instr {
+			for _, in := range e.instr() {
 				e.uncross(in.Symbol)
 				e.triggerStops(in.Symbol)
 			}
@@ -596,7 +656,7 @@ func (e *Engine) SetPhase(phase string) string {
 // price that maximises executable volume and trades all crossing orders there.
 func (e *Engine) uncross(sym string) {
 	b := e.book(sym)
-	md := e.md[sym]
+	md := e.mdOf(sym)
 	if len(b.bidPx) == 0 || len(b.askPx) == 0 {
 		return
 	}
@@ -678,7 +738,7 @@ func absI64(x int64) int64 {
 
 func (e *Engine) refreshTop(sym string) {
 	b := e.book(sym)
-	md := e.md[sym]
+	md := e.mdOf(sym)
 	if lv := b.bestBid(); lv != nil {
 		md.Bid, md.BidQty = k2px(lv.px), lv.qty
 	} else {
@@ -697,8 +757,8 @@ func (e *Engine) refreshTop(sym string) {
 
 func (e *Engine) recomputeIndex() {
 	sum, prevSum := 0.0, 0.0
-	for _, in := range e.instr {
-		md := e.md[in.Symbol]
+	for _, in := range e.instr() {
+		md := e.mdOf(in.Symbol)
 		sum += md.Last
 		prevSum += md.Prev
 	}
@@ -716,8 +776,8 @@ func (e *Engine) newOrder(sym string, side Side, typ OrdType, price float64, qty
 // engine tick under the write lock; refreshes tops of books that changed.
 func (e *Engine) sweepExpired() {
 	now := time.Now()
-	for _, in := range e.instr {
-		b := e.books[in.Symbol]
+	for _, in := range e.instr() {
+		b := e.book(in.Symbol)
 		if b == nil {
 			continue
 		}
@@ -747,14 +807,10 @@ func (e *Engine) emitTrade(t Trade) {
 
 func (e *Engine) broadcastSnapshot() {
 	e.mu.RLock()
-	rows := make([]MarketData, 0, len(e.instr))
-	for _, in := range e.instr {
-		rows = append(rows, *e.md[in.Symbol])
-	}
+	rows := e.marketRowsLocked()
 	idx := e.index
 	phase := e.phase
 	e.mu.RUnlock()
-	sort.Slice(rows, func(i, j int) bool { return rows[i].Symbol < rows[j].Symbol })
 	b, _ := json.Marshal(map[string]any{"type": "market", "index": idx, "phase": phase, "rows": rows, "ts": time.Now().UnixMilli()})
 	e.bus.publish(b)
 }
@@ -772,18 +828,56 @@ func (e *Engine) snapshotBook(sym string) map[string]any {
 			tr = append(tr, e.trades[i])
 		}
 	}
-	return map[string]any{"symbol": sym, "md": e.md[sym], "bids": b.depthSide(true, 10), "asks": b.depthSide(false, 10), "trades": tr}
+	return map[string]any{"symbol": sym, "md": e.mdOf(sym), "bids": b.depthSide(true, 10), "asks": b.depthSide(false, 10), "trades": tr}
 }
 
-func (e *Engine) marketRows() []MarketData {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	rows := make([]MarketData, 0, len(e.instr))
-	for _, in := range e.instr {
-		rows = append(rows, *e.md[in.Symbol])
+// marketRow is one Market Watch line: the live prices plus the instrument's
+// reference data, so the terminal can filter by board, class, sector and status.
+type marketRow struct {
+	MarketData
+	Board      string `json:"board"`
+	AssetClass string `json:"asset_class"`
+	Sector     string `json:"sector"`
+	Category   string `json:"category"`
+	Status     string `json:"status"`
+}
+
+// categoryOf is the DSE share category: the letter in a board label such as
+// "Main (A)", S for the SME board, or "" when the board carries none.
+func categoryOf(board string) string {
+	if i, j := strings.IndexByte(board, '('), strings.IndexByte(board, ')'); i >= 0 && j == i+2 {
+		return board[i+1 : j]
+	}
+	if strings.Contains(strings.ToUpper(board), "SME") {
+		return "S"
+	}
+	return ""
+}
+
+// marketRowsLocked builds the sorted Market Watch rows; delisted scrips are left
+// out. The caller holds e.mu.
+func (e *Engine) marketRowsLocked() []marketRow {
+	rows := make([]marketRow, 0, len(e.instr()))
+	for _, in := range e.instr() {
+		m := metaFor(in.Symbol)
+		if m.Delisted {
+			continue
+		}
+		board := m.Board
+		if board == "" {
+			board = "MAIN"
+		}
+		rows = append(rows, marketRow{MarketData: *e.mdOf(in.Symbol), Board: board,
+			AssetClass: assetClassOf(m), Sector: m.Sector, Category: categoryOf(board), Status: m.statusOf()})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Symbol < rows[j].Symbol })
 	return rows
+}
+
+func (e *Engine) marketRows() []marketRow {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.marketRowsLocked()
 }
 
 func round2(f float64) float64 { return math.Round(f*100) / 100 }
@@ -797,7 +891,8 @@ func (e *Engine) SubmitAndWait(o *Order) *ExecReport {
 	case rep := <-o.reply:
 		return rep
 	case <-time.After(3 * time.Second):
-		return &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side, Status: "REJECTED"}
+		return &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side, Status: "REJECTED",
+			Reason: "matching engine did not respond within 3s"}
 	}
 }
 
@@ -809,14 +904,14 @@ func (e *Engine) LoadTest(n int, sym string) map[string]any {
 	if n <= 0 {
 		n = 100000
 	}
-	if e.md[sym] == nil {
-		sym = e.instr[0].Symbol
+	if e.mdOf(sym) == nil {
+		sym = e.instr()[0].Symbol
 	}
 	e.mu.RLock()
-	base := e.md[sym].Ref
+	base := e.mdOf(sym).Ref
 	e.mu.RUnlock()
 	if base <= 0 {
-		base = e.md[sym].Prev
+		base = e.mdOf(sym).Prev
 	}
 	rng := rand.New(rand.NewSource(42))
 	orders := make([]*Order, n)
@@ -853,4 +948,12 @@ func (e *Engine) LoadTest(n int, sym string) map[string]any {
 		"orders_per_sec": ops,
 		"ns_per_order":   el.Nanoseconds() / int64(n),
 	}
+}
+
+// oppositeSide names the side an aggressor needs liquidity from, for reject text.
+func oppositeSide(s Side) Side {
+	if s == Buy {
+		return Sell
+	}
+	return Buy
 }

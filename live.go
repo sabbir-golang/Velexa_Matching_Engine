@@ -156,7 +156,6 @@ type LiveBench struct {
 	eng    *Engine
 	apiURL string
 	token  string
-	obOf   map[string]int
 
 	sent, accepted, rejected, filled int64
 	rejReasons                       sync.Map
@@ -218,15 +217,10 @@ func ensureSession(bk *brokerInfo) {
 }
 
 func NewLiveBench(eng *Engine) *LiveBench {
-	ob := map[string]int{}
-	for i, in := range eng.instr {
-		ob[in.Symbol] = 100001 + i
-	}
 	return &LiveBench{
 		eng:    eng,
 		apiURL: meAPIURL(),
 		token:  "4011ae325069f02d6a53b89a0145c251",
-		obOf:   ob,
 	}
 }
 
@@ -460,20 +454,20 @@ func (l *LiveBench) fire(client *http.Client) {
 			side = "SELL"
 			sym = sellable[int(seq)%len(sellable)]
 		} else {
-			sym = l.eng.instr[int(seq)%len(l.eng.instr)].Symbol
+			sym = pickSymbol(l.eng.instr(), seq)
 		}
 	default: // BUY-only
-		sym = l.eng.instr[int(seq)%len(l.eng.instr)].Symbol
+		sym = pickSymbol(l.eng.instr(), seq)
 	}
 	l.eng.mu.RLock()
-	last := l.eng.md[sym].Last
+	last := l.eng.mdOf(sym).Last
 	l.eng.mu.RUnlock()
 	if last <= 0 {
 		last = 100
 	}
 	// Snap to the instrument tick (same tick Phase B enforces on the ME) so
 	// simulator orders aren't rejected off-tick. round2 cleans the float.
-	tick := instrMeta[sym].Tick
+	tick := metaFor(sym).Tick
 	if tick <= 0 {
 		tick = 0.10
 	}
@@ -488,7 +482,7 @@ func (l *LiveBench) fire(client *http.Client) {
 		"action": "NEW_ORDER_SINGLE_REQUEST", "trader_id": traderID,
 		"trader_pk": traderPK, "branch_id": branchID, "board": "MAIN", "group": "PUBLIC",
 		"bo_id": boID, "client_code": clientCode,
-		"client_order_id": coid, "symbol": sym, "order_book_id": fmt.Sprintf("%d", l.obOf[sym]),
+		"client_order_id": coid, "symbol": sym, "order_book_id": fmt.Sprintf("%d", l.eng.orderBookID(sym)),
 		"qty": fmt.Sprintf("%d", qty), "price": fmt.Sprintf("%.2f", price), "side": side, "order_type": "LIMIT",
 	}
 	body, _ := json.Marshal(map[string]any{"subdomain": bk.Sub, "env": "prod", "group": traderID, "frame": frame})
@@ -708,4 +702,15 @@ func (l *LiveBench) Stats() map[string]any {
 		"lat_avg_ms": ms(la), "lat_p50_ms": ms(l50), "lat_p95_ms": ms(l95), "lat_p99_ms": ms(l99),
 		"reject_reasons": reasons, "tape": tape,
 	}
+}
+
+// pickSymbol rotates through one instrument snapshot. Taking the snapshot once
+// matters: the universe can grow while the live bench runs (a master import, a
+// FIX auto-list), so indexing into a second, differently sized snapshot could
+// run off the end.
+func pickSymbol(instr []Instrument, seq uint64) string {
+	if len(instr) == 0 {
+		return ""
+	}
+	return instr[int(seq)%len(instr)].Symbol
 }

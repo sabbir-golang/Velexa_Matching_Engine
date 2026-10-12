@@ -9,3 +9,7 @@ velexa-sim-me.*
 fix_messages.log
 # runtime audit data
 admin_audit.jsonl
+me.env
+matching-engine
+instruments.json
+data/

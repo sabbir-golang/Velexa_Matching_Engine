@@ -37,15 +37,10 @@ import (
 
 type itchFeed struct {
 	eng  *Engine
-	obOf map[string]int
 }
 
 func newItchFeed(eng *Engine) *itchFeed {
-	f := &itchFeed{eng: eng, obOf: map[string]int{}}
-	for i, in := range eng.instr {
-		f.obOf[in.Symbol] = 100001 + i // same mapping as itchgw.go
-	}
-	return f
+	return &itchFeed{eng: eng}
 }
 
 func (f *itchFeed) run() {
@@ -58,7 +53,7 @@ func (f *itchFeed) run() {
 		log.Printf("[ITCH] listen :%s failed: %v", port, err)
 		return
 	}
-	log.Printf("[ITCH] SoupBinTCP market feed listening on :%s (%d instruments)", port, len(f.eng.instr))
+	log.Printf("[ITCH] SoupBinTCP market feed listening on :%s (%d instruments)", port, len(f.eng.instr()))
 	for {
 		c, err := ln.Accept()
 		if err != nil {
@@ -85,8 +80,12 @@ type itchSession struct {
 
 func (f *itchFeed) session(c net.Conn) {
 	peer := c.RemoteAddr().String()
-	if !f.readLogin(c) {
-		log.Printf("[ITCH] %s: login read failed / not a LoginRequest", peer)
+	if ok, probe := f.readLogin(c); !ok {
+		// A connection that closes without sending a byte is a port health check
+		// (the admin dashboard probes this port every few seconds) — not worth a log line.
+		if !probe {
+			log.Printf("[ITCH] %s: login read failed / not a LoginRequest", peer)
+		}
 		c.Close()
 		return
 	}
@@ -128,10 +127,10 @@ func (s *itchSession) close() {
 
 // readLogin consumes one SoupBinTCP LoginRequest ('L': user6+pass10+session10+
 // seq20). Any credentials are accepted (this is a simulator feed).
-func (f *itchFeed) readLogin(c net.Conn) bool {
+func (f *itchFeed) readLogin(c net.Conn) (ok, probe bool) {
 	hdr := make([]byte, 3)
-	if _, err := io.ReadFull(c, hdr); err != nil {
-		return false
+	if n, err := io.ReadFull(c, hdr); err != nil {
+		return false, n == 0 && err == io.EOF
 	}
 	length := int(binary.BigEndian.Uint16(hdr[0:2]))
 	ptype := hdr[2]
@@ -139,7 +138,7 @@ func (f *itchFeed) readLogin(c net.Conn) bool {
 	if length > 1 {
 		body = make([]byte, length-1)
 		if _, err := io.ReadFull(c, body); err != nil {
-			return false
+			return false, false
 		}
 	}
 	// When ITCH feed auth is enabled, validate the SoupBinTCP LoginRequest's
@@ -149,7 +148,7 @@ func (f *itchFeed) readLogin(c net.Conn) bool {
 		pass := strings.TrimSpace(string(body[6:16]))
 		if reason := meItchAuth.authorize(user, pass); reason != "" {
 			log.Printf("[ITCH] %s: login REJECTED: %s", c.RemoteAddr(), reason)
-			return false
+			return false, false
 		}
 	}
 	// Simulator feed: accept ANY well-framed first packet as the login (some
@@ -157,7 +156,7 @@ func (f *itchFeed) readLogin(c net.Conn) bool {
 	if ptype != 'L' {
 		log.Printf("[ITCH] %s: accepting non-'L' login packet type=%q len=%d", c.RemoteAddr(), ptype, length)
 	}
-	return true
+	return true, false
 }
 
 // loginAcceptBody: session[10] + sequence[20] (right-aligned), space-padded —
@@ -250,8 +249,8 @@ func (s *itchSession) sendInitial() error {
 	}
 	var insts []inst
 	e.mu.RLock()
-	for _, in := range e.instr {
-		insts = append(insts, inst{uint32(s.f.obOf[in.Symbol]), in.Symbol, in.Name, in.Prev})
+	for _, in := range e.instr() {
+		insts = append(insts, inst{uint32(e.orderBookID(in.Symbol)), in.Symbol, in.Name, in.Prev})
 	}
 	e.mu.RUnlock()
 
@@ -295,10 +294,10 @@ func (s *itchSession) refresh() error {
 	var trades []trd
 
 	e.mu.RLock()
-	for _, in := range e.instr {
-		ob := uint32(s.f.obOf[in.Symbol])
+	for _, in := range e.instr() {
+		ob := uint32(e.orderBookID(in.Symbol))
 		os := obSnap{ob: ob}
-		if b := e.books[in.Symbol]; b != nil {
+		if b := e.book(in.Symbol); b != nil {
 			for _, l := range b.depthSide(true, 10) {
 				os.bids = append(os.bids, lvl{l.Price, l.Qty})
 			}
@@ -316,7 +315,7 @@ func (s *itchSession) refresh() error {
 		if t.Aggressor == Sell {
 			verb = 'S'
 		}
-		trades = append(trades, trd{uint32(s.f.obOf[t.Symbol]), verb, uint64(t.Qty), t.Price})
+		trades = append(trades, trd{uint32(s.f.eng.orderBookID(t.Symbol)), verb, uint64(t.Qty), t.Price})
 		s.lastTrade = t.ID
 	}
 	e.mu.RUnlock()

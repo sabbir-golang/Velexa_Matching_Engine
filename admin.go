@@ -30,7 +30,7 @@ type AuditEntry struct {
 var (
 	auditMu   sync.Mutex
 	auditRing []AuditEntry
-	auditPath = envOr("ME_AUDIT_FILE", "/opt/velexa-sim-me/admin_audit.jsonl")
+	auditPath = envOr("ME_AUDIT_FILE", stateFile("admin_audit.jsonl"))
 )
 
 func recordAudit(actor, action, target string) {
@@ -198,7 +198,7 @@ func portOpen(addr string) bool {
 
 // registerAdmin wires the /admin routes onto the gateway mux.
 // ── External OMS IP allowlist (fix_allow.json, read live by the FIXS forwarder) ──
-var allowPath = envOr("FIXS_ALLOW_FILE", "/opt/velexa-sim-me/fix_allow.json")
+var allowPath = envOr("FIXS_ALLOW_FILE", stateFile("fix_allow.json"))
 
 func readAllow() map[string]string {
 	m := map[string]string{}
@@ -278,7 +278,7 @@ func registerAdmin(mux *http.ServeMux, eng *Engine) {
 			events = meFixAcceptor.RecentEvents(50)
 		}
 		eng.mu.RLock()
-		phase, instr, orders, trades, running := eng.phase, len(eng.instr), eng.seq, eng.tradeSeq, eng.running
+		phase, instr, orders, trades, running := eng.phase, len(eng.instr()), eng.seq, eng.tradeSeq, eng.running
 		eng.mu.RUnlock()
 		writeJSON(w, map[string]any{
 			"phase": phase, "instruments": instr, "orders": orders, "trades": trades, "running": running,
@@ -292,6 +292,7 @@ func registerAdmin(mux *http.ServeMux, eng *Engine) {
 				"Gateway :8010": portOpen("127.0.0.1:8010"),
 			},
 			"sessions": sessions, "events": events, "audit": recentAudit(60),
+			"universe": instrumentStatus(eng),
 		})
 	}))
 

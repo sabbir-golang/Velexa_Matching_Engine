@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -81,7 +82,7 @@ func (a *fixAuth) password(comp string) string {
 func loadFixAuth() *fixAuth {
 	a := &fixAuth{
 		enabled: strings.EqualFold(envOr("ME_FIX_AUTH", "off"), "on"),
-		path:    envOr("ME_FIX_AUTH_FILE", "/opt/velexa-sim-me/fix_brokers.json"),
+		path:    envOr("ME_FIX_AUTH_FILE", stateFile("fix_brokers.json")),
 		creds:   map[string]string{},
 	}
 	if b, err := os.ReadFile(a.path); err == nil {
@@ -298,7 +299,7 @@ func StartFixAcceptor(eng *Engine, port, senderCompID string) (*FixAcceptor, err
 	// relaxed so broker-specific tags (parties, etc.) don't hard-fail.
 	dd := "UseDataDictionary=N\n"
 	if begin == "FIXT.1.1" && !strings.EqualFold(envOr("ME_FIX_DD", "on"), "off") {
-		spec := envOr("ME_FIX_SPEC_DIR", "/opt/velexa-sim-me/spec")
+		spec := specDir()
 		dd = "UseDataDictionary=Y\nTransportDataDictionary=" + spec + "/FIXT11.xml\nAppDataDictionary=" + spec + "/FIX50SP2.xml\n"
 	}
 	cfg := fmt.Sprintf(`[DEFAULT]
@@ -415,6 +416,36 @@ func (fa *FixAcceptor) getStr(m *quickfix.Message, t quickfix.Tag) string {
 	return v
 }
 
+// validateNew screens a NewOrderSingle before it reaches the matching engine and
+// returns the reject reason, or "" to accept. An unlisted symbol is auto-listed
+// when ME_AUTO_LIST is on (see instruments.go) rather than rejected: the OMS's
+// security master is routinely ahead of the ME's.
+func (fa *FixAcceptor) validateNew(symbol string, qty float64, typ OrdType, px, stopPx float64) string {
+	switch {
+	case symbol == "":
+		return "missing Symbol (tag 55)"
+	case !validSymbol(symbol):
+		return fmt.Sprintf("invalid symbol %q (tag 55): expected an exchange ticker", symbol)
+	case qty <= 0:
+		return fmt.Sprintf("invalid OrderQty (tag 38): %g — quantity must be greater than zero", qty)
+	case qty != math.Trunc(qty):
+		return fmt.Sprintf("invalid OrderQty (tag 38): %g — the exchange trades whole shares only", qty)
+	case (typ == StopMkt || typ == StopLim) && stopPx <= 0:
+		return "stop order with no StopPx (tag 99)"
+	}
+	if fa.eng.listed(symbol) {
+		return ""
+	}
+	seed := px
+	if seed <= 0 {
+		seed = stopPx
+	}
+	if fa.eng.autoList(symbol, seed) {
+		return ""
+	}
+	return fmt.Sprintf("unknown symbol %s: not in this engine's instrument universe (%s)", symbol, universeSource())
+}
+
 func (fa *FixAcceptor) handleNewOrder(m *quickfix.Message, sid quickfix.SessionID) {
 	t0 := time.Now()
 	defer func() { meFixLatency.rec(time.Since(t0).Nanoseconds()) }()
@@ -446,8 +477,11 @@ func (fa *FixAcceptor) handleNewOrder(m *quickfix.Message, sid quickfix.SessionI
 			typ = Market
 		}
 	}
-	if fa.eng.md[symbol] == nil || qty <= 0 {
-		fa.send(sid, &ExecReport{ClOrdID: clOrdID, Symbol: symbol, Side: side, Status: "REJECTED"})
+	// Reject with a cause the OMS can act on. A blank Text(58) here is what made
+	// every one of these arrive as an unexplained "rejected by simulator ME".
+	if reason := fa.validateNew(symbol, qty, typ, px, stopPx); reason != "" {
+		fa.send(sid, &ExecReport{ClOrdID: clOrdID, Symbol: symbol, Side: side,
+			Status: "REJECTED", Reason: reason, OrderQty: int64(qty), Price: px})
 		return
 	}
 	o := fa.eng.newOrder(symbol, side, typ, px, int64(qty), "FIX:"+sid.TargetCompID)
@@ -577,7 +611,11 @@ func (fa *FixAcceptor) send(sid quickfix.SessionID, rep *ExecReport) {
 	m.Body.SetString(tSide, sv)
 	m.Body.SetString(tLeavesQty, strconv.FormatInt(rep.LeavesQty, 10))
 	m.Body.SetString(tCumQty, strconv.FormatInt(rep.FilledQty, 10))
-	m.Body.SetString(tOrderQty, strconv.FormatInt(rep.FilledQty+rep.LeavesQty, 10)) // tag 38 OrderQty
+	ordQty := rep.OrderQty // tag 38 OrderQty — what the OMS asked for
+	if ordQty <= 0 {
+		ordQty = rep.FilledQty + rep.LeavesQty
+	}
+	m.Body.SetString(tOrderQty, strconv.FormatInt(ordQty, 10))
 	m.Body.SetString(tAvgPx, strconv.FormatFloat(rep.AvgPx, 'f', 2, 64))
 	if rep.Price > 0 {
 		m.Body.SetString(tPrice, strconv.FormatFloat(rep.Price, 'f', 2, 64)) // tag 44 limit price -> blotter

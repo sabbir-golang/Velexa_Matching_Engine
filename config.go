@@ -43,14 +43,14 @@ func omsDSN(db string) string {
 		envOr("ME_OMS_PASS", "Bdtask@#123"), db)
 }
 
-func meAPIURL() string       { return envOr("ME_API_URL", "http://127.0.0.1:8007/api/internal/order") }
+func meAPIURL() string { return envOr("ME_API_URL", "http://127.0.0.1:8007/api/internal/order") }
 func meAPILatencyURL() string {
 	if v := envOr("ME_API_LATENCY_URL", ""); v != "" {
 		return v
 	}
 	return strings.Replace(meAPIURL(), "/api/internal/order", "/api/internal/latency", 1)
 }
-func meFixAuthWS() string    { return envOr("ME_FIX_WS", "ws://127.0.0.1:8003/ws/auth") }
+func meFixAuthWS() string { return envOr("ME_FIX_WS", "ws://127.0.0.1:8003/ws/auth") }
 func meFixLatencyURL() string {
 	if v := envOr("ME_FIX_LATENCY_URL", ""); v != "" {
 		return v
@@ -60,4 +60,38 @@ func meFixLatencyURL() string {
 	return strings.Replace(u, "/ws/auth", "/api/latency", 1)
 }
 func meAdvertiseHost() string { return envOr("ME_ADVERTISE_HOST", "127.0.0.1") }
-func meAuditURL() string     { return envOr("ME_AUDIT_URL", "http://127.0.0.1:8092") }
+func meAuditURL() string      { return envOr("ME_AUDIT_URL", "http://127.0.0.1:8092") }
+
+// serverStateDir is where a deployed engine keeps its data files.
+const serverStateDir = "/opt/velexa-sim-me"
+
+func onServer() bool {
+	st, err := os.Stat(serverStateDir)
+	return err == nil && st.IsDir()
+}
+
+// stateFile is the default location of one of the engine's data files (broker
+// credentials, allowlist, audit trail, message log…). A deployed engine keeps
+// them under /opt/velexa-sim-me; on a machine without that directory (a
+// developer's laptop) they go in ./data instead, so saving a broker's
+// credentials works instead of failing with "no such directory".
+func stateFile(name string) string {
+	if onServer() {
+		return serverStateDir + "/" + name
+	}
+	_ = os.MkdirAll("data", 0o750)
+	return "data/" + name
+}
+
+// specDir is where the FIX data dictionaries (FIXT11.xml, FIX50SP2.xml) live:
+// the server's spec directory, else the spec/ folder shipped in the repository.
+// ME_FIX_SPEC_DIR overrides both. Without a dictionary the FIX acceptor cannot start.
+func specDir() string {
+	if v := os.Getenv("ME_FIX_SPEC_DIR"); v != "" {
+		return v
+	}
+	if onServer() {
+		return serverStateDir + "/spec"
+	}
+	return "spec"
+}

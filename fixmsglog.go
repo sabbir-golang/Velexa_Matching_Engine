@@ -35,7 +35,7 @@ type msgLogStore struct {
 var meMsgLog = &msgLogStore{max: 4000}
 
 func initMsgLog() {
-	path := envOr("ME_FIX_MSGLOG_FILE", "/opt/velexa-sim-me/fix_messages.log")
+	path := envOr("ME_FIX_MSGLOG_FILE", stateFile("fix_messages.log"))
 	if path == "" {
 		return
 	}

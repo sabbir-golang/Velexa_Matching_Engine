@@ -63,16 +63,11 @@ type ItchGateway struct {
 	depth       *wsHub
 	index       *wsHub
 	events      *wsHub
-	obOf        map[string]int
 	lastTradeID uint64
 }
 
 func NewItchGateway(eng *Engine) *ItchGateway {
-	g := &ItchGateway{eng: eng, market: newWsHub(), depth: newWsHub(), index: newWsHub(), events: newWsHub(), obOf: map[string]int{}}
-	for i, in := range eng.instr {
-		g.obOf[in.Symbol] = 100001 + i
-	}
-	return g
+	return &ItchGateway{eng: eng, market: newWsHub(), depth: newWsHub(), index: newWsHub(), events: newWsHub()}
 }
 
 func statusCode(md *MarketData) string {
@@ -94,7 +89,7 @@ func statusCode(md *MarketData) string {
 // board label the trader SPA's board filter expects. Without this every symbol
 // was broadcast as "Main Board", so the SME/ATB filters matched nothing.
 func spaBoardFor(symbol string) string {
-	switch instrMeta[symbol].Board {
+	switch metaFor(symbol).Board {
 	case "SME":
 		return "Small Cap Board"
 	case "ATB":
@@ -111,8 +106,8 @@ func (g *ItchGateway) buildFrames() (market [][]byte, depth [][]byte, index []by
 	var totVol, totTrades int64
 	var totVal float64
 	var up, dn, unch, nott int
-	for _, in := range e.instr {
-		md := e.md[in.Symbol]
+	for _, in := range e.instr() {
+		md := e.mdOf(in.Symbol)
 		totVol += md.Volume
 		totTrades += md.Trades
 		totVal += float64(md.Volume) * md.Last
@@ -126,9 +121,9 @@ func (g *ItchGateway) buildFrames() (market [][]byte, depth [][]byte, index []by
 		default:
 			unch++
 		}
-		ob := g.obOf[in.Symbol]
+		ob := e.orderBookID(in.Symbol)
 		row, _ := json.Marshal(map[string]any{
-			"ob": ob, "sn": in.Symbol, "fn": in.Name, "fln": in.Symbol, "ic": instrMeta[in.Symbol].ISIN,
+			"ob": ob, "sn": in.Symbol, "fn": in.Name, "fln": in.Symbol, "ic": metaFor(in.Symbol).ISIN,
 			"b": spaBoardFor(in.Symbol), "g": "PUBLIC", "sc": "General", "it": "EQ", "mt": "N", "d": md.Change,
 			"s": statusCode(md), "r": md.Prev, "c": md.Last, "o": md.Open,
 			"h": md.High, "l": md.Low, "lp": md.Last, "v": md.Volume,
@@ -138,7 +133,7 @@ func (g *ItchGateway) buildFrames() (market [][]byte, depth [][]byte, index []by
 		market = append(market, row)
 
 		buy, sell := []map[string]any{}, []map[string]any{}
-		if b := e.books[in.Symbol]; b != nil {
+		if b := e.book(in.Symbol); b != nil {
 			cum := int64(0)
 			for _, lv := range b.depthSide(true, 10) {
 				cum += lv.Qty
@@ -286,7 +281,7 @@ func (g *ItchGateway) newTsmFrames() [][]byte {
 		if t.ID <= g.lastTradeID {
 			continue
 		}
-		f, _ := json.Marshal(map[string]any{"tp": "tsm", "ob": g.obOf[t.Symbol], "d": tsmItem(t)})
+		f, _ := json.Marshal(map[string]any{"tp": "tsm", "ob": g.eng.orderBookID(t.Symbol), "d": tsmItem(t)})
 		out = append(out, f)
 		g.lastTradeID = t.ID
 	}
@@ -306,7 +301,7 @@ func (g *ItchGateway) eventsSnapshot() [][]byte {
 	nf, _ := json.Marshal(map[string]any{"tp": "news", "d": simNews()})
 	out = append(out, nf)
 	for sym, items := range bySym {
-		f, _ := json.Marshal(map[string]any{"tp": "tsm", "ob": g.obOf[sym], "d": items})
+		f, _ := json.Marshal(map[string]any{"tp": "tsm", "ob": g.eng.orderBookID(sym), "d": items})
 		out = append(out, f)
 	}
 	return out
