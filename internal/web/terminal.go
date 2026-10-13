@@ -1,7 +1,7 @@
 // Package web holds the HTML pages the engine serves: the trade terminal, the admin console and the benchmark page.
 package web
 
-const IndexHTML = `<!doctype html><html lang="en"><head>
+const IndexHTML = `<!doctype html><html lang="en"><head>` + ThemeHead + `
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Velexa · Simulator Matching Engine</title>
 <script>try{if(new URLSearchParams(location.search).has('embed'))document.documentElement.classList.add('embed')}catch(e){}</script>
@@ -79,14 +79,14 @@ html.embed .card{border-radius:13px}
 html.embed .hd{font-size:14px;padding:13px 16px}
 html.embed body{padding:0 2px 12px}
 html.embed .tab.on,html.embed .btn.buy{color:#04231f}
-</style></head><body>
+` + terminalLightCSS + terminalThemeBtnCSS + `</style></head><body>
 <div class="top">
   <div class="logo">V</div>
   <div class="brand">Velexa · Simulator Matching Engine<small>DSE OMS — technical demonstration</small></div>
   <div class="phase"><span class="dot"></span><span id="phase">Continuous Trading</span></div>
   <div class="idx">DSEX <span class="v" id="idx">—</span> <span id="idxchg"></span></div>
   <div class="stat"><span>Instruments <b id="sInstr">—</b></span><span>Orders <b id="sOrd">—</b></span><span>Trades <b id="sTrd">—</b></span><span>Engine <b style="color:var(--up)">RUNNING</b></span></div>
-  <div class="tools"><button type="button" class="tbtn" onclick="location.reload()">&#8635; Reload</button><a class="tbtn" href="/" target="_blank">New tab &#8599;</a></div>
+  <div class="tools"><button type="button" class="tbtn" onclick="location.reload()">&#8635; Reload</button><a class="tbtn" href="/terminal" target="_blank">New tab &#8599;</a>` + ThemeButton + `</div>
 </div>
 <div class="wrap">
   <div class="card">

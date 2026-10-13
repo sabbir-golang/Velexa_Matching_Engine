@@ -2,7 +2,7 @@ package web
 
 const AdminFontLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">`
 
-const AdminDashboardHTML = `<!doctype html><html><head><meta charset="utf-8">
+const AdminDashboardHTML = `<!doctype html><html><head><meta charset="utf-8">` + ThemeHead + `
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Matching Engine — Console</title>` + AdminFontLink + `
 <style>
@@ -189,7 +189,7 @@ input.f::placeholder{text-transform:none}
 .pwlink{display:block;text-align:center;color:var(--mut);font-size:12px;margin-bottom:8px;cursor:pointer;background:none;border:none;width:100%}
 .pwlink:hover{color:var(--ink)}
 body.role-user [data-admin-only]{display:none!important}
-</style></head><body>
+` + adminLightCSS + adminThemeBtnCSS + `</style></head><body>
 <div class="app">
  <aside>
   <div class="brand"><span class="logo">M</span><div><b>Matching Engine</b><small>DSEME · velexa</small></div></div>
@@ -224,6 +224,7 @@ body.role-user [data-admin-only]{display:none!important}
    <div><h1 id="pageTitle">Dashboard</h1><div class="sub" id="pageSub">Live engine status</div></div>
    <span class="sp"></span>
    <span class="live"><span class="d"></span><span id="up">—</span></span>
+   ` + ThemeButton + `
   </div>
   <div class="wrap">
 

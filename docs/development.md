@@ -151,6 +151,7 @@ Other files in the repo:
 - **FIX tags** are numeric `quickfix.Tag` constants at the top of `internal/fixgw/fixacceptor.go`. The code doesn't use quickfix's generated message packages.
 - **Logging.** Use the standard `log` package with a subsystem prefix: `[FIX]`, `[ITCH]`, `[universe]`, `[bench]`.
 - **Web pages** are HTML strings in Go constants in `internal/web` (`terminal.go`, `bench.go`, `admin.go`). There's no frontend build step and there are no static files.
+- **Theme.** Every page has a dark / light button (sun and moon icon). The choice is kept in the browser (`localStorage` key `me-theme`) and shared by the console, the embedded Trade Terminal and the benchmark page. Page styles live in `internal/web/theme.go` (`*LightCSS` overrides on `data-theme="light"`); dark is the default.
 
 ## Common changes
 

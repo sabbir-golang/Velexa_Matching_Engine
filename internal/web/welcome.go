@@ -2,7 +2,7 @@ package web
 
 // WelcomeHTML is the landing page at "/": a welcome board with User and Admin
 // sign-in. Both post to /admin/login; "as" tells the server which option was used.
-const WelcomeHTML = `<!doctype html><html><head><meta charset="utf-8">
+const WelcomeHTML = `<!doctype html><html><head><meta charset="utf-8">` + ThemeHead + `
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Welcome — Matching Engine</title>` + AdminFontLink + `
 <style>
@@ -50,7 +50,8 @@ select:focus{border-color:var(--acc)}
 .alt a{color:var(--acc);text-decoration:none;font-weight:600}
 .ft{color:var(--mut);font-size:11px;text-align:center;margin-top:18px;font-family:"IBM Plex Mono",monospace;letter-spacing:.05em}
 @media(max-width:820px){.wrap{grid-template-columns:1fr}.board{padding:6px 2px}h1{font-size:27px}}
-</style></head><body>
+` + welcomeLightCSS + welcomeThemeBtnCSS + `</style></head><body>
+` + ThemeButtonFixed + `
 <div class="wrap">
  <section class="board">
   <div class="brand"><span class="logo">M</span><div><b>Matching Engine</b><small>DSEME · VELEXA</small></div></div>

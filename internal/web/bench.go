@@ -1,6 +1,6 @@
 package web
 
-const BenchHTML = `<!doctype html><html lang="en"><head>
+const BenchHTML = `<!doctype html><html lang="en"><head>` + ThemeHead + `
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Velexa ME — Pipeline Benchmark</title>
 <style>
@@ -53,10 +53,11 @@ td{padding:5px 8px;border-bottom:1px solid #131c27}.tape{max-height:280px;overfl
 .hwnote b{color:var(--tx)}
 @media(max-width:900px){.hwgrid{grid-template-columns:1fr 1fr}.pipe{grid-template-columns:1fr 1fr}.hero{grid-template-columns:1fr}}
 .sel{background:#182231;color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:12px}
-.lpwrap{overflow-x:auto}.lpstages{display:flex;gap:0;align-items:stretch;min-width:max-content}.lpstage{background:#0e141d;border:1px solid #22303f;border-radius:8px;padding:9px 12px;min-width:98px;text-align:center}.lpstage.lppend{opacity:.4}.lpnm{font-size:10.5px;color:#7fa;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}.lpp95{font-family:monospace;font-size:16px;font-weight:600;color:#e8eef6;margin-top:5px}.lpsub2{font-size:10px;color:#7d8896;margin-top:2px;white-space:nowrap}.lparrow{align-self:center;color:#3a4757;padding:0 5px;font-size:13px}.pipe8{display:flex;gap:8px;overflow-x:auto;align-items:stretch;margin-bottom:16px;padding-bottom:6px}.pipe8 .stage{flex:1 1 120px;min-width:112px}.pipe8 .stage .lat{font-size:23px}.st-api{border-top:2px solid var(--blu)}.st-rms{border-top:2px solid var(--amb)}.st-kafka{border-top:2px solid #a78bfa}.st-fix{border-top:2px solid #f5a623}.st-me{border-top:2px solid var(--grn)}.st-db{border-top:2px solid var(--blu)}.st-blotter{border-top:2px solid #22d3ee}.st-total{border-top:2px solid #cfe2ff}.st-pend{opacity:.4}</style></head><body><div class="wrap">
+.lpwrap{overflow-x:auto}.lpstages{display:flex;gap:0;align-items:stretch;min-width:max-content}.lpstage{background:#0e141d;border:1px solid #22303f;border-radius:8px;padding:9px 12px;min-width:98px;text-align:center}.lpstage.lppend{opacity:.4}.lpnm{font-size:10.5px;color:#7fa;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}.lpp95{font-family:monospace;font-size:16px;font-weight:600;color:#e8eef6;margin-top:5px}.lpsub2{font-size:10px;color:#7d8896;margin-top:2px;white-space:nowrap}.lparrow{align-self:center;color:#3a4757;padding:0 5px;font-size:13px}.pipe8{display:flex;gap:8px;overflow-x:auto;align-items:stretch;margin-bottom:16px;padding-bottom:6px}.pipe8 .stage{flex:1 1 120px;min-width:112px}.pipe8 .stage .lat{font-size:23px}.st-api{border-top:2px solid var(--blu)}.st-rms{border-top:2px solid var(--amb)}.st-kafka{border-top:2px solid #a78bfa}.st-fix{border-top:2px solid #f5a623}.st-me{border-top:2px solid var(--grn)}.st-db{border-top:2px solid var(--blu)}.st-blotter{border-top:2px solid #22d3ee}.st-total{border-top:2px solid #cfe2ff}.st-pend{opacity:.4}` + benchLightCSS + benchThemeBtnCSS + `</style></head><body><div class="wrap">
 <header>
   <div class="brand"><div class="dot"></div><div><h1>Velexa Matching Engine — Live Pipeline Benchmark</h1>
   <div class="sub">Order generation → RMS pre-trade checks → price-time matching → durable DB store → execution report</div></div></div>
+  ` + ThemeButton + `
 </header>
 
 <div class="ctl">
