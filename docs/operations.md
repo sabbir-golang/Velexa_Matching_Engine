@@ -5,7 +5,7 @@ This page is for whoever deploys and runs the engine. It covers building and sta
 ## Build and run
 
 ```bash
-make build               # produces bin/velexa-sim-me (go build -o bin/velexa-sim-me ./cmd/matching-engine)
+make build               # produces bin/velexa-sim-me (go build -o bin/velexa-sim-me .)
 ./bin/velexa-sim-me
 ```
 
@@ -94,7 +94,7 @@ The generated config is plain TCP; it does no TLS. The broker onboarding sheet, 
 
 ## Admin console
 
-Open `http://<host>:8010/admin` (or the proxied URL) and sign in with `ME_ADMIN_USER` / `ME_ADMIN_PASS`. Sessions last 8 hours. After 5 wrong passwords, that client IP is locked out for 5 minutes.
+Open `http://<host>:8010/admin` (or the proxied URL) and sign in with `ME_ADMIN_USER` / `ME_ADMIN_PASS` (the first `admin`) or any account created on the **Users** page. Roles are `admin` (full access) and `user` (read-only; FIX passwords are masked in the message log). Sessions last 8 hours; disabling a user or changing a role applies on their next request. The last enabled admin cannot be deleted, disabled or demoted. After 5 wrong passwords, that client IP is locked out for 5 minutes.
 
 | View | What you can do |
 |---|---|
@@ -136,7 +136,7 @@ See [http-api](http-api.md#logging-in) for creating the cookie jar.
 
 ### Synthetic pipeline benchmark
 
-The synthetic benchmark measures the engine's own pipeline without the live market: order generation, then RMS checks (`rms.go`) on a worker pool, then a single matching goroutine on books seeded with 300 levels per side, then optionally Postgres persistence. Its books are separate from the live ones, so trading isn't affected. The reported target is 8000 trades/sec.
+The synthetic benchmark measures the engine's own pipeline without the live market: order generation, then RMS checks (`loadtest/rms.go`) on a worker pool, then a single matching goroutine on books seeded with 300 levels per side, then optionally Postgres persistence. Its books are separate from the live ones, so trading isn't affected. The reported target is 8000 trades/sec.
 
 **Prerequisites for persistence:** Postgres at `ME_DB_HOST:ME_DB_PORT` with a `velexa_sim` database containing the `sim_orders` and `sim_execs` tables. The columns are listed in [architecture](architecture.md#persistence). This repo doesn't create them. Without Postgres, run with `"persist": false`.
 
@@ -154,7 +154,7 @@ With `persist: true`, each start truncates `sim_orders` and `sim_execs`. `/api/b
 
 The live test sends real orders through the full external pipeline: OMS API (with its RMS) → Kafka/FIX initiator → this engine → broker blotter. It needs the whole OMS stack:
 
-- **OMS API.** `ME_API_URL` accepts `POST` with the header `X-Internal-Token`. The token is compiled into `live.go`.
+- **OMS API.** `ME_API_URL` accepts `POST` with the header `X-Internal-Token`. The token is compiled into `loadtest/live.go`.
 - **FIX initiator.** Its control WebSocket is at `ME_FIX_WS`.
 - **Session registration.** At start, the test sends a `logon` frame per broker to the FIX initiator. The frame contains the SenderCompID, the target `DSEME`, `FIXT.1.1`, host `ME_ADVERTISE_HOST`, port `5001` and the broker's FIX password if one is registered. The target and port are fixed in code; they don't follow `FIX_SENDER` or `FIX_PORT`.
 - **Broker databases.** The OMS Postgres (`ME_OMS_*`) holds each broker's database. The test reads active traders (`broker_house_trader`, `broker_house_tradermarketsegmentauthorization`) and investors (`broker_house_investor`) from it. If there are none, it uses made-up IDs (`T01`–`T20`, `INV00001`…).

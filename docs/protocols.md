@@ -4,7 +4,7 @@ This page is for anyone connecting to the engine's two binary interfaces: the FI
 
 ## FIX acceptor
 
-The acceptor is built on [quickfixgo](https://github.com/quickfixgo/quickfix) in `fixacceptor.go` (`StartFixAcceptor`). It stands in for the exchange's order gateway: brokers' FIX initiators connect, send orders, and get execution reports produced by the matching engine.
+The acceptor is built on [quickfixgo](https://github.com/quickfixgo/quickfix) in `fixgw/fixacceptor.go` (`StartFixAcceptor`). It stands in for the exchange's order gateway: brokers' FIX initiators connect, send orders, and get execution reports produced by the matching engine.
 
 ### Session settings
 
@@ -149,7 +149,7 @@ From the admin console (see [http-api](http-api.md#admin-console-api)) an operat
 
 ### Message log
 
-`fixmsglog.go` plugs into quickfix as its log. Every message in and out, except heartbeats (35=0), goes to:
+`fixgw/msglog.go` plugs into quickfix as its log. Every message in and out, except heartbeats (35=0), goes to:
 - an in-memory log of the newest 4000 messages, searchable through `/admin/api/fixlog`
 - an append-only file, `ME_FIX_MSGLOG_FILE`
 
@@ -163,7 +163,7 @@ The fields are the UTC time, the direction (`IN` or `OUT`), the session (the bro
 
 ## ITCH market-data feed
 
-`itchfeed.go` implements a SoupBinTCP server on `ITCH_PORT` (default `5501`) that streams DSE-ITCH messages. It's designed for the exchange's C++ `itch` service. The byte layouts match what that service's decoders expect, per the file header comment.
+`itchgw/feed.go` implements a SoupBinTCP server on `ITCH_PORT` (default `5501`) that streams DSE-ITCH messages. It's designed for the exchange's C++ `itch` service. The byte layouts match what that service's decoders expect, per the file header comment.
 
 ### Framing
 
@@ -218,5 +218,5 @@ All integers are big-endian. Text fields are fixed-width and padded with spaces.
 
 - **Timestamps** are the nanosecond part of the current second; the `T` message gives the second.
 - **Prices** are unsigned 32-bit integers equal to price × 100 (2 decimals).
-- **Order book IDs** are `100001` plus the instrument's position in the instrument list. They stay stable while the process runs, because the list only grows. `orderBookID` in `engine.go` is the one source of these IDs for the ITCH feed, the WebSocket gateway and the live load test.
+- **Order book IDs** are `100001` plus the instrument's position in the instrument list. They stay stable while the process runs, because the list only grows. `orderBookID` in `engine/engine.go` is the one source of these IDs for the ITCH feed, the WebSocket gateway and the live load test.
 - **Order numbers** and **match numbers** are counted separately for each connection.

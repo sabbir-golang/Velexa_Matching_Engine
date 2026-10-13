@@ -1,10 +1,10 @@
 # HTTP API
 
-This page documents everything served on the HTTP port (`PORT`, default `8010`): the web pages, the JSON API, the CSV exports, the WebSocket market-data streams, the `/events` stream and the admin console API. All routes are registered on one `http.ServeMux` in `run.go`, `admin.go` and `instruments.go`.
+This page documents everything served on the HTTP port (`PORT`, default `8010`): the web pages, the JSON API, the CSV exports, the WebSocket market-data streams, the `/events` stream and the admin console API. All routes are registered on one `http.ServeMux` in `Cmd/serve.go`, `rest/` and `engine/instruments.go`.
 
 Unless a route says otherwise:
 
-- Responses are JSON, written by `writeJSON` in `run.go`.
+- Responses are JSON, written by `utils.WriteJSON` in `utils/respond.go`.
 - The handler doesn't check the HTTP method, so any method works. The bundled pages use `GET` for reads and `POST` for actions; do the same.
 - Errors inside a JSON action come back as HTTP 200 with `{"ok": false, "error": "…"}`.
 
@@ -42,7 +42,8 @@ Unless a route says otherwise:
 | any | `/api/live/stats` | none | Live load-test metrics and the broker list. |
 | any | `/api/live/latency` | none | Per-stage latency gathered from the OMS API, the FIX initiator and this engine. |
 | any | `/api/live/cleanup` | none | **Destructive.** Truncates OMS order tables in every broker database (see [below](#live-load-test)). |
-| any | `/admin/login` | none | Login form (GET) and login submit (POST). |
+| any | `/register` | none | Self-registration (POST) with profile details: creates a `user` account, then returns to the sign-in form. `GET /admin/api/users` returns the profile fields for admins. |
+| any | `/admin/login` | none | Sign-in form submit (POST, posted from the welcome page). A GET redirects to `/`. |
 | any | `/admin/logout` | none | Clears the admin cookie. |
 | any | `/admin` | admin login | Admin console web page. |
 | any | `/admin/api/status` | admin login | Engine state, FIX sessions, listener checks, recent events and audit log. |
@@ -59,7 +60,11 @@ Unless a route says otherwise:
 | any | `/admin/api/fixlog` | admin login | Searches the FIX message log. |
 | any | `/admin/api/instruments` | admin login | Lists the instrument universe and auto-listed symbols. |
 | POST | `/admin/api/instruments/reload` | admin login | Reloads the security master from the configured sources. |
-| POST | `/admin/api/instruments/import` | admin login | Imports a security master from the request body. |
+| POST | `/admin/api/instruments/import` | admin role | Imports a security master from the request body. |
+| GET | `/admin/api/me` | any role | Current `user`, `role`, `can_write`. |
+| POST | `/admin/api/me/password` | any role | Body `{Old, New}`. |
+| GET | `/admin/api/users` | admin role | Console accounts (no hashes). |
+| POST | `/admin/api/user/add`, `/user/update`, `/user/password`, `/user/delete` | admin role | Manage accounts (`Username`, `Password`, `Role`, `Disabled`). |
 <!-- /AUTO:routes -->
 
 None of the `/api/*` routes need authentication. See [Security notes](configuration.md#security-notes).
@@ -189,7 +194,7 @@ Runs a generate → RMS → match → Postgres pipeline on separate books seeded
 |---|---|---|
 | `rate` | `0` | Target orders/sec; `0` means as fast as possible. |
 | `total` | `0` | Orders to generate; `0` means run until stopped. |
-| `rms` | `true` | Run the RMS checks in `rms.go`. |
+| `rms` | `true` | Run the RMS checks in `loadtest/rms.go`. |
 | `persist` | `true` | Write orders and executions to Postgres. Truncates `sim_orders` and `sim_execs` at start. |
 | `side` | `""` | `BUY`, `SELL`, or mixed (`BOTH` or empty). |
 
@@ -260,7 +265,7 @@ curl -s -X POST localhost:8010/api/live/stop
 
 ### WebSocket market streams: `/market`, `/marketdepth`, `/index`
 
-Served by `ItchGateway` in `itchgw.go` in the JSON shape the trader SPA expects. On connect, the client gets a full snapshot of its stream, then a full refresh every 500 ms. Messages from the client are read and ignored. The server accepts any `Origin`.
+Served by `ItchGateway` in `itchgw/gateway.go` in the JSON shape the trader SPA expects. On connect, the client gets a full snapshot of its stream, then a full refresh every 500 ms. Messages from the client are read and ignored. The server accepts any `Origin`.
 
 - `/market` sends one frame per instrument. The keys are `ob` (order book ID), `sn` (symbol), `fn` (name), `fln`, `ic` (ISIN), `b` (board label: `Main Board`, `Small Cap Board` or `Alternative Trading Board`), `g`, `sc`, `it`, `mt`, `d` (change), `s` (status: `nt` not traded, `u` up, `d` down, `uc` unchanged), `r` (previous close), `c`/`lp` (last), `o`, `h`, `l`, `v` (volume), `bd`/`ak` (bid/ask), `bq`/`aq`, `cg` (change %), `tds` (trades) and `ltt` (Unix time).
 - `/marketdepth` sends one frame per instrument: `{"ob": 100001, "100001": {"buy": [...], "sell": [...]}}`. Each level is `{o: orders, p: price, q: qty, cq: cumulative qty}`, up to 10 per side.
@@ -285,11 +290,11 @@ curl -N localhost:8010/events
 
 ### Logging in
 
-1. `POST /admin/login` with form fields `user` and `pass`, which must match `ME_ADMIN_USER` and `ME_ADMIN_PASS`.
-2. On success, the server sets the `me_admin` cookie (HttpOnly, `Path=/admin`, valid for 8 hours, SameSite=Lax, and `Secure` when `X-Forwarded-Proto` is `https`) and redirects to `/admin`. The cookie value is an HMAC-SHA256 of the username, keyed with `ME_ADMIN_SECRET`. Changing the secret or the username logs everyone out.
+1. `POST /admin/login` with form fields `user` and `pass`, which must match an enabled console account (the `ME_ADMIN_USER` / `ME_ADMIN_PASS` admin, or one from `users.json`). The cookie is a signed session carrying the username; the role is looked up on every request.
+2. On success, the server sets the `me_admin` cookie (HttpOnly, `Path=/`, valid for 8 hours, SameSite=Lax, and `Secure` when `X-Forwarded-Proto` is `https`) and redirects to `/admin` (admins) or `/user` (other roles). The cookie value is an HMAC-SHA256 of the username, keyed with `ME_ADMIN_SECRET`. Changing the secret or the username logs everyone out.
 3. After 5 failed attempts from one client IP, logins from that IP are refused for 5 minutes. The IP is taken from `CF-Connecting-IP`, then `X-Forwarded-For`, then the connection address. Those headers can be set by any client, so the throttle only holds when a proxy in front sets them.
 
-Without a valid cookie, `/admin/api/*` returns `401 {"error":"unauthorized"}` and `/admin` redirects to `/admin/login`.
+Without a valid cookie, `/admin/api/*` returns `401 {"error":"unauthorized"}` and `/admin` redirects to `/`, the welcome page.
 
 ```bash
 curl -s -c jar -d 'user=admin' -d "pass=$ME_ADMIN_PASS" localhost:8010/admin/login -o /dev/null
@@ -318,7 +323,11 @@ curl -s -b jar localhost:8010/admin/api/status
 | `/admin/api/instrument/halt` | POST `{Symbol,Halted}` | `Halted:true` halts; `Halted:false` activates (also lifts a `pending` listing). New orders on a halted, pending or delisted scrip are rejected and the bots stop quoting it. |
 | `/admin/api/instrument/delist` | POST `{Symbol}` | Delists: orders are rejected, it leaves the directory and the saved master (gone after a restart). |
 | `/admin/api/instruments/reload` | admin login | Reloads the security master from the configured sources. |
-| POST | `/admin/api/instruments/import` | admin login | Imports a security master from the request body. |
+| POST | `/admin/api/instruments/import` | admin role | Imports a security master from the request body. |
+| GET | `/admin/api/me` | any role | Current `user`, `role`, `can_write`. |
+| POST | `/admin/api/me/password` | any role | Body `{Old, New}`. |
+| GET | `/admin/api/users` | admin role | Console accounts (no hashes). |
+| POST | `/admin/api/user/add`, `/user/update`, `/user/password`, `/user/delete` | admin role | Manage accounts (`Username`, `Password`, `Role`, `Disabled`). |
 <!-- /AUTO:routes -->
 
 None of the `/api/*` routes need authentication. See [Security notes](configuration.md#security-notes).
@@ -448,7 +457,7 @@ Runs a generate → RMS → match → Postgres pipeline on separate books seeded
 |---|---|---|
 | `rate` | `0` | Target orders/sec; `0` means as fast as possible. |
 | `total` | `0` | Orders to generate; `0` means run until stopped. |
-| `rms` | `true` | Run the RMS checks in `rms.go`. |
+| `rms` | `true` | Run the RMS checks in `loadtest/rms.go`. |
 | `persist` | `true` | Write orders and executions to Postgres. Truncates `sim_orders` and `sim_execs` at start. |
 | `side` | `""` | `BUY`, `SELL`, or mixed (`BOTH` or empty). |
 
@@ -519,7 +528,7 @@ curl -s -X POST localhost:8010/api/live/stop
 
 ### WebSocket market streams: `/market`, `/marketdepth`, `/index`
 
-Served by `ItchGateway` in `itchgw.go` in the JSON shape the trader SPA expects. On connect, the client gets a full snapshot of its stream, then a full refresh every 500 ms. Messages from the client are read and ignored. The server accepts any `Origin`.
+Served by `ItchGateway` in `itchgw/gateway.go` in the JSON shape the trader SPA expects. On connect, the client gets a full snapshot of its stream, then a full refresh every 500 ms. Messages from the client are read and ignored. The server accepts any `Origin`.
 
 - `/market` sends one frame per instrument. The keys are `ob` (order book ID), `sn` (symbol), `fn` (name), `fln`, `ic` (ISIN), `b` (board label: `Main Board`, `Small Cap Board` or `Alternative Trading Board`), `g`, `sc`, `it`, `mt`, `d` (change), `s` (status: `nt` not traded, `u` up, `d` down, `uc` unchanged), `r` (previous close), `c`/`lp` (last), `o`, `h`, `l`, `v` (volume), `bd`/`ak` (bid/ask), `bq`/`aq`, `cg` (change %), `tds` (trades) and `ltt` (Unix time).
 - `/marketdepth` sends one frame per instrument: `{"ob": 100001, "100001": {"buy": [...], "sell": [...]}}`. Each level is `{o: orders, p: price, q: qty, cq: cumulative qty}`, up to 10 per side.
@@ -544,11 +553,11 @@ curl -N localhost:8010/events
 
 ### Logging in
 
-1. `POST /admin/login` with form fields `user` and `pass`, which must match `ME_ADMIN_USER` and `ME_ADMIN_PASS`.
-2. On success, the server sets the `me_admin` cookie (HttpOnly, `Path=/admin`, valid for 8 hours, SameSite=Lax, and `Secure` when `X-Forwarded-Proto` is `https`) and redirects to `/admin`. The cookie value is an HMAC-SHA256 of the username, keyed with `ME_ADMIN_SECRET`. Changing the secret or the username logs everyone out.
+1. `POST /admin/login` with form fields `user` and `pass`, which must match an enabled console account (the `ME_ADMIN_USER` / `ME_ADMIN_PASS` admin, or one from `users.json`). The cookie is a signed session carrying the username; the role is looked up on every request.
+2. On success, the server sets the `me_admin` cookie (HttpOnly, `Path=/`, valid for 8 hours, SameSite=Lax, and `Secure` when `X-Forwarded-Proto` is `https`) and redirects to `/admin` (admins) or `/user` (other roles). The cookie value is an HMAC-SHA256 of the username, keyed with `ME_ADMIN_SECRET`. Changing the secret or the username logs everyone out.
 3. After 5 failed attempts from one client IP, logins from that IP are refused for 5 minutes. The IP is taken from `CF-Connecting-IP`, then `X-Forwarded-For`, then the connection address. Those headers can be set by any client, so the throttle only holds when a proxy in front sets them.
 
-Without a valid cookie, `/admin/api/*` returns `401 {"error":"unauthorized"}` and `/admin` redirects to `/admin/login`.
+Without a valid cookie, `/admin/api/*` returns `401 {"error":"unauthorized"}` and `/admin` redirects to `/`, the welcome page.
 
 ```bash
 curl -s -c jar -d 'user=admin' -d "pass=$ME_ADMIN_PASS" localhost:8010/admin/login -o /dev/null
@@ -587,6 +596,16 @@ curl -s -b jar -X POST --data-binary @instruments.json localhost:8010/admin/api/
 
 | Path | Source | What it is |
 |---|---|---|
-| `/` | `web.go` (`indexHTML`) | Trade terminal: market watch from the `/events` SSE stream, order book and tape polled from `/api/book`, an order form posting to `/api/order` (actor `MANUAL`), and counters from `/api/status`. |
-| `/bench` | `benchweb.go` (`benchHTML`) | Benchmark page. Switches between the synthetic benchmark (`/api/bench/*`) and the live load test (`/api/live/*`, including cleanup), with a pipeline latency view from `/api/live/latency` and a bot toggle. |
-| `/admin` | `admin_html.go` (`adminDashboardHTML`) | Admin console. Views: Dashboard, Trade Terminal (embeds `/`), FIX Sessions, Simulator (embeds `/bench`), Broker Credentials, External OMS Access (IP allowlist), Message Log and Diagnostics. Refreshes status every 3 s. |
+| `/` | `web/terminal.go` (`indexHTML`) | Trade terminal: market watch from the `/events` SSE stream, order book and tape polled from `/api/book`, an order form posting to `/api/order` (actor `MANUAL`), and counters from `/api/status`. |
+| `/bench` | `web/bench.go` (`benchHTML`) | Benchmark page. Switches between the synthetic benchmark (`/api/bench/*`) and the live load test (`/api/live/*`, including cleanup), with a pipeline latency view from `/api/live/latency` and a bot toggle. |
+| `/admin` | `web/admin.go` (`adminDashboardHTML`) | Admin console. Views: Dashboard, Trade Terminal (embeds `/`), FIX Sessions, Simulator (embeds `/bench`), Broker Credentials, External OMS Access (IP allowlist), Message Log and Diagnostics. Refreshes status every 3 s. |
+
+## Console roles
+
+Console routes need a signed-in account. `admin` may call everything; `user` is read-only and gets `403 {"ok":false,"error":"forbidden: admin role required"}` on any route that changes state or reveals credentials (allowlist add/del, session control, instrument writes, `sim?action=`, all user management). Only the dashboard (`/admin`, `status`), broker credentials (`brokers` and `broker/detail|add|del|sheet`, the same as admin), the message log (`fixlog`) and `me` are open to both roles; the Trade Terminal is public. Everything else, including `allowlist`, `sim`, `instruments` and export, is admin-only, and the console hides those pages from `user` accounts; for `user`, tags 554 and 925 in `fixlog` are masked. Audit entries record `username (ip)`.
+
+`GET /` is the welcome page with **User login** and **Admin login** (both post to `/admin/login` with an `as` field; each option only accepts accounts of its own role). The Trade Terminal is at `/terminal` and, embedded, `/?embed=1`.
+
+`POST /register` (form `full_name`, `user`, `email`, `phone`, `gender` = male|female|other, `country`, `pass`, `pass2`; all required; email must be unique) creates a read-only `user` account and redirects to the sign-in form (no automatic sign-in); it never creates admins. At most 5 sign-ups per client IP per hour; `ME_REGISTRATION=off` closes it.
+
+Console address by role: admins use `/admin`, other accounts use `/user` (same console, fewer pages). Signing in redirects to the right one; opening the other redirects across; not signed in redirects to `/`. The API stays under `/admin/api/*` and the `me_admin` session cookie is now `Path=/`.

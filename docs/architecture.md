@@ -65,14 +65,12 @@ flowchart LR
     LIVE -- "/purge" --> AUD
 ```
 
-`main` in `run.go` wires everything together at startup:
+`Serve` in `Cmd/serve.go` (called from `main.go`) wires everything together at startup:
 
 1. Builds the bus, loads the instrument universe, creates the `Engine`, and starts its run loop and the bots.
 2. Starts the FIX acceptor (a failure is logged; HTTP keeps running) and loads the ITCH credentials.
-3. Registers the admin and instrument-admin routes.
-4. Starts the ITCH WebSocket gateway and the SoupBinTCP feed.
-5. Creates the Postgres pool for the benchmark (connections open lazily) and the benchmark objects.
-6. Registers the public routes and serves HTTP on `PORT`.
+3. Calls `newServer` (also in `Cmd/serve.go`), which loads the admin audit log and broker metadata, starts the ITCH WebSocket gateway and the SoupBinTCP feed, creates the Postgres pool for the benchmark (connections open lazily) and the benchmark and load-test objects.
+4. Serves HTTP on `PORT` with the routes registered by `rest/server.go`. Each package under `rest/handlers/` lists its own URLs in `routes.go`, and each URL is a method on that package's `Handler`.
 
 ## Concurrency model
 
@@ -112,7 +110,7 @@ flowchart LR
 
 ## Matching rules
 
-All matching code is in `engine.go` (`match`, `consumeFront`, `triggerStops`, `uncross`) and `book.go`.
+All matching code is in `engine/engine.go` (`match`, `consumeFront`, `triggerStops`, `uncross`) and `engine/book.go`.
 
 - **Price-time priority.** Each side of a book is a sorted list of price levels, best first. Each level is a first-in-first-out queue. Prices are stored as integer hundredths (`px2k`), so the engine works to 2 decimal places.
 - **Trade price.** A trade happens at the resting order's price.
@@ -186,7 +184,7 @@ It's recomputed every 700 ms across all instruments. The `/index` WebSocket stre
 
 ## Simulated market participants (bots)
 
-`startBots` in `bots.go` starts two goroutines per instrument at boot. Instruments listed later by auto-listing or an import get them too (`startBotsFor`).
+`startBots` in `engine/bots.go` starts two goroutines per instrument at boot. Instruments listed later by auto-listing or an import get them too (`startBotsFor`).
 
 | Bot | Actor | Behaviour |
 |---|---|---|
@@ -199,7 +197,7 @@ The bots' tick ladder is a market-making shortcut and is separate from the excha
 
 ## Risk management (RMS)
 
-`RiskEngine` in `rms.go` is used **only by the synthetic benchmark**; live orders never go through it. Its checks, in order:
+`RiskEngine` in `loadtest/rms.go` is used **only by the synthetic benchmark**; live orders never go through it. Its checks, in order:
 
 | Code | Rule |
 |---|---|
@@ -218,7 +216,7 @@ The live engine keeps everything in memory. Books, resting orders, trades and ma
 - the admin audit log
 - the FIX message log
 
-Only the synthetic benchmark writes to Postgres. `Persister` in `persist.go` copies rows into the `UNLOGGED` tables `sim_orders` and `sim_execs` in the `velexa_sim` database, in batches of up to 3000 rows or every 40 ms. Columns written:
+Only the synthetic benchmark writes to Postgres. `Persister` in `loadtest/persist.go` copies rows into the `UNLOGGED` tables `sim_orders` and `sim_execs` in the `velexa_sim` database, in batches of up to 3000 rows or every 40 ms. Columns written:
 
 - `sim_orders`: `id, cl_ord_id, account, symbol, side, qty, price, status, reject_reason, rms_ns, match_ns`. `/api/bench/orders.csv` also reads a `ts` column.
 - `sim_execs`: `exec_id, order_id, symbol, side, last_px, last_qty, cum_qty, status`
@@ -227,11 +225,11 @@ The SQL that creates these tables isn't in this repository.
 
 ## Instrument universe
 
-`loadUniverse` in `loader.go` decides which instruments the engine trades, trying each source in order:
+`loadUniverse` in `engine/loader.go` decides which instruments the engine trades, trying each source in order:
 
 1. **`ME_INSTRUMENT_FILE`**, an operator-supplied master. If it exists and parses to at least one tradeable instrument, it wins.
 2. **`EXCHANGE_INSTRUMENT_URL`**, fetched with a 12-second timeout. It's used only if it gives at least 50 tradeable instruments; fewer means the exchange hasn't imported its end-of-day file yet.
-3. **The built-in list**: 430 real DSE tickers in `universe_data.go` (`universe`) from the DSE end-of-day ticker file of 14 Sep 2023 — 374 equities, 36 mutual funds, 12 corporate bonds and 8 debentures at their closing prices. Class, category, sector and ISIN come from `instref_data.go`.
+3. **The built-in list**: 430 real DSE tickers in `engine/universe_data.go` (`universe`) from the DSE end-of-day ticker file of 14 Sep 2023 — 374 equities, 36 mutual funds, 12 corporate bonds and 8 debentures at their closing prices. Class, category, sector and ISIN come from `refdata/dse.go`.
 
 The chosen source is shown as `universe.source` in `/api/status` and the admin console.
 

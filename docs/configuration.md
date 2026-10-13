@@ -2,7 +2,7 @@
 
 This page lists everything that configures the matching engine at runtime: every environment variable the code reads, every data and config file it loads or writes, the directory layout those defaults assume, and the security issues to fix before running it anywhere shared.
 
-The engine has no command-line flags and no config file of its own. Everything comes from environment variables read through `envOr` in `config.go` (which treats an empty or whitespace-only value as unset) or, for a few older settings, `os.Getenv`. The process does not load an env file itself; whatever starts it must export the variables. The repo's `.gitignore` reserves `me.env` for a local env file.
+The engine has no command-line flags and no config file of its own. Everything comes from environment variables read through `envOr` in `config/config.go` (which treats an empty or whitespace-only value as unset) or, for a few older settings, `os.Getenv`. The process does not load an env file itself; whatever starts it must export the variables. The repo's `.gitignore` reserves `me.env` for a local env file.
 
 ## Environment variables
 
@@ -11,55 +11,57 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 <!-- AUTO:env-vars -->
 | Variable | Default | Purpose | Read in |
 |---|---|---|---|
-| `EXCHANGE_INSTRUMENT_URL` | deployment-specific default, see `loader.go` | URL of the exchange security master. Second choice for the instrument universe at boot and on reload (see [Instrument universe](architecture.md#instrument-universe)). | `loader.go` (`instrumentURL`) |
-| `FIXS_ALLOW_FILE` | `/opt/velexa-sim-me/fix_allow.json` | Source-IP allowlist for the external FIX gateway on port 5443, edited from the admin console. | `admin.go` (`allowPath`), `deploy/regen-fixs-gateway.sh` |
-| `FIX_PORT` | `5001` | TCP port of the FIX acceptor. | `run.go` |
-| `FIX_SENDER` | `DSEME` | SenderCompID of the FIX acceptor; also printed as the TargetCompID on broker onboarding sheets. | `run.go`, `admin.go` (`meEndpoints`) |
-| `ITCH_PORT` | `5501` | TCP port of the SoupBinTCP ITCH market-data feed. | `itchfeed.go` |
-| `LIVE_BROKERS_FILE` | unset; falls back to `/opt/velexa-sim-me/brokers.tsv` | Broker list used by the live load test. If the file is missing or empty, three built-in brokers are used. | `live.go` (`loadBrokersFile`) |
-| `ME_ADMIN_PASS` | built-in default (see [Security notes](#security-notes)) | Admin console password. | `admin.go` (`adminPass`) |
-| `ME_ADMIN_SECRET` | built-in default derived from the admin password | HMAC key that signs the `me_admin` session cookie. | `admin.go` (`adminSecret`) |
-| `ME_ADMIN_USER` | `admin` | Admin console username. | `admin.go` (`adminUser`) |
-| `ME_ADVERTISE_HOST` | `127.0.0.1` | Host the OMS FIX initiator is told to dial to reach this engine's FIX acceptor, used when the live load test registers broker sessions. | `config.go` (`meAdvertiseHost`) |
-| `ME_API_LATENCY_URL` | empty: derived from `ME_API_URL` by replacing `/api/internal/order` with `/api/internal/latency` | OMS API latency endpoint read by `/api/live/latency`. | `config.go` (`meAPILatencyURL`) |
-| `ME_API_URL` | `http://127.0.0.1:8007/api/internal/order` | OMS API internal order endpoint that the live load test posts orders to. | `config.go` (`meAPIURL`) |
-| `ME_AUDIT_FILE` | `/opt/velexa-sim-me/admin_audit.jsonl` | Append-only admin audit log. | `admin.go` (`auditPath`) |
-| `ME_AUDIT_URL` | `http://127.0.0.1:8092` | Base URL of the external audit service; `/api/live/cleanup` posts to `<url>/purge`. | `config.go` (`meAuditURL`) |
-| `ME_AUTO_LIST` | `on` | Whether an order for an unknown but well-formed symbol opens a new book instead of being rejected. `off`, `0`, `false` or `no` disable it. | `instruments.go` (`autoListEnabled`) |
-| `ME_BROKER_META_FILE` | `/opt/velexa-sim-me/broker_meta.json` | Broker metadata store (company, SenderCompID, linked ITCH user). | `brokermeta.go` (`loadBrokerMeta`) |
-| `ME_DB_HOST` | `127.0.0.1` | Host of the engine's own Postgres (database `velexa_sim`). Also the default for `ME_OMS_HOST`. | `config.go` (`meDBHost`) |
-| `ME_DB_PASS` | built-in default (see [Security notes](#security-notes)) | Password for the engine's own Postgres. | `config.go` (`meDSN`) |
-| `ME_DB_PORT` | `5432` | Port of the engine's own Postgres. | `config.go` (`meDSN`) |
-| `ME_DB_USER` | `postgres` | User for the engine's own Postgres. | `config.go` (`meDSN`) |
-| `ME_FIXS_PORT` | `5443` | External FIX gateway port printed on onboarding sheets. Display only: the engine does not listen on it (nginx does, see [operations](operations.md#external-fix-gateway-port-5443)). | `admin.go` (`meEndpoints`) |
-| `ME_FIX_APPLVER` | `9` | `DefaultApplVerID` when the BeginString is `FIXT.1.1` (`9` = FIX 5.0 SP2). | `fixacceptor.go` (`StartFixAcceptor`) |
-| `ME_FIX_AUTH` | `off` | `on` makes the FIX acceptor check every Logon against `fix_brokers.json`. | `fixacceptor.go` (`loadFixAuth`) |
-| `ME_FIX_AUTH_FILE` | `/opt/velexa-sim-me/fix_brokers.json` | FIX logon credential store (CompID → password). | `fixacceptor.go` (`loadFixAuth`) |
-| `ME_FIX_BEGIN` | `FIXT.1.1` | FIX BeginString of the acceptor session. The code comment names `FIX.4.4` as the rollback value. | `fixacceptor.go` (`StartFixAcceptor`) |
-| `ME_FIX_DD` | `on` | `off` turns off FIX 5.0 SP2 data-dictionary validation. Only applies when the BeginString is `FIXT.1.1`. | `fixacceptor.go` (`StartFixAcceptor`) |
-| `ME_FIX_LATENCY_URL` | empty: derived from `ME_FIX_WS` (`ws://` → `http://`, `wss://` → `https://`, `/ws/auth` → `/api/latency`) | FIX initiator latency endpoint read by `/api/live/latency`. | `config.go` (`meFixLatencyURL`) |
-| `ME_FIX_MSGLOG_FILE` | `/opt/velexa-sim-me/fix_messages.log` | Append-only FIX message log. | `fixmsglog.go` (`initMsgLog`) |
-| `ME_FIX_SPEC_DIR` | `/opt/velexa-sim-me/spec` | Directory holding `FIXT11.xml` and `FIX50SP2.xml`, the QuickFIX data dictionaries. | `fixacceptor.go` (`StartFixAcceptor`) |
-| `ME_FIX_WS` | `ws://127.0.0.1:8003/ws/auth` | Control WebSocket of the OMS FIX initiator. The live load test sends one logon frame per broker here. | `config.go` (`meFixAuthWS`) |
-| `ME_INSTRUMENT_FILE` | `/opt/velexa-sim-me/instruments.json` | Operator-supplied security master; first choice for the instrument universe. Admin imports are written here. | `loader.go` (`instrumentFile`) |
-| `ME_INT_IP` | deployment-specific default, see `admin.go` | Internal (on-platform) FIX IP printed on onboarding sheets. | `admin.go` (`meEndpoints`) |
-| `ME_INT_PORT` | `5001` | Internal FIX port printed on onboarding sheets. Display only. | `admin.go` (`meEndpoints`) |
-| `ME_ITCH_AUTH` | `off` | `on` makes the ITCH feed check SoupBinTCP logins against `itch_brokers.json`. | `itchauth.go` (`loadItchAuth`) |
-| `ME_ITCH_AUTH_FILE` | `/opt/velexa-sim-me/itch_brokers.json` | ITCH feed credential store (username → password). | `itchauth.go` (`loadItchAuth`) |
-| `ME_ITCH_IP` | value of `ME_PUB_IP` | ITCH feed IP printed on onboarding sheets. | `admin.go` (`meEndpoints`) |
-| `ME_ITCH_PORT` | `5501` | ITCH feed port printed on onboarding sheets. Display only: the listener uses `ITCH_PORT`. | `admin.go` (`meEndpoints`) |
-| `ME_OMS_HOST` | value of `ME_DB_HOST` | Host of the OMS Postgres (broker tenant databases and the trade master), used by the live load test and cleanup. | `config.go` (`omsDBHost`) |
-| `ME_OMS_PASS` | built-in default (see [Security notes](#security-notes)) | Password for the OMS Postgres. | `config.go` (`omsDSN`) |
-| `ME_OMS_PORT` | `5432` | Port of the OMS Postgres. | `config.go` (`omsDSN`) |
-| `ME_OMS_USER` | `postgres` | User for the OMS Postgres. | `config.go` (`omsDSN`) |
-| `ME_PUB_HOST` | deployment-specific default, see `admin.go` | Public hostname printed on onboarding sheets (Host / SNI). | `admin.go` (`meEndpoints`) |
-| `ME_PUB_IP` | deployment-specific default, see `admin.go` | Public IP printed on onboarding sheets for the external FIX gateway; also the default for `ME_ITCH_IP`. | `admin.go` (`meEndpoints`) |
-| `PORT` | `8010` | HTTP listen port (web UI, JSON API, WebSockets, admin console). | `run.go` |
+| `EXCHANGE_INSTRUMENT_URL` | deployment-specific default, see `engine/loader.go` | URL of the exchange security master. Second choice for the instrument universe at boot and on reload (see [Instrument universe](architecture.md#instrument-universe)). | `engine/loader.go` (`instrumentURL`) |
+| `FIXS_ALLOW_FILE` | `/opt/velexa-sim-me/fix_allow.json` | Source-IP allowlist for the external FIX gateway on port 5443, edited from the admin console. | `rest/handlers/broker/broker_helpers.go` (`allowPath`), `deploy/regen-fixs-gateway.sh` |
+| `FIX_PORT` | `5001` | TCP port of the FIX acceptor. | `Cmd/serve.go` |
+| `FIX_SENDER` | `DSEME` | SenderCompID of the FIX acceptor; also printed as the TargetCompID on broker onboarding sheets. | `Cmd/serve.go`, `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `ITCH_PORT` | `5501` | TCP port of the SoupBinTCP ITCH market-data feed. | `itchgw/feed.go` |
+| `LIVE_BROKERS_FILE` | unset; falls back to `/opt/velexa-sim-me/brokers.tsv` | Broker list used by the live load test. If the file is missing or empty, three built-in brokers are used. | `loadtest/live.go` (`loadBrokersFile`) |
+| `ME_USERS_FILE` | `<state dir>/users.json` | Console accounts and roles (PBKDF2 password hashes, mode 0600). | `database/users/users.go` (`Path`) |
+| `ME_REGISTRATION` | `on` | Set `off` to close self-registration on the welcome page. | `config/admin.go` (`RegistrationOpen`) |
+| `ME_ADMIN_PASS` | built-in default (see [Security notes](#security-notes)) | Admin console password. | `config/admin.go` (`AdminPass`) |
+| `ME_ADMIN_SECRET` | built-in default derived from the admin password | HMAC key that signs the `me_admin` session cookie. | `rest/handlers/broker/broker_helpers.go` (`adminSecret`) |
+| `ME_ADMIN_USER` | `admin` | Admin console username. | `config/admin.go` (`AdminUser`) |
+| `ME_ADVERTISE_HOST` | `127.0.0.1` | Host the OMS FIX initiator is told to dial to reach this engine's FIX acceptor, used when the live load test registers broker sessions. | `config/config.go` (`meAdvertiseHost`) |
+| `ME_API_LATENCY_URL` | empty: derived from `ME_API_URL` by replacing `/api/internal/order` with `/api/internal/latency` | OMS API latency endpoint read by `/api/live/latency`. | `config/config.go` (`meAPILatencyURL`) |
+| `ME_API_URL` | `http://127.0.0.1:8007/api/internal/order` | OMS API internal order endpoint that the live load test posts orders to. | `config/config.go` (`meAPIURL`) |
+| `ME_AUDIT_FILE` | `/opt/velexa-sim-me/admin_audit.jsonl` | Append-only admin audit log. | `database/audit/audit.go` (`Path`) |
+| `ME_AUDIT_URL` | `http://127.0.0.1:8092` | Base URL of the external audit service; `/api/live/cleanup` posts to `<url>/purge`. | `config/config.go` (`meAuditURL`) |
+| `ME_AUTO_LIST` | `on` | Whether an order for an unknown but well-formed symbol opens a new book instead of being rejected. `off`, `0`, `false` or `no` disable it. | `engine/instruments.go` (`autoListEnabled`) |
+| `ME_BROKER_META_FILE` | `/opt/velexa-sim-me/broker_meta.json` | Broker metadata store (company, SenderCompID, linked ITCH user). | `brokers/meta.go` (`loadBrokerMeta`) |
+| `ME_DB_HOST` | `127.0.0.1` | Host of the engine's own Postgres (database `velexa_sim`). Also the default for `ME_OMS_HOST`. | `config/config.go` (`meDBHost`) |
+| `ME_DB_PASS` | built-in default (see [Security notes](#security-notes)) | Password for the engine's own Postgres. | `config/config.go` (`meDSN`) |
+| `ME_DB_PORT` | `5432` | Port of the engine's own Postgres. | `config/config.go` (`meDSN`) |
+| `ME_DB_USER` | `postgres` | User for the engine's own Postgres. | `config/config.go` (`meDSN`) |
+| `ME_FIXS_PORT` | `5443` | External FIX gateway port printed on onboarding sheets. Display only: the engine does not listen on it (nginx does, see [operations](operations.md#external-fix-gateway-port-5443)). | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `ME_FIX_APPLVER` | `9` | `DefaultApplVerID` when the BeginString is `FIXT.1.1` (`9` = FIX 5.0 SP2). | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
+| `ME_FIX_AUTH` | `off` | `on` makes the FIX acceptor check every Logon against `fix_brokers.json`. | `fixgw/fixacceptor.go` (`loadFixAuth`) |
+| `ME_FIX_AUTH_FILE` | `/opt/velexa-sim-me/fix_brokers.json` | FIX logon credential store (CompID → password). | `fixgw/fixacceptor.go` (`loadFixAuth`) |
+| `ME_FIX_BEGIN` | `FIXT.1.1` | FIX BeginString of the acceptor session. The code comment names `FIX.4.4` as the rollback value. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
+| `ME_FIX_DD` | `on` | `off` turns off FIX 5.0 SP2 data-dictionary validation. Only applies when the BeginString is `FIXT.1.1`. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
+| `ME_FIX_LATENCY_URL` | empty: derived from `ME_FIX_WS` (`ws://` → `http://`, `wss://` → `https://`, `/ws/auth` → `/api/latency`) | FIX initiator latency endpoint read by `/api/live/latency`. | `config/config.go` (`meFixLatencyURL`) |
+| `ME_FIX_MSGLOG_FILE` | `/opt/velexa-sim-me/fix_messages.log` | Append-only FIX message log. | `fixgw/msglog.go` (`initMsgLog`) |
+| `ME_FIX_SPEC_DIR` | `/opt/velexa-sim-me/spec` | Directory holding `FIXT11.xml` and `FIX50SP2.xml`, the QuickFIX data dictionaries. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
+| `ME_FIX_WS` | `ws://127.0.0.1:8003/ws/auth` | Control WebSocket of the OMS FIX initiator. The live load test sends one logon frame per broker here. | `config/config.go` (`meFixAuthWS`) |
+| `ME_INSTRUMENT_FILE` | `/opt/velexa-sim-me/instruments.json` | Operator-supplied security master; first choice for the instrument universe. Admin imports are written here. | `engine/loader.go` (`instrumentFile`) |
+| `ME_INT_IP` | deployment-specific default, see `rest/handlers/broker/broker_helpers.go` | Internal (on-platform) FIX IP printed on onboarding sheets. | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `ME_INT_PORT` | `5001` | Internal FIX port printed on onboarding sheets. Display only. | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `ME_ITCH_AUTH` | `off` | `on` makes the ITCH feed check SoupBinTCP logins against `itch_brokers.json`. | `brokers/itchauth.go` (`loadItchAuth`) |
+| `ME_ITCH_AUTH_FILE` | `/opt/velexa-sim-me/itch_brokers.json` | ITCH feed credential store (username → password). | `brokers/itchauth.go` (`loadItchAuth`) |
+| `ME_ITCH_IP` | value of `ME_PUB_IP` | ITCH feed IP printed on onboarding sheets. | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `ME_ITCH_PORT` | `5501` | ITCH feed port printed on onboarding sheets. Display only: the listener uses `ITCH_PORT`. | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `ME_OMS_HOST` | value of `ME_DB_HOST` | Host of the OMS Postgres (broker tenant databases and the trade master), used by the live load test and cleanup. | `config/config.go` (`omsDBHost`) |
+| `ME_OMS_PASS` | built-in default (see [Security notes](#security-notes)) | Password for the OMS Postgres. | `config/config.go` (`omsDSN`) |
+| `ME_OMS_PORT` | `5432` | Port of the OMS Postgres. | `config/config.go` (`omsDSN`) |
+| `ME_OMS_USER` | `postgres` | User for the OMS Postgres. | `config/config.go` (`omsDSN`) |
+| `ME_PUB_HOST` | deployment-specific default, see `rest/handlers/broker/broker_helpers.go` | Public hostname printed on onboarding sheets (Host / SNI). | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `ME_PUB_IP` | deployment-specific default, see `rest/handlers/broker/broker_helpers.go` | Public IP printed on onboarding sheets for the external FIX gateway; also the default for `ME_ITCH_IP`. | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `PORT` | `8010` | HTTP listen port (web UI, JSON API, WebSockets, admin console). | `Cmd/serve.go` |
 <!-- /AUTO:env-vars -->
 
 ### Variables that only change what the onboarding sheet says
 
-`ME_PUB_HOST`, `ME_PUB_IP`, `ME_FIXS_PORT`, `ME_INT_IP`, `ME_INT_PORT`, `ME_ITCH_IP` and `ME_ITCH_PORT` are read only by `meEndpoints` in `admin.go`. They fill in the connection details on the broker detail view and the printable onboarding sheet. They don't open or move any listener. To move the real listeners, set `PORT`, `FIX_PORT` and `ITCH_PORT`.
+`ME_PUB_HOST`, `ME_PUB_IP`, `ME_FIXS_PORT`, `ME_INT_IP`, `ME_INT_PORT`, `ME_ITCH_IP` and `ME_ITCH_PORT` are read only by `meEndpoints` in `rest/handlers/broker/broker_helpers.go`. They fill in the connection details on the broker detail view and the printable onboarding sheet. They don't open or move any listener. To move the real listeners, set `PORT`, `FIX_PORT` and `ITCH_PORT`.
 
 ### Minimal single-box setup
 
@@ -91,7 +93,7 @@ With no variables set, the engine runs standalone on one machine:
 
 These examples are made up; they are not real entries.
 
-`instruments.json`, in the exchange payload shape (`masterInstr` in `loader.go`):
+`instruments.json`, in the exchange payload shape (`masterInstr` in `engine/loader.go`):
 
 ```json
 {
@@ -104,7 +106,7 @@ These examples are made up; they are not real entries.
 }
 ```
 
-Rows with `is_index: true`, or with `status` `halted` or `delisted`, are skipped, as are symbols that aren't valid tickers (see [Instrument universe](architecture.md#instrument-universe)). A CSV or TSV master needs a header row with a `symbol`, `ticker` or `trading_code` column. Other columns are matched loosely: case, spaces and underscores are ignored, so `Prev Close`, `prev_close` and `PrevClose` all work. `parseDelimited` in `loader.go` lists every accepted alias.
+Rows with `is_index: true`, or with `status` `halted` or `delisted`, are skipped, as are symbols that aren't valid tickers (see [Instrument universe](architecture.md#instrument-universe)). A CSV or TSV master needs a header row with a `symbol`, `ticker` or `trading_code` column. Other columns are matched loosely: case, spaces and underscores are ignored, so `Prev Close`, `prev_close` and `PrevClose` all work. `parseDelimited` in `engine/loader.go` lists every accepted alias.
 
 `fix_brokers.json` and `itch_brokers.json`:
 
@@ -158,10 +160,11 @@ Every file default points into one directory:
 
 Fix these before exposing the engine beyond a trusted network.
 
-- **Hardcoded credential defaults.** `ME_ADMIN_PASS` (`admin.go`), `ME_DB_PASS` and `ME_OMS_PASS` (`config.go`) fall back to passwords compiled into the binary, and `ME_ADMIN_SECRET` derives from the admin password. All four must be overridden in production. Because they are in the source, treat the defaults as public.
-- **Hardcoded internal API token.** The live load test sends a fixed `X-Internal-Token` header to the OMS API, compiled into `live.go` (`NewLiveBench`). There is no variable to override it.
+- **Console roles.** `ME_ADMIN_USER` / `ME_ADMIN_PASS` seed the first `admin` account in `users.json` and stay valid as a break-glass admin even if that file is lost. Further accounts are managed on the console **Users** page. Roles: `admin` (everything) and `user` (read-only). The public endpoints (`/api/order`, `/api/bots/*`, `/api/session/*`, the Trade Terminal) are not role-protected.
+- **Hardcoded credential defaults.** `ME_ADMIN_PASS` (`rest/handlers/broker/broker_helpers.go`), `ME_DB_PASS` and `ME_OMS_PASS` (`config/config.go`) fall back to passwords compiled into the binary, and `ME_ADMIN_SECRET` derives from the admin password. All four must be overridden in production. Because they are in the source, treat the defaults as public.
+- **Hardcoded internal API token.** The live load test sends a fixed `X-Internal-Token` header to the OMS API, compiled into `loadtest/live.go` (`NewLiveBench`). There is no variable to override it.
 - **Credential stores are committed to git.** `fix_brokers.json` and `itch_brokers.json` are tracked in the repository and hold broker passwords. `broker_meta.json`, `fix_allow.json` and `brokers.tsv` are tracked too and contain real broker and network details.
 - **Authentication is off by default.** `ME_FIX_AUTH` and `ME_ITCH_AUTH` both default to `off`, so any FIX CompID can log on and any ITCH client can subscribe.
-- **ITCH login check can be skipped.** With `ME_ITCH_AUTH=on`, `readLogin` in `itchfeed.go` checks credentials only when the login body is at least 16 bytes long; a shorter first packet is accepted without a check.
+- **ITCH login check can be skipped.** With `ME_ITCH_AUTH=on`, `readLogin` in `itchgw/feed.go` checks credentials only when the login body is at least 16 bytes long; a shorter first packet is accepted without a check.
 - **Most HTTP control endpoints are unauthenticated.** Only `/admin/api/*` and `/admin` need a login. `/api/order`, the benchmark and live-test controls, the session controls and `/api/live/cleanup` are open to anyone who can reach `PORT`. `/api/live/cleanup` truncates order tables in every broker database on the OMS Postgres (see [http-api](http-api.md#live-load-test)).
 - **The broker detail API returns passwords.** `/admin/api/broker/detail` returns a broker's FIX and ITCH passwords in plain JSON (behind the admin login).

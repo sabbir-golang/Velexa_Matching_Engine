@@ -2,7 +2,7 @@
 # Run from the repository root: the engine looks for spec/ and data/ relative to it.
 
 BIN := bin/velexa-sim-me
-PKG := ./cmd/matching-engine
+PKG := .
 
 .PHONY: build run test vet fmt conformance report clean
 
@@ -22,7 +22,7 @@ fmt:
 	gofmt -l -w cmd internal
 
 conformance:      ## re-run only the DSE FIX conformance suite (writes docs/conformance_results.json)
-	go test ./internal/me -run TestConformance -count=1 -v
+	go test ./internal/fixgw -run TestConformance -count=1 -v
 
 report: conformance  ## rebuild docs/DSE_Conformance_Report.pdf from the latest results
 	python3 tools/conformance_report.py

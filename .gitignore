@@ -19,3 +19,6 @@ me.env
 /logs/
 *.log
 fix_messages.log
+
+# state files that unit tests write next to the package under test
+/internal/**/data/

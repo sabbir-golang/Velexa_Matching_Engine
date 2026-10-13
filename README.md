@@ -24,6 +24,7 @@ A Go simulator of the Dhaka Stock Exchange (DSE) matching engine, built so an or
   - FIX session control
   - the message log
   - the audit log
+  - console users with roles: `admin` (full access) and `user` (read-only: dashboard, Trade Terminal, broker credentials, message log), managed on the Users page
 - **Load testing**: a synthetic pipeline benchmark (generation → RMS → matching → Postgres) and a live test that sends real orders through the full OMS pipeline, both with latency percentiles and CSV export.
 
 ## Quick start
@@ -31,7 +32,7 @@ A Go simulator of the Dhaka Stock Exchange (DSE) matching engine, built so an or
 You need Go 1.25 or newer.
 
 ```bash
-make run                          # same as: go run ./cmd/matching-engine
+make run                          # same as: go run .
 # or build a binary: make build && ./bin/velexa-sim-me
 ```
 
@@ -39,7 +40,7 @@ Start it from the repository root: it finds the FIX dictionaries in `spec/` and 
 
 Then:
 
-- open <http://localhost:8010/> for the trade terminal, <http://localhost:8010/bench> for benchmarks and <http://localhost:8010/admin> for the admin console
+- open <http://localhost:8010/> for the trade terminal, <http://localhost:8010/bench> for benchmarks and <http://localhost:8010/admin> for the admin console (non-admin accounts use <http://localhost:8010/user>)
 - check it's up with `curl -s localhost:8010/api/status`
 - send an order:
 
@@ -82,11 +83,17 @@ These docs are kept in sync with the code by the `/update-docs` Claude Code skil
 ## Project layout
 
 ```
-cmd/matching-engine/   entry point (calls me.Run())
-internal/me/           the engine: matching, FIX/ITCH, admin console, loaders, load tests, web pages
-internal/refdata/      DSE reference tables (asset class, category, sector, ISIN)
-spec/                  FIX data dictionaries
-docs/  tools/  deploy/ documentation, helper scripts, server deployment files
+main.go                entry point: calls cmd.Serve()
+Cmd/serve.go           wiring: builds the engine, starts the gateways, serves HTTP
+internal/
+  rest/                HTTP layer: server.go (mux), middleware/, handlers/<feature>/ (handler.go, routes.go, one file per endpoint), deps/
+  database/            file-backed stores: users/ (console accounts), brokers/ (FIX/ITCH logons, metadata), audit/
+  engine/              matching-engine core: orders, books, matching, instrument universe, bots
+  fixgw/               FIX 5.0 SP2 acceptor and message log
+  itchgw/              DSE-ITCH feed and WebSocket gateway
+  loadtest/            benchmark and live OMS load test
+  utils/ latency/ config/ web/ refdata/   JSON helpers, recorder, settings, HTML pages, DSE reference data
+spec/  docs/  tools/  deploy/      FIX dictionaries, documentation, scripts, server files
 Makefile               make build | run | test | vet | report
 ```
 

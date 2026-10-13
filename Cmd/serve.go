@@ -3,7 +3,6 @@ package cmd
 
 import (
 	"log"
-	"net/http"
 	"os"
 	"time"
 
@@ -50,8 +49,7 @@ func Serve() {
 
 	log.Printf("Velexa Simulator Matching Engine on :%s  (%d instruments from %s, auto-list=%v, phase=%s)",
 		port, len(eng.Instr()), engine.UniverseSource(), engine.AutoListEnabled(), eng.Phase)
-	httpSrv := &http.Server{Addr: ":" + port, Handler: srv.Routes(), ReadHeaderTimeout: 5 * time.Second}
-	log.Fatal(httpSrv.ListenAndServe())
+	srv.Start(":" + port)
 }
 
 // newServer starts the services the HTTP layer sits on: the admin stores, the
