@@ -107,3 +107,19 @@ func TestJournalRingKeepsTheNewestEvents(t *testing.T) {
 		t.Fatal("Wait did not fire on an append")
 	}
 }
+
+func TestStatsPerOrderSource(t *testing.T) {
+	e := newJournalEngine(t)
+	s := e.NewOrder("GP", Sell, Limit, 10, 100, "FIX:SELLER")
+	s.reply = make(chan *ExecReport, 1)
+	submit(e, s)
+	b := e.NewOrder("GP", Buy, Limit, 10, 40, "FIX:BUYER")
+	b.reply = make(chan *ExecReport, 1)
+	submit(e, b)
+	if st := e.StatsFor([]string{"FIX:SELLER"}); st.Orders != 1 || st.Trades != 1 || st.Volume != 40 {
+		t.Fatalf("seller stats %+v", st)
+	}
+	if st := e.StatsFor([]string{"FIX:NOBODY"}); st.Orders != 0 || st.Trades != 0 {
+		t.Fatalf("an unrelated source has activity: %+v", st)
+	}
+}

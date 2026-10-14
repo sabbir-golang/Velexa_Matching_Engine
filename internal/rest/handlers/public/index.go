@@ -30,8 +30,8 @@ func (h *Handler) Terminal(w http.ResponseWriter, r *http.Request) {
 
 // Welcome serves the landing page at / with the user and admin sign-in.
 func (h *Handler) Welcome(w http.ResponseWriter, r *http.Request) {
-	if middleware.SessionUser(h.Users, r) != nil {
-		http.Redirect(w, r, middleware.HomeFor(middleware.SessionUser(h.Users, r)), http.StatusSeeOther)
+	if u := middleware.SessionUser(h.Users, r); u != nil {
+		http.Redirect(w, r, middleware.HomeFor(u), http.StatusSeeOther)
 		return
 	}
 	msg, msgClass := "", "err"
@@ -52,21 +52,21 @@ func (h *Handler) Welcome(w http.ResponseWriter, r *http.Request) {
 	case "reg_name":
 		msg = "Username must be 3-32 characters: letters, digits, . _ -"
 	case "reg_weak":
-		msg = "Password must be at least 8 characters."
+		msg = "Password must be 10-128 characters, must not contain the username, and must use at least 3 of: lower-case, upper-case, digits, symbols."
 	case "reg_fullname":
 		msg = "Enter your full name."
 	case "reg_email":
 		msg = "Enter a valid email address."
-	case "reg_emailtaken":
-		msg = "That email is already registered."
 	case "reg_phone":
 		msg = "Enter a valid phone number (7-15 digits, may start with +)."
 	case "reg_gender":
 		msg = "Select a gender."
 	case "reg_country":
 		msg = "Select a country."
-	case "reg_exists":
-		msg = "That username is already taken."
+	case "reg_taken":
+		msg = "An account could not be created with these details. Choose another username, or sign in if you already have an account."
+	case "csrf":
+		msg = "The form expired. Please try again."
 	case "admin":
 		msg = "This is an administrator account. Use Admin login."
 	case "role":

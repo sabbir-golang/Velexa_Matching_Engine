@@ -1,7 +1,7 @@
 package broker
 
 import (
-	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -24,7 +24,9 @@ func (h *Handler) AllowList(w http.ResponseWriter, r *http.Request) {
 // AllowAdd serves /admin/api/allowlist/add.
 func (h *Handler) AllowAdd(w http.ResponseWriter, r *http.Request) {
 	var req struct{ IP, Label string }
-	json.NewDecoder(r.Body).Decode(&req)
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	ip := strings.TrimSpace(req.IP)
 	if ip == "" || net.ParseIP(ip) == nil {
 		utils.WriteJSON(w, map[string]any{"ok": false, "error": "a valid IP address is required"})
@@ -33,7 +35,8 @@ func (h *Handler) AllowAdd(w http.ResponseWriter, r *http.Request) {
 	m := readAllow()
 	m[ip] = strings.TrimSpace(req.Label)
 	if err := writeAllow(m); err != nil {
-		utils.WriteJSON(w, map[string]any{"ok": false, "error": err.Error()})
+		log.Printf("[allowlist] save: %v", err)
+		utils.WriteJSON(w, map[string]any{"ok": false, "error": "could not save the allowlist"})
 		return
 	}
 	audit.Record(middleware.ActorOf(r), "ALLOW+", ip)
@@ -43,7 +46,9 @@ func (h *Handler) AllowAdd(w http.ResponseWriter, r *http.Request) {
 // AllowRemove serves /admin/api/allowlist/del.
 func (h *Handler) AllowRemove(w http.ResponseWriter, r *http.Request) {
 	var req struct{ IP string }
-	json.NewDecoder(r.Body).Decode(&req)
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	ip := strings.TrimSpace(req.IP)
 	m := readAllow()
 	delete(m, ip)

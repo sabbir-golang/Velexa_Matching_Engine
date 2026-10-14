@@ -15,7 +15,7 @@ import (
 // External brokers authenticate at logon with their assigned SenderCompID plus
 // a password (FIX tag 554; tag 553 Username, if sent, must equal the CompID).
 // The allowlist maps broker CompID → password, loaded from ME_FIX_AUTH_FILE
-// (JSON: {"ALPHAEQUITIE":"secret", ...}). Enforcement is gated by ME_FIX_AUTH=on
+// (JSON: {"ALPHAEQUITIE":"secret", ...}). Enforcement is on unless ME_FIX_AUTH=off
 // so the internal single-box setup keeps working unauthenticated by default.
 type FixAuth struct {
 	mu      sync.RWMutex
@@ -40,7 +40,7 @@ func (a *FixAuth) Password(comp string) string {
 
 func LoadFix() *FixAuth {
 	a := &FixAuth{
-		Enabled: strings.EqualFold(config.EnvOr("ME_FIX_AUTH", "off"), "on"),
+		Enabled: strings.EqualFold(config.EnvOr("ME_FIX_AUTH", "on"), "on"),
 		path:    config.EnvOr("ME_FIX_AUTH_FILE", config.StateFile("fix_brokers.json")),
 		creds:   map[string]string{},
 	}
@@ -69,7 +69,7 @@ func (a *FixAuth) Authorize(broker, user, pass string) string {
 	if !ok {
 		return "broker not registered: " + broker
 	}
-	if pass != want {
+	if !secretEqual(pass, want) {
 		return "invalid credentials for " + broker
 	}
 	if user != "" && !strings.EqualFold(strings.TrimSpace(user), broker) {

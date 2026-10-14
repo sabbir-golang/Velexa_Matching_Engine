@@ -71,7 +71,7 @@ func testServer(t *testing.T) *Server {
 	eng := engine.NewEngine([]engine.Instrument{{Symbol: "GP", Name: "Grameenphone", Prev: 331.20}}, engine.NewBus())
 	go eng.Run()
 	return NewServer(&deps.Deps{Eng: eng, Bus: engine.NewBus(), Itch: itchgw.NewGateway(eng),
-		Users: users.Load(filepath.Join(t.TempDir(), "users.json"), "admin", "AdminPass123")})
+		Users: users.Load(filepath.Join(t.TempDir(), "users.json"), adminName, adminPW)})
 }
 
 // Registering a route twice panics, so building the mux also proves there are no
@@ -123,7 +123,7 @@ func TestPublicRoutesRespond(t *testing.T) {
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/order", nil))
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("GET /api/order = %d, want 405", rec.Code)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("GET /api/order without a session = %d, want 401", rec.Code)
 	}
 }

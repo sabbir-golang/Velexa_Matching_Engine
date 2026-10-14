@@ -22,3 +22,11 @@ fix_messages.log
 
 # state files that unit tests write next to the package under test
 /internal/**/data/
+
+# credentials and contacts: never commit (see the *.example files)
+deploy/state/fix_brokers.json
+deploy/state/itch_brokers.json
+deploy/state/broker_meta.json
+session.key
+initial-admin-password
+users.json

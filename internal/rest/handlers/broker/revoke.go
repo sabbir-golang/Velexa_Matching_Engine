@@ -1,7 +1,6 @@
 package broker
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -15,8 +14,14 @@ import (
 // broker/del — revoke a whole broker (FIX + ITCH + metadata) by SenderCompID.
 func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 	var req struct{ Sender string }
-	json.NewDecoder(r.Body).Decode(&req)
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	sender := strings.ToUpper(strings.TrimSpace(req.Sender))
+	if !middleware.CanAccessBroker(r, sender) {
+		middleware.Forbid(w)
+		return
+	}
 	if rec := brokers.Meta.Get(sender); rec != nil && rec.ItchUser != "" {
 		brokers.Itch.Del(rec.ItchUser)
 	}

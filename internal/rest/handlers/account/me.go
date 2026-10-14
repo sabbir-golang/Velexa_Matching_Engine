@@ -1,6 +1,7 @@
 package account
 
 import (
+	"errors"
 	"net/http"
 
 	"velexa-sim-me/internal/database/audit"
@@ -23,10 +24,21 @@ func (h *Handler) MePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := middleware.CurrentUser(r)
+	ip := middleware.ClientIP(r)
+	// The current password is checked, so this form is throttled like sign-in.
+	if middleware.LoginBlocked(ip, u.Username) {
+		utils.WriteJSON(w, map[string]any{"ok": false, "error": "too many attempts — try again in a few minutes"})
+		return
+	}
 	if err := h.Users.ChangeOwnPassword(u.Username, req.Old, req.New); err != nil {
+		if errors.Is(err, users.ErrWrongPassword) {
+			middleware.NoteLoginFail(ip, u.Username)
+		}
 		replyErr(w, err)
 		return
 	}
+	// Every other session of the account has ended; keep this browser signed in.
+	middleware.StartSession(w, r, h.Users, u.Username)
 	audit.Record(middleware.ActorOf(r), "user.password.self", u.Username)
 	utils.WriteJSON(w, map[string]any{"ok": true})
 }

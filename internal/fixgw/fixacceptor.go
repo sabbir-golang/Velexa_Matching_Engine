@@ -273,6 +273,11 @@ func (fa *Acceptor) ToAdmin(m *quickfix.Message, sid quickfix.SessionID) {
 func (fa *Acceptor) FromAdmin(m *quickfix.Message, sid quickfix.SessionID) quickfix.MessageRejectError {
 	fa.trackSeq(sid.TargetCompID, m, false)
 	if mt, _ := m.Header.GetString(tMsgType); mt == "A" {
+		if !validCompID(sid.TargetCompID) {
+			log.Printf("[FIX] logon REJECTED: malformed SenderCompID %q", sid.TargetCompID)
+			fa.record("(invalid)", "REJECT", "malformed SenderCompID")
+			return quickfix.RejectLogon{Text: "invalid SenderCompID"}
+		}
 		user, _ := m.Body.GetString(tUsername)
 		pass, _ := m.Body.GetString(tPassword)
 		if reason := fa.auth.Authorize(sid.TargetCompID, user, pass); reason != "" {
@@ -502,4 +507,18 @@ func parseExpire(t, d string) time.Time {
 		}
 	}
 	return time.Time{}
+}
+
+// validCompID is a plausible CompID: 1-20 letters, digits, '.', '-', '_'.
+// Anything else is refused at logon, before it can reach a log or the console.
+func validCompID(s string) bool {
+	if len(s) == 0 || len(s) > 20 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '.' || c == '-' || c == '_') {
+			return false
+		}
+	}
+	return true
 }

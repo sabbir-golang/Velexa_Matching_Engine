@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"velexa-sim-me/internal/database/brokers"
+	"velexa-sim-me/internal/rest/middleware"
 	"velexa-sim-me/internal/utils"
 )
 
@@ -12,6 +13,10 @@ import (
 // broker/detail — full dynamic credential + linkage for one broker.
 func (h *Handler) Detail(w http.ResponseWriter, r *http.Request) {
 	sender := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("sender")))
+	if !middleware.CanAccessBroker(r, sender) {
+		middleware.Forbid(w)
+		return
+	}
 	rec := brokers.Meta.Get(sender)
 	fixPass := brokers.Fix.Password(sender)
 	itchUser, company, created, contact := "", "", "", ""

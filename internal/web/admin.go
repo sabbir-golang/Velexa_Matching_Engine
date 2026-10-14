@@ -2,7 +2,7 @@ package web
 
 const AdminFontLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">`
 
-const AdminDashboardHTML = `<!doctype html><html><head><meta charset="utf-8">` + ThemeHead + `
+const AdminDashboardHTML = `<!doctype html><html><head><meta charset="utf-8">` + ThemeHead + CSRFHead + `
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Matching Engine — Console</title>` + AdminFontLink + `
 <style>
@@ -33,6 +33,7 @@ cursor:pointer;font-weight:500;font-size:13.5px;margin:1px 0;transition:backgrou
 .enpill .d{width:8px;height:8px;border-radius:50%;background:var(--grn);box-shadow:0 0 8px var(--grn)}
 .outbtn{display:block;text-align:center;color:var(--mut);text-decoration:none;font-size:12.5px;font-weight:600;
 border:1px solid var(--line);border-radius:9px;padding:8px}
+button.outbtn{width:100%;background:none;font-family:inherit;cursor:pointer}
 .outbtn:hover{border-color:var(--line2);color:var(--ink)}
 /* main */
 main{min-width:0}
@@ -197,7 +198,7 @@ body.role-user [data-admin-only]{display:none!important}
    <div class="navitem on" data-v="dash"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</div>
    <div class="navgrp">Trading</div>
    <div class="navitem" data-v="trade"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l3-4 3 2 4-6"/></svg>Trade Terminal</div>
-   <div class="navitem" data-v="sessions" data-admin-only><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>FIX Sessions<span class="badge" id="navSess"></span></div>
+   <div class="navitem" data-v="sessions"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>FIX Sessions<span class="badge" id="navSess"></span></div>
    <div class="navitem" data-v="market" data-admin-only><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Market Session</div>
    <div class="navitem" data-v="instruments" data-admin-only><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>Instruments</div>
    <div class="navgrp">Access</div>
@@ -213,7 +214,7 @@ body.role-user [data-admin-only]{display:none!important}
    <div class="enpill"><span class="d"></span><span id="enText">engine live</span></div>
    <div class="rolebadge"><span>Signed in as <b id="meName">&ndash;</b></span><span class="rl" id="meRole"></span></div>
    <button class="pwlink" onclick="changeMyPassword()">Change my password</button>
-   <a class="outbtn" href="/admin/logout">Sign out</a>
+   <form method="post" action="/admin/logout"><button class="outbtn" type="submit">Sign out</button></form>
   </div>
  </aside>
  <div class="backdrop" id="backdrop"></div>
@@ -290,7 +291,7 @@ body.role-user [data-admin-only]{display:none!important}
     </div>
     <h2>Registered brokers <span id="brokerCount" class="muted" style="font-weight:400;font-size:11px;text-transform:none;letter-spacing:0"></span></h2>
     <div class="filterbar"><input class="fi" id="f_broker" placeholder="Search company, SenderCompID or ITCH user…" style="min-width:320px" oninput="applyFilters()"></div>
-    <div class="panel"><table><thead><tr><th>Company</th><th>SenderCompID</th><th>ITCH user</th><th>Created</th><th class="right">Actions</th></tr></thead><tbody id="brokerList"></tbody></table></div>
+    <div class="panel"><table><thead><tr><th>Company</th><th>SenderCompID</th><th>ITCH user</th><th data-admin-only>Owner</th><th>Created</th><th class="right">Actions</th></tr></thead><tbody id="brokerList"></tbody></table></div>
    </section>
 
    <section class="view" id="view-instruments">
@@ -371,7 +372,7 @@ body.role-user [data-admin-only]{display:none!important}
    <section class="view" id="view-users" data-admin-only>
     <h2>Add a console user</h2>
     <div class="panel pad">
-     <p class="note"><b>admin</b> can change anything, including broker credentials and users. <b>user</b> is read-only: dashboard, Trade Terminal, broker credentials and message log. Passwords need at least 8 characters.</p>
+     <p class="note"><b>admin</b> can change anything, including broker credentials and users. <b>user</b> registers and manages only their own brokers (credentials, FIX sessions, message log) and sees the market; they never see other users' data.</p>
      <div class="grid2">
       <div class="field"><label class="fl">Username *</label><input class="f" id="u_name" placeholder="3-32 chars: letters, digits . _ -"></div>
       <div class="field"><label class="fl">Password *</label><input class="f" id="u_pass" type="password" placeholder="min 8 characters" autocomplete="new-password"></div>
@@ -417,7 +418,9 @@ body.role-user [data-admin-only]{display:none!important}
  <input type="hidden" name="company"><input type="hidden" name="sender"><input type="hidden" name="fix_pass"><input type="hidden" name="itch_user"><input type="hidden" name="itch_pass">
 </form>
 <script>
-function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]})}
+function esc(s){return String(s==null?"":s).replace(/[&<>"'\x60]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;","\x60":"&#96;"}[c]})}
+// jsa makes a value safe as a JavaScript string argument inside an HTML attribute: onclick="f("+jsa(x)+")".
+function jsa(s){return esc(JSON.stringify(String(s==null?"":s)))}
 function j(p,o){return fetch("/admin/api/"+p,o).then(function(r){return r.json()})}
 var titles={dash:["Dashboard","Live engine status"],trade:["Trade Terminal","Live order book, trade tape &amp; order entry"],sessions:["FIX Sessions","Connected brokers &amp; controls"],market:["Market Session","Trading phase &amp; the DSE clock"],creds:["Broker Credentials","Issue &amp; manage FIX/ITCH access"],instruments:["Instruments","List &amp; manage tradeable securities (DSE board, tick, previous close)"],access:["External OMS Access","Source-IP allowlist for the plain-FIX gateway"],msglog:["Message Log","FIX message trace — every order in &amp; out"],users:["Users","Console accounts &amp; roles"],diag:["Diagnostics","Auth state &amp; event log"]};
 function show(v){
@@ -464,8 +467,13 @@ function renderStatus(d){
   function kpi(v,l,cls){return "<div class='kpi "+(cls||"")+"'><div class='v'>"+v+"</div><div class=l>"+l+"</div></div>"}
   var k="";
   k+=kpi("<span class='"+(d.running?"grn-t":"amber-t")+"'>"+(d.running?"LIVE":"HALT")+"</span>","engine","grn");
-  k+=kpi(esc(d.phase),"session phase","blue");k+=kpi(d.instruments,"instruments");k+=kpi(d.orders,"orders");
-  k+=kpi(d.trades,"trades matched","grn");k+=kpi((d.sessions||[]).length,"live sessions","amber");
+  if(d.scope=="own"){ // a user's own dashboard: only their brokers' figures
+   k+=kpi(esc(d.phase),"session phase","blue");k+=kpi(d.my_brokers||0,"my brokers");k+=kpi((d.sessions||[]).length,"my connected sessions","amber");
+   k+=kpi(d.orders||0,"my orders");k+=kpi(d.trades||0,"my trades","grn");k+=kpi(Number(d.volume||0).toLocaleString(),"my traded volume");
+  }else{
+   k+=kpi(esc(d.phase),"session phase","blue");k+=kpi(d.instruments,"instruments");k+=kpi(d.orders,"orders");
+   k+=kpi(d.trades,"trades matched","grn");k+=kpi((d.sessions||[]).length,"live sessions","amber");
+  }
   document.getElementById("kpis").innerHTML=k;
   document.getElementById("navSess").textContent=(d.sessions||[]).length||"";
   var L=d.listeners||{},lr="";Object.keys(L).sort().forEach(function(n){
@@ -473,7 +481,7 @@ function renderStatus(d){
   document.getElementById("listeners").innerHTML=lr;
   var fs=flt("f_sess"),ss="",sc=0;(d.sessions||[]).forEach(function(s){if(!hit(s.broker,fs))return;sc++;
    ss+="<tr><td class=mono>"+esc(s.broker)+"</td><td class='mono muted'>"+esc(s.since)+"</td><td class=mono>"+(s.seq_sender||0)+" / "+(s.seq_target||0)+"</td><td class=right>"+
-     "<span data-admin-only><button class='btn sm ghost' onclick=\"sess('"+esc(s.broker)+"','reset')\">Reset seq</button> <button class='btn sm danger' onclick=\"sess('"+esc(s.broker)+"','disconnect')\">Disconnect</button></span></td></tr>"});
+     "<button class='btn sm ghost' onclick=\"sess("+jsa(s.broker)+",'reset')\">Reset seq</button> <button class='btn sm danger' onclick=\"sess("+jsa(s.broker)+",'disconnect')\">Disconnect</button></td></tr>"});
   document.getElementById("sessions").innerHTML=ss||"<tr><td colspan=4 class='pad16 muted'>No matching sessions.</td></tr>";
   setc("sess_cnt",sc+" of "+(d.sessions||[]).length);
   document.getElementById("phaseState").className="chip up";document.getElementById("phaseState").innerHTML="<span class=d></span>"+esc(d.phase);
@@ -517,22 +525,22 @@ function loadInstr(){j("instruments").then(function(d){
  _in=d.rows||[];_cls=d.classes||[];var s=d.summary||{};
  setc("ik_total",(s.total||0).toLocaleString());setc("ik_main",(s.main_equity||0).toLocaleString());
  setc("ik_bonds",(s.bonds||0).toLocaleString());setc("ik_pending",(s.pending||0).toLocaleString());
- document.getElementById("in_classes").innerHTML=_cls.map(function(c){return "<div class=cls-row style='cursor:pointer"+(_class==c.code?";background:rgba(77,208,177,.08)":"")+"' onclick=\"setClass('"+esc(c.code)+"')\" title='Filter by "+esc(c.label)+"'><span class=d style='background:"+esc(c.color)+"'></span><span style='font-weight:500'>"+esc(c.label)+"</span><span class=c>"+c.count+" listed</span></div>"}).join("");
+ document.getElementById("in_classes").innerHTML=_cls.map(function(c){return "<div class=cls-row style='cursor:pointer"+(_class==c.code?";background:rgba(77,208,177,.08)":"")+"' onclick=\"setClass("+jsa(c.code)+")\" title='Filter by "+esc(c.label)+"'><span class=d style='background:"+esc(c.color)+"'></span><span style='font-weight:500'>"+esc(c.label)+"</span><span class=c>"+c.count+" listed</span></div>"}).join("");
  renderInstr()})}
 function renderInstr(){
  var seen={},boards=[];_in.forEach(function(r){if(!seen[r.board]){seen[r.board]=1;boards.push(r.board)}});
  boards.sort();if(_board&&!seen[_board])_board="";
  document.getElementById("in_chips").innerHTML=["All"].concat(boards).map(function(b){
   var on=(b=="All"&&!_board)||b==_board;
-  return "<button class='btn sm "+(on?"acc":"ghost")+"' onclick=\"setBoard('"+(b=="All"?"":esc(b))+"')\">"+esc(b)+"</button>"}).join("");
+  return "<button class='btn sm "+(on?"acc":"ghost")+"' onclick=\"setBoard("+jsa(b=="All"?"":b)+")\">"+esc(b)+"</button>"}).join("");
  var f=flt("f_instr"),rows="",n=0;
  _in.forEach(function(r){
   if(_board&&r.board!=_board)return;
   if(_class&&r.asset_class!=_class)return;
   if(!hit(r.symbol+" "+r.name,f))return;n++;
   var st=r.status||"active",lbl=st.charAt(0).toUpperCase()+st.slice(1);
-  var pw=st=="active"?"<button class='ib warn' title='Halt' onclick=\"haltInstr('"+esc(r.symbol)+"',true)\">"+IB_POWER+"</button>":"<button class='ib up' title='Activate' onclick=\"haltInstr('"+esc(r.symbol)+"',false)\">"+IB_POWER+"</button>";
-  rows+="<tr><td><span class=code-tag>"+esc(r.symbol)+"</span></td><td style='font-weight:600'>"+esc(r.name)+"</td><td class=muted>"+esc(ASSET_LABEL[r.asset_class]||r.asset_class||"")+"</td><td class=muted>"+esc(r.board)+"</td><td class=muted>"+(r.sector?esc(SECTOR_LABEL[r.sector]||r.sector):"&mdash;")+"</td><td class='right mono'>"+r.lot+"</td><td class='right mono'>"+Number(r.tick||0).toFixed(2)+"</td><td><span class='pill "+st+"'><span class=d></span>"+lbl+"</span></td><td class=right style='white-space:nowrap' data-admin-only><button class=ib title='Edit' onclick=\"openInstr('"+esc(r.symbol)+"')\">"+IB_GEAR+"</button> "+pw+" <button class='ib del' title='Delist' onclick=\"delistInstr('"+esc(r.symbol)+"')\">"+IB_X+"</button></td></tr>"});
+  var pw=st=="active"?"<button class='ib warn' title='Halt' onclick=\"haltInstr("+jsa(r.symbol)+",true)\">"+IB_POWER+"</button>":"<button class='ib up' title='Activate' onclick=\"haltInstr("+jsa(r.symbol)+",false)\">"+IB_POWER+"</button>";
+  rows+="<tr><td><span class=code-tag>"+esc(r.symbol)+"</span></td><td style='font-weight:600'>"+esc(r.name)+"</td><td class=muted>"+esc(ASSET_LABEL[r.asset_class]||r.asset_class||"")+"</td><td class=muted>"+esc(r.board)+"</td><td class=muted>"+(r.sector?esc(SECTOR_LABEL[r.sector]||r.sector):"&mdash;")+"</td><td class='right mono'>"+r.lot+"</td><td class='right mono'>"+Number(r.tick||0).toFixed(2)+"</td><td><span class='pill "+st+"'><span class=d></span>"+lbl+"</span></td><td class=right style='white-space:nowrap' data-admin-only><button class=ib title='Edit' onclick=\"openInstr("+jsa(r.symbol)+")\">"+IB_GEAR+"</button> "+pw+" <button class='ib del' title='Delist' onclick=\"delistInstr("+jsa(r.symbol)+")\">"+IB_X+"</button></td></tr>"});
  document.getElementById("instrList").innerHTML=rows||"<tr><td colspan=9 style='text-align:center;padding:34px' class=muted>No instruments"+(f||_board||_class?" match the filter":"")+".</td></tr>";
  setc("in_count",n+(f||_board||_class?" match":" shown"));
 }
@@ -583,7 +591,7 @@ function delistInstr(sym){if(!confirm("Delist "+sym+"? It stops trading and is r
 document.addEventListener("keydown",function(e){if(e.key=="Escape")closeInstr()});
 function loadAllow(){j("allowlist").then(function(d){
  var rows="";(d.list||[]).forEach(function(r){
-  rows+="<tr><td class=mono>"+esc(r.ip)+"</td><td>"+(r.label?esc(r.label):"<span class=muted>&mdash;</span>")+"</td><td class=right data-admin-only><button class='btn sm danger' onclick=\"delAllow('"+esc(r.ip)+"')\">Remove</button></td></tr>"});
+  rows+="<tr><td class=mono>"+esc(r.ip)+"</td><td>"+(r.label?esc(r.label):"<span class=muted>&mdash;</span>")+"</td><td class=right data-admin-only><button class='btn sm danger' onclick=\"delAllow("+jsa(r.ip)+")\">Remove</button></td></tr>"});
  document.getElementById("allowList").innerHTML=rows||"<tr><td colspan=3 class='pad16 muted'>No IPs yet &mdash; the gateway is open to all. Add partner IPs to lock it down.</td></tr>";
  document.getElementById("allowCount").textContent="&middot; "+(d.count||0)+" allowed";
 })}
@@ -599,10 +607,10 @@ function renderBrokers(b){
   if(!b)return;
   var fb=flt("f_broker"),rows="",n=0;(b.brokers||[]).forEach(function(r){
    if(!hit((r.company||"")+" "+r.sender+" "+(r.itch_user||""),fb))return;n++;
-   rows+="<tr><td>"+(r.company?esc(r.company):"<span class=muted>—</span>")+"</td><td class=mono>"+esc(r.sender)+"</td><td class='mono muted'>"+esc(r.itch_user)+"</td><td class='mono muted'>"+esc(r.created)+"</td><td class=right>"+
-     "<button class='btn sm ghost' onclick=\"openDetail('"+esc(r.sender)+"')\">View</button> <button class='btn sm danger' onclick=\"del('"+esc(r.sender)+"')\">Revoke</button></td></tr>"});
-  document.getElementById("brokerList").innerHTML=rows||"<tr><td colspan=5 class='pad16 muted'>No matching brokers.</td></tr>";
-  document.getElementById("brokerCount").textContent="· "+n+" of "+(b.brokers||[]).length+" managed · "+b.fix_total+" FIX · "+b.itch_total+" ITCH";
+   rows+="<tr><td>"+(r.company?esc(r.company):"<span class=muted>—</span>")+"</td><td class=mono>"+esc(r.sender)+"</td><td class='mono muted'>"+esc(r.itch_user)+"</td><td class=muted data-admin-only>"+(r.owner?esc(r.owner):"<span class=muted>exchange</span>")+"</td><td class='mono muted'>"+esc(r.created)+"</td><td class=right>"+
+     "<button class='btn sm ghost' onclick=\"openDetail("+jsa(r.sender)+")\">View</button> <button class='btn sm danger' onclick=\"del("+jsa(r.sender)+")\">Revoke</button></td></tr>"});
+  document.getElementById("brokerList").innerHTML=rows||"<tr><td colspan=6 class='pad16 muted'>"+(b.scope=="own"&&!(b.brokers||[]).length?"You have no brokers yet — register one above.":"No matching brokers.")+"</td></tr>";
+  document.getElementById("brokerCount").textContent=b.scope=="own"?"· "+n+" of your "+(b.brokers||[]).length+" brokers":"· "+n+" of "+(b.brokers||[]).length+" managed · "+b.fix_total+" FIX · "+b.itch_total+" ITCH";
 }
 function applyFilters(){renderStatus(_s);renderBrokers(_b)}
 function tsess(a){j("trading-session?action="+a,{method:"POST"}).then(refresh)}
@@ -627,7 +635,7 @@ function addBroker(){
   loadBrokers();
  })}
 function sheetFrom(o){if(!o)return;var f=document.getElementById("sheetForm");
- f.company.value=o.company||"";f.sender.value=o.sender||"";f.fix_pass.value=o.fix_pass||"";f.itch_user.value=o.itch_user||"";f.itch_pass.value=o.itch_pass||"";f.submit()}
+ f.company.value=o.company||"";f.sender.value=o.sender||"";f.fix_pass.value=o.fix_pass||"";f.itch_user.value=o.itch_user||"";f.itch_pass.value=o.itch_pass||"";csrfField(f);f.submit()}
 function copyCell(btn){var cv=btn.parentNode.querySelector(".cv");if(cv&&navigator.clipboard){navigator.clipboard.writeText(cv.textContent);btn.textContent="copied";setTimeout(function(){btn.textContent="copy"},900)}}
 function closeModal(){document.getElementById("modal").className="modal"}
 function openDetail(sender){j("broker/detail?sender="+encodeURIComponent(sender)).then(function(d){
@@ -644,7 +652,7 @@ function openDetail(sender){j("broker/detail?sender="+encodeURIComponent(sender)
   h+="<div class=st><span class=n>3</span><div>Submit <b>NewOrderSingle (35=D)</b>; receive <b>ExecutionReport (35=8)</b> per state change.</div></div>";
   h+="<div class=st><span class=n>4</span><div>Subscribe to market data on the <b>ITCH</b> feed using the username/password above.</div></div>";
   h+="<div class=tagrow style='margin-top:12px'><div>OrdType (40): <code>1</code> Mkt <code>2</code> Lmt <code>3</code> Stop <code>4</code> StopLmt</div><div>Iceberg: <code>111</code> MaxFloor</div><div>TIF (59): <code>0</code> Day <code>1</code> GTC <code>3</code> IOC <code>4</code> FOK <code>6</code> GTD</div><div>Cancel / Amend: <code>35=F</code> / <code>35=G</code></div></div></div>";
-  h+="<div class=mactions><button class='btn acc' onclick='sheetFrom(window._detail)'>Open onboarding sheet ↗</button><button class='btn danger' onclick=\"closeModal();del('"+esc(d.sender)+"')\">Revoke broker</button></div>";
+  h+="<div class=mactions><button class='btn acc' onclick='sheetFrom(window._detail)'>Open onboarding sheet ↗</button><button class='btn danger' onclick=\"closeModal();del("+jsa(d.sender)+")\">Revoke broker</button></div>";
   document.getElementById("mcard").innerHTML=h;document.getElementById("modal").className="modal on";
  })}
 function del(sender){if(!confirm("Revoke ALL credentials for "+sender+"?"))return;
@@ -660,10 +668,10 @@ function loadMe(){return j("me").then(function(m){
 function loadUsers(){j("users").then(function(d){
  var rows="";(d.users||[]).forEach(function(u){var me=u.username==ME_USER,q=esc(u.username);
   rows+="<tr><td><b>"+q+"</b>"+(me?" <span class=muted>(you)</span>":"")+"</td><td style='font-size:12px;line-height:1.5'>"+(u.full_name?esc(u.full_name)+"<br><span class=muted>"+esc(u.email||"")+(u.phone?" · "+esc(u.phone):"")+(u.country?" · "+esc(u.country):"")+(u.gender?" · "+esc(u.gender):"")+"</span>":"<span class=muted>&mdash;</span>")+"</td><td><span class='chip "+(u.role=="admin"?"LOGON":"LOGOUT")+"'>"+esc(u.role)+"</span></td><td>"+(u.disabled?"<span class='pill pending'><span class=d></span>disabled</span>":"<span class='pill active'><span class=d></span>active</span>")+"</td><td class='mono muted'>"+(u.last_login?esc(u.last_login):"&mdash;")+"</td><td class=right style='white-space:nowrap'>"+
-   "<button class='btn sm ghost' onclick=\"setUserRole('"+q+"','"+(u.role=="admin"?"user":"admin")+"')\">Make "+(u.role=="admin"?"user":"admin")+"</button> "+
-   "<button class='btn sm ghost' onclick=\"resetUserPw('"+q+"')\">Reset password</button> "+
-   "<button class='btn sm ghost' onclick=\"toggleUser('"+q+"',"+(u.disabled?"false":"true")+")\">"+(u.disabled?"Enable":"Disable")+"</button> "+
-   "<button class='btn sm danger' onclick=\"delUser('"+q+"')\">Delete</button></td></tr>"});
+   "<button class='btn sm ghost' onclick=\"setUserRole("+jsa(u.username)+",'"+(u.role=="admin"?"user":"admin")+"')\">Make "+(u.role=="admin"?"user":"admin")+"</button> "+
+   "<button class='btn sm ghost' onclick=\"resetUserPw("+jsa(u.username)+")\">Reset password</button> "+
+   "<button class='btn sm ghost' onclick=\"toggleUser("+jsa(u.username)+","+(u.disabled?"false":"true")+")\">"+(u.disabled?"Enable":"Disable")+"</button> "+
+   "<button class='btn sm danger' onclick=\"delUser("+jsa(u.username)+")\">Delete</button></td></tr>"});
  document.getElementById("userList").innerHTML=rows||"<tr><td colspan=6 class='pad16 muted'>No users.</td></tr>";
  document.getElementById("userCount").textContent="· "+(d.users||[]).length+" accounts"})}
 function userDone(r,msg){if(!r.ok){toast(r.error||"Failed",true);return}toast(msg);loadUsers()}

@@ -1,10 +1,12 @@
 package account
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
 	"velexa-sim-me/internal/database/audit"
+	"velexa-sim-me/internal/database/brokers"
 	"velexa-sim-me/internal/database/users"
 	"velexa-sim-me/internal/rest/middleware"
 	"velexa-sim-me/internal/utils"
@@ -88,6 +90,9 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		replyErr(w, err)
 		return
 	}
-	audit.Record(middleware.ActorOf(r), "user.delete", req.Username)
-	utils.WriteJSON(w, map[string]any{"ok": true})
+	// The account's brokers go back to the exchange (admins), so a new account
+	// that reuses the name cannot see them.
+	released := brokers.Meta.ReleaseOwner(req.Username)
+	audit.Record(middleware.ActorOf(r), "user.delete", fmt.Sprintf("%s (brokers released to admins: %d)", req.Username, released))
+	utils.WriteJSON(w, map[string]any{"ok": true, "brokers_released": released})
 }

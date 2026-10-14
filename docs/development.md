@@ -96,6 +96,7 @@ Setting `EXCHANGE_INSTRUMENT_URL` to a closed local port makes the engine fall b
 | `database/users/users.go` | Console account store: roles `admin`/`user`, profile, password hashing, last-admin guard, `users.json`. |
 | `database/audit/audit.go` | Credential audit log: in-memory ring plus append-only file. |
 | `utils/respond.go` | `WriteJSON` and `AtoiDefault`, shared by the handlers. |
+| `config/envfile.go` | Loads `me.env` (or `ME_ENV_FILE`) into the environment at start-up, without overriding variables that are already set. |
 | `config/admin.go` | Console credentials from the environment and the registration switch. |
 | `engine/engine.go` | Core types (`Order`, `ExecReport`, `Trade`, `MarketData`) and the `Engine`: matching loop, price-time matching, stops, icebergs, cancel/replace, sessions and the opening auction, pre-trade checks, index, snapshots, `LoadTest`. |
 | `engine/book.go` | Limit order book: price levels keyed by integer hundredths, sorted price lists, FIFO queues, depth, FOK check (`CanFill`), GTD expiry, removal. |

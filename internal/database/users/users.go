@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"velexa-sim-me/internal/config"
 )
@@ -54,6 +56,9 @@ type User struct {
 	LastLogin string `json:"last_login,omitempty"`
 	Profile
 	Hash string `json:"hash,omitempty"`
+	// SessionVer is a random token written into every session cookie. Changing
+	// it (sign-out, password change, disable) ends all of the account's sessions.
+	SessionVer string `json:"session_ver,omitempty"`
 }
 
 // Profile is the contact detail collected when someone registers themselves.
@@ -66,22 +71,32 @@ type Profile struct {
 	Country  string `json:"country,omitempty"`
 }
 
-// Public returns a copy with the password hash removed, safe to send to a client.
+// Public returns a copy without the password hash or session token, safe to send to a client.
 func (u User) Public() User {
 	u.Hash = ""
+	u.SessionVer = ""
 	return u
 }
 
+// HashIterations is the PBKDF2-SHA256 work factor for new password hashes
+// (OWASP: 600 000). Older, weaker hashes are upgraded at the next sign-in.
+// Tests lower it to stay fast.
+var HashIterations = hashIterationsDefault()
+
+func hashIterationsDefault() int { return 600_000 }
+
 const (
-	pbkdf2Iterations = 210_000
-	minPasswordLen   = 8
-	timeFormat       = "2006-01-02 15:04:05"
+	minPasswordLen = 10
+	maxPasswordLen = 128
+	timeFormat     = "2006-01-02 15:04:05"
 )
 
 // Errors returned by Store methods; their text is shown to the operator.
 var (
 	ErrInvalidUsername = errors.New("username must be 3-32 characters: letters, digits, . _ -")
-	ErrWeakPassword    = fmt.Errorf("password must be at least %d characters", minPasswordLen)
+	ErrWeakPassword    = fmt.Errorf("password must be %d-%d characters, must not contain the username, and must use at least 3 of: lower-case letters, upper-case letters, digits, symbols", minPasswordLen, maxPasswordLen)
+	ErrReservedName    = errors.New("that username is reserved")
+	ErrWrongPassword   = errors.New("current password is incorrect")
 	ErrInvalidRole     = errors.New("role must be admin or user")
 	ErrInvalidProfile  = errors.New("invalid profile")
 	ErrEmailTaken      = errors.New("that email is already registered")
@@ -96,19 +111,28 @@ type Store struct {
 	path  string
 	users map[string]*User // keyed by lower-case username
 
-	// The environment account (ME_ADMIN_USER / ME_ADMIN_PASS) always works as an
-	// admin, so a lost or damaged users.json can never lock everyone out.
-	envUser, envPass string
+	// The environment account (ME_ADMIN_USER / ME_ADMIN_PASS) is a break-glass
+	// admin: it works only while users.json has no enabled admin, so a lost or
+	// damaged file can never lock everyone out. Only a hash of its password is kept.
+	envUser    string
+	envPassSum [32]byte
+	envVer     string // its session token; new on every start
 }
 
 // Path is where accounts are stored by default.
 func Path() string { return config.EnvOr("ME_USERS_FILE", config.StateFile("users.json")) }
 
 // Load reads the store from path and makes sure at least one admin exists: if the
-// file has none, the environment admin is added. envUser/envPass is also kept as
-// a break-glass admin that does not depend on the file.
+// file has none, the environment admin (envUser/envPass) is added, or — with no
+// usable envPass — an admin with a random password written to
+// initial-admin-password next to the file. envPass "" turns the break-glass
+// environment admin off.
 func Load(path, envUser, envPass string) *Store {
-	s := &Store{path: path, users: map[string]*User{}, envUser: envUser, envPass: envPass}
+	s := &Store{path: path, users: map[string]*User{}, envVer: newToken()}
+	if envUser != "" && envPass != "" {
+		s.envUser, s.envPassSum = envUser, sha256.Sum256([]byte(envPass))
+	}
+	dirty := false
 	if b, err := os.ReadFile(path); err == nil {
 		var list []*User
 		if err := json.Unmarshal(b, &list); err != nil {
@@ -116,22 +140,65 @@ func Load(path, envUser, envPass string) *Store {
 		}
 		for _, u := range list {
 			if u != nil && u.Username != "" && u.Role.Valid() {
+				if u.SessionVer == "" {
+					u.SessionVer, dirty = newToken(), true
+				}
 				s.users[key(u.Username)] = u
 			}
 		}
 	}
-	if !s.hasEnabledAdmin() && envUser != "" && envPass != "" {
-		if _, exists := s.users[key(envUser)]; !exists {
-			if h, err := hashPassword(envPass); err == nil {
-				s.users[key(envUser)] = &User{Username: envUser, Role: RoleAdmin, Created: now(), Hash: h}
-				if err := s.saveLocked(); err != nil {
-					log.Printf("[users] could not save %s: %v", path, err)
-				}
-				log.Printf("[users] created the admin account %q from the environment", envUser)
-			}
+	// The environment admin's file account may still hold the published default
+	// password from an older build: re-key it to ME_ADMIN_PASS, or disable it.
+	if u := s.users[key(envUser)]; u != nil && !u.Disabled && verifyPassword(u.Hash, config.DefaultAdminPass) {
+		if h, err := hashPassword(envPass); envPass != "" && err == nil {
+			u.Hash = h
+			log.Printf("[users] %q still had the old default password — it now uses ME_ADMIN_PASS", u.Username)
+		} else {
+			u.Disabled = true
+			log.Printf("[users] %q still had the old default password and ME_ADMIN_PASS is not set — account disabled", u.Username)
+		}
+		u.SessionVer, dirty = newToken(), true
+	}
+	if !s.hasEnabledAdmin() {
+		dirty = s.bootstrapAdmin(envUser, envPass) || dirty
+	}
+	if dirty {
+		if err := s.saveLocked(); err != nil {
+			log.Printf("[users] could not save %s: %v", path, err)
 		}
 	}
 	return s
+}
+
+// bootstrapAdmin creates the first admin account. Caller holds s.mu (or owns s).
+func (s *Store) bootstrapAdmin(envUser, envPass string) bool {
+	if envUser == "" {
+		envUser = "admin"
+	}
+	if old := s.users[key(envUser)]; old != nil && !old.Disabled {
+		return false // an enabled non-admin already has the name; keep it
+	}
+	pass, generated := envPass, false
+	if pass == "" {
+		pass, generated = "Me-"+newToken(), true
+	}
+	h, err := hashPassword(pass)
+	if err != nil {
+		return false
+	}
+	s.users[key(envUser)] = &User{Username: envUser, Role: RoleAdmin, Created: now(), Hash: h, SessionVer: newToken()}
+	if !generated {
+		log.Printf("[users] created the admin account %q from the environment", envUser)
+		return true
+	}
+	file := filepath.Join(filepath.Dir(s.path), "initial-admin-password")
+	_ = os.MkdirAll(filepath.Dir(file), 0o750)
+	if err := os.WriteFile(file, []byte(envUser+" "+pass+"\n"), 0o600); err != nil {
+		log.Printf("[users] created the admin account %q; could not save its password (%v): %s", envUser, err, pass)
+	} else {
+		log.Printf("[users] created the admin account %q with a random password — see %s (delete it after signing in)", envUser, file)
+	}
+	return true
 }
 
 func key(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
@@ -147,45 +214,95 @@ func (s *Store) hasEnabledAdmin() bool {
 }
 
 // Authenticate checks a username and password. On success it returns the account
-// (a copy without its hash) and records the login time.
+// (a copy without its hash) and records the login time. The password is checked
+// without holding the store lock, and an unknown name costs as much time as a
+// known one, so timing does not reveal which accounts exist.
 func (s *Store) Authenticate(username, password string) (*User, bool) {
+	s.mu.RLock()
+	hash := ""
+	if u := s.users[key(username)]; u != nil && !u.Disabled {
+		hash = u.Hash
+	}
+	glass := s.breakGlassLocked()
+	s.mu.RUnlock()
+
+	if hash == "" || !verifyPassword(hash, password) {
+		if hash == "" {
+			verifyPassword(dummyHash(), password)
+		}
+		if glass && s.isEnvAdmin(username, password) {
+			return &User{Username: s.envUser, Role: RoleAdmin}, true
+		}
+		return nil, false
+	}
+	upgraded := ""
+	if hashIterations(hash) < HashIterations {
+		upgraded, _ = hashPassword(password)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if u := s.users[key(username)]; u != nil {
-		if !u.Disabled && verifyPassword(u.Hash, password) {
-			u.LastLogin = now()
-			_ = s.saveLocked()
-			p := u.Public()
-			return &p, true
-		}
-		// A disabled or mistyped account does not fall through to the env admin
-		// unless the name really is the env admin's.
-		if key(username) != key(s.envUser) {
-			return nil, false
-		}
+	u := s.users[key(username)]
+	if u == nil || u.Disabled || u.Hash != hash { // changed while the password was checked
+		return nil, false
 	}
-	if s.envUser != "" && ctEqual(username, s.envUser) && ctEqual(password, s.envPass) {
-		return &User{Username: s.envUser, Role: RoleAdmin}, true
+	if upgraded != "" {
+		u.Hash = upgraded
 	}
-	return nil, false
+	u.LastLogin = now()
+	_ = s.saveLocked()
+	p := u.Public()
+	return &p, true
 }
 
-// Get returns the enabled account with that name (or the env admin), as used to
-// re-check a session on every request.
+// Get returns the enabled account with that name (or the break-glass env admin).
 func (s *Store) Get(username string) (*User, bool) {
+	u, _, ok := s.Session(username)
+	return u, ok
+}
+
+// Session returns the enabled account with that name and its current session
+// token, as used to check a session cookie on every request.
+func (s *Store) Session(username string) (*User, string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if u := s.users[key(username)]; u != nil {
 		if u.Disabled {
-			return nil, false
+			return nil, "", false
 		}
 		p := u.Public()
-		return &p, true
+		return &p, u.SessionVer, true
 	}
-	if s.envUser != "" && ctEqual(username, s.envUser) {
-		return &User{Username: s.envUser, Role: RoleAdmin}, true
+	if s.breakGlassLocked() && key(username) == key(s.envUser) {
+		return &User{Username: s.envUser, Role: RoleAdmin}, s.envVer, true
 	}
-	return nil, false
+	return nil, "", false
+}
+
+// RevokeSessions ends every session of the account (sign out everywhere).
+func (s *Store) RevokeSessions(username string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if u := s.users[key(username)]; u != nil {
+		u.SessionVer = newToken()
+		return s.saveLocked()
+	}
+	if key(username) == key(s.envUser) {
+		s.envVer = newToken()
+		return nil
+	}
+	return ErrNotFound
+}
+
+// breakGlassLocked reports whether the environment admin may sign in: it is
+// configured and the file has no enabled admin. Caller holds s.mu.
+func (s *Store) breakGlassLocked() bool {
+	return s.envUser != "" && !s.hasEnabledAdmin()
+}
+
+func (s *Store) isEnvAdmin(username, password string) bool {
+	sum := sha256.Sum256([]byte(password))
+	nameOK := ctEqual(key(username), key(s.envUser))
+	return subtle.ConstantTimeCompare(sum[:], s.envPassSum[:]) == 1 && nameOK
 }
 
 // List returns every account, sorted by name, without password hashes.
@@ -206,8 +323,8 @@ func (s *Store) Add(username, password string, role Role) error {
 	if !validUsername(username) {
 		return ErrInvalidUsername
 	}
-	if len(password) < minPasswordLen {
-		return ErrWeakPassword
+	if err := CheckPassword(username, password); err != nil {
+		return err
 	}
 	if !role.Valid() {
 		return ErrInvalidRole
@@ -221,7 +338,7 @@ func (s *Store) Add(username, password string, role Role) error {
 	if _, dup := s.users[key(username)]; dup {
 		return ErrExists
 	}
-	s.users[key(username)] = &User{Username: username, Role: role, Created: now(), Hash: h}
+	s.users[key(username)] = &User{Username: username, Role: role, Created: now(), Hash: h, SessionVer: newToken()}
 	return s.saveLocked()
 }
 
@@ -271,8 +388,11 @@ func (s *Store) Register(username, password string, p Profile) error {
 	if !validUsername(username) {
 		return ErrInvalidUsername
 	}
-	if len(password) < minPasswordLen {
-		return ErrWeakPassword
+	if s.reserved(username) {
+		return ErrReservedName
+	}
+	if err := CheckPassword(username, password); err != nil {
+		return err
 	}
 	p, err := p.Normalize()
 	if err != nil {
@@ -292,7 +412,7 @@ func (s *Store) Register(username, password string, p Profile) error {
 			return ErrEmailTaken
 		}
 	}
-	s.users[key(username)] = &User{Username: username, Role: RoleUser, Created: now(), Profile: p, Hash: h}
+	s.users[key(username)] = &User{Username: username, Role: RoleUser, Created: now(), Profile: p, Hash: h, SessionVer: newToken()}
 	return s.saveLocked()
 }
 
@@ -316,31 +436,36 @@ func (s *Store) SetDisabled(username string, disabled bool) error {
 		if disabled && u.Role == RoleAdmin && !u.Disabled && s.otherEnabledAdmins(u) == 0 {
 			return ErrLastAdmin
 		}
+		if disabled && !u.Disabled {
+			u.SessionVer = newToken()
+		}
 		u.Disabled = disabled
 		return nil
 	})
 }
 
-// SetPassword replaces an account's password.
+// SetPassword replaces an account's password and ends all of its sessions.
 func (s *Store) SetPassword(username, password string) error {
-	if len(password) < minPasswordLen {
-		return ErrWeakPassword
+	if err := CheckPassword(username, password); err != nil {
+		return err
 	}
 	h, err := hashPassword(password)
 	if err != nil {
 		return err
 	}
-	return s.mutate(username, func(u *User) error { u.Hash = h; return nil })
+	return s.mutate(username, func(u *User) error { u.Hash, u.SessionVer = h, newToken(); return nil })
 }
 
 // ChangeOwnPassword sets a new password after checking the current one.
 func (s *Store) ChangeOwnPassword(username, oldPassword, newPassword string) error {
 	s.mu.RLock()
-	u := s.users[key(username)]
-	ok := u != nil && !u.Disabled && verifyPassword(u.Hash, oldPassword)
+	hash := ""
+	if u := s.users[key(username)]; u != nil && !u.Disabled {
+		hash = u.Hash
+	}
 	s.mu.RUnlock()
-	if !ok {
-		return errors.New("current password is incorrect")
+	if hash == "" || !verifyPassword(hash, oldPassword) {
+		return ErrWrongPassword
 	}
 	return s.SetPassword(username, newPassword)
 }
@@ -405,6 +530,53 @@ func (s *Store) saveLocked() error {
 	return os.Rename(tmp, s.path)
 }
 
+// reserved reports whether a self-registered account may not take this name:
+// administrative names and the environment admin's. Caller need not hold s.mu.
+func (s *Store) reserved(name string) bool {
+	switch key(name) {
+	case "admin", "administrator", "root", "system", "superuser", "support", "security", key(s.envUser):
+		return true
+	}
+	return false
+}
+
+// CheckPassword applies the password rules: 10-128 characters, not containing
+// the username, and at least three of lower-case, upper-case, digits, symbols.
+func CheckPassword(username, password string) error {
+	if n := utf8.RuneCountInString(password); n < minPasswordLen || n > maxPasswordLen {
+		return ErrWeakPassword
+	}
+	if name := key(username); name != "" && strings.Contains(strings.ToLower(password), name) {
+		return ErrWeakPassword
+	}
+	var lower, upper, digit, other int
+	for _, r := range password {
+		switch {
+		case unicode.IsLower(r):
+			lower = 1
+		case unicode.IsUpper(r):
+			upper = 1
+		case unicode.IsDigit(r):
+			digit = 1
+		default:
+			other = 1
+		}
+	}
+	if lower+upper+digit+other < 3 {
+		return ErrWeakPassword
+	}
+	return nil
+}
+
+// newToken is a random URL-safe token (128 bits).
+func newToken() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		panic("users: no randomness: " + err.Error())
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
 func validUsername(s string) bool {
 	if len(s) < 3 || len(s) > 32 {
 		return false
@@ -426,12 +598,34 @@ func hashPassword(password string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	dk, err := pbkdf2.Key(sha256.New, password, salt, pbkdf2Iterations, 32)
+	dk, err := pbkdf2.Key(sha256.New, password, salt, HashIterations, 32)
 	if err != nil {
 		return "", err
 	}
 	enc := base64.RawStdEncoding
-	return "pbkdf2-sha256$" + strconv.Itoa(pbkdf2Iterations) + "$" + enc.EncodeToString(salt) + "$" + enc.EncodeToString(dk), nil
+	return "pbkdf2-sha256$" + strconv.Itoa(HashIterations) + "$" + enc.EncodeToString(salt) + "$" + enc.EncodeToString(dk), nil
+}
+
+// hashIterations is the work factor recorded in a stored hash (0 if unreadable).
+func hashIterations(stored string) int {
+	parts := strings.Split(stored, "$")
+	if len(parts) != 4 {
+		return 0
+	}
+	n, _ := strconv.Atoi(parts[1])
+	return n
+}
+
+var (
+	dummyOnce sync.Once
+	dummy     string
+)
+
+// dummyHash is checked against when the account does not exist, so a failed
+// sign-in takes the same time either way.
+func dummyHash() string {
+	dummyOnce.Do(func() { dummy, _ = hashPassword(newToken()) })
+	return dummy
 }
 
 func verifyPassword(stored, password string) bool {

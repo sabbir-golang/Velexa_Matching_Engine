@@ -4,15 +4,32 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"os"
 
 	"velexa-sim-me/internal/config"
+	"velexa-sim-me/internal/rest/middleware"
+	"velexa-sim-me/internal/utils"
 )
 
+// genPass makes a random broker password (96 bits).
 func genPass(prefix string) string {
-	b := make([]byte, 6)
-	rand.Read(b)
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		panic("broker: no randomness: " + err.Error())
+	}
 	return prefix + "-" + hex.EncodeToString(b)
+}
+
+// decodeJSON reads a small JSON body (at most 64 KB) into v; on a bad body it
+// replies itself and reports false.
+func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	middleware.LimitBody(w, r)
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		utils.WriteJSON(w, map[string]any{"ok": false, "error": "bad request"})
+		return false
+	}
+	return true
 }
 
 // meEndpoints returns the reachable connection details a broker needs to fill
@@ -45,5 +62,8 @@ func readAllow() map[string]string {
 
 func writeAllow(m map[string]string) error {
 	b, _ := json.MarshalIndent(m, "", " ")
-	return os.WriteFile(allowPath, b, 0o644)
+	if err := os.WriteFile(allowPath, b, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(allowPath, 0o600) // WriteFile keeps the mode of an existing file
 }

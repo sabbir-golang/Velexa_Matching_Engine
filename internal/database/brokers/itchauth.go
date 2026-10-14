@@ -1,6 +1,8 @@
 package brokers
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"log"
 	"os"
@@ -52,7 +54,7 @@ func (a *itchAuth) Authorize(user, pass string) string {
 	if !ok {
 		return "itch user not registered: " + user
 	}
-	if pass != want {
+	if !secretEqual(pass, want) {
 		return "invalid itch password for " + user
 	}
 	return ""
@@ -99,4 +101,11 @@ func (a *itchAuth) save() error {
 		return nil
 	}
 	return os.WriteFile(path, b, 0o600)
+}
+
+// secretEqual compares passwords in constant time (hashing first, so the
+// length of the stored one does not leak either).
+func secretEqual(got, want string) bool {
+	a, b := sha256.Sum256([]byte(got)), sha256.Sum256([]byte(want))
+	return subtle.ConstantTimeCompare(a[:], b[:]) == 1
 }

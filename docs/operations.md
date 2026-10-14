@@ -9,11 +9,11 @@ make build               # produces bin/velexa-sim-me (go build -o bin/velexa-si
 ./bin/velexa-sim-me
 ```
 
-The engine reads only environment variables (see [configuration](configuration.md#environment-variables)). If you keep them in an env file such as the git-ignored `me.env`, export it into the shell before starting:
+The engine reads environment variables (see [configuration](configuration.md#environment-variables)) and, at start-up, the env file `me.env` in the working directory (or `ME_ENV_FILE`). So `go run .` or `make run` in the repo picks up `me.env` directly; variables exported in the shell still win over the file:
 
 ```bash
-set -a; . ./me.env; set +a
-./bin/velexa-sim-me 2>&1 | tee -a logs/me.log
+./bin/velexa-sim-me 2>&1 | tee -a logs/me.log      # uses ./me.env
+PORT=18010 ./bin/velexa-sim-me                      # one-off override of a me.env value
 ```
 
 The repo contains no systemd unit, Dockerfile or process supervisor; set up your own.
@@ -66,7 +66,11 @@ cd / && sudo patch -p1 < /path/to/nginx-443.patch
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-The admin login cookie is marked `Secure` when nginx sends `X-Forwarded-Proto: https`.
+Tell the engine about the proxy, or sign-in lockouts and the audit log see nginx's address instead of the client's:
+
+- `ME_TRUSTED_PROXIES` — nginx's address as the engine sees it (the default `127.0.0.1,::1` fits nginx on the same box). Behind Cloudflare, add Cloudflare's published IP ranges too (https://www.cloudflare.com/ips/), comma-separated; the engine then takes the right-most `X-Forwarded-For` hop that is not a trusted proxy as the client. Forwarding headers from any other peer are ignored.
+- `ME_COOKIE_SECURE=on` — when users reach the console over HTTPS. Session and CSRF cookies get `Secure` (the session cookie becomes `__Host-me_admin`) and responses carry HSTS. Without it, the engine still marks cookies `Secure` when a trusted proxy sends `X-Forwarded-Proto: https`.
+- Keep `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` as in the snippet; do not let nginx pass a client's `X-Forwarded-For` through any other way.
 
 ### External FIX gateway (port 5443)
 
@@ -94,7 +98,7 @@ The generated config is plain TCP; it does no TLS. The broker onboarding sheet, 
 
 ## Admin console
 
-Open `http://<host>:8010/admin` (or the proxied URL) and sign in with `ME_ADMIN_USER` / `ME_ADMIN_PASS` (the first `admin`) or any account created on the **Users** page. Roles are `admin` (full access) and `user` (read-only; FIX passwords are masked in the message log). Sessions last 8 hours; disabling a user or changing a role applies on their next request. The last enabled admin cannot be deleted, disabled or demoted. After 5 wrong passwords, that client IP is locked out for 5 minutes.
+Open `http://<host>:8010/admin` (or the proxied URL) and sign in with `ME_ADMIN_USER` / `ME_ADMIN_PASS` (the first `admin`) or any account created on the **Users** page. Roles are `admin` (the whole exchange) and `user` (a private workspace: only the brokers they register, with their credentials, FIX sessions, message log and dashboard figures; never other users' data). Anyone can register on the welcome page and starts with an empty workspace. Sessions last at most 8 hours and end after 30 minutes without use; **Sign out** ends every session of the account. Disabling, deleting or resetting the password of a user signs them out at once; a role change applies on their next request. The last enabled admin cannot be deleted, disabled or demoted. With `ME_RATE_LIMIT=on` (off by default), 5 wrong passwords lock that client IP — and, separately, that username — for 15 minutes. Passwords need 10–128 characters, must not contain the username, and must mix at least 3 of lower-case, upper-case, digits and symbols. If `ME_ADMIN_PASS` is not set, the first start creates the `admin` account with a random password and writes it to `initial-admin-password` in the state directory.
 
 | View | What you can do |
 |---|---|
@@ -115,7 +119,7 @@ Every credential change, allowlist change, session control and instrument reload
 2. The engine writes `fix_brokers.json`, `itch_brokers.json` and `broker_meta.json` straight away. No restart is needed.
 3. Print or download the onboarding sheet. It fills in `FIX_SENDER` as the TargetCompID, `FIXT.1.1` / ApplVerID 9, and the external, internal and ITCH endpoints from the `ME_PUB_*`, `ME_INT_*` and `ME_ITCH_*` variables. Set those variables to the real addresses before issuing any sheets.
 4. If the broker connects from outside, add its OMS IP under **External OMS Access** and run `deploy/regen-fixs-gateway.sh`.
-5. Credentials are only checked if `ME_FIX_AUTH=on` and `ME_ITCH_AUTH=on` are set.
+5. FIX logons are checked against `fix_brokers.json` by default (`ME_FIX_AUTH=off` turns that off). ITCH logins are checked only with `ME_ITCH_AUTH=on`.
 
 Revoking a broker removes its credentials and metadata. It doesn't disconnect a live session; use **FIX Sessions → disconnect** for that.
 

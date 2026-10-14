@@ -1,7 +1,7 @@
 // Package web holds the HTML pages the engine serves: the welcome page, the trade terminal and the admin console.
 package web
 
-const IndexHTML = `<!doctype html><html lang="en"><head>` + ThemeHead + `
+const IndexHTML = `<!doctype html><html lang="en"><head>` + ThemeHead + CSRFHead + `
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Velexa · Matching Engine</title>
 <script>try{if(new URLSearchParams(location.search).has('embed'))document.documentElement.classList.add('embed')}catch(e){}</script>
@@ -141,7 +141,7 @@ const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>Number(n||0).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 const SECT={Bank:'Bank',Cement:'Cement',Ceramic:'Ceramic',CorpBond:'Corporate Bond',Debenture:'Debenture',Engineering:'Engineering','Financial In':'Financial Institutions',FoodAllied:'Food & Allied',FuelPower:'Fuel & Power',Insurance:'Insurance',IT:'IT',Jute:'Jute',Misc:'Miscellaneous',MutFund:'Mutual Fund',PaperPrint:'Paper & Printing',PharmaChem:'Pharmaceuticals & Chemicals',ServRealEst:'Services & Real Estate',Tannery:'Tannery',Telecom:'Telecom',Textile:'Textile',TravelLeisur:'Travel & Leisure'};
 const CLS={EQ:'Equity',MF:'Mutual Fund',CB:'Corporate Bond',DB:'Debenture'};
-const esc=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let fClass='',optSig={},page=0,pageSize=25;
 function fillSelect(id,first,vals,label){
   const sig=vals.join('|');if(optSig[id]===sig)return;optSig[id]=sig;
@@ -207,11 +207,17 @@ async function loadBook(){if(!sel)return;const d=await (await fetch('/api/book?s
 }
 function row(side,l,maxq){return '<div class="row '+side+'"><span class="bar" style="width:'+(l.qty/maxq*100)+'%"></span><span class="px">'+fmt(l.price)+'</span><span>'+l.qty.toLocaleString()+'</span></div>';}
 $('ofrm').onsubmit=async e=>{e.preventDefault();
-  const body={symbol:$('osym').value,side:$('oside').value,type:$('otype').value,price:parseFloat($('oprice').value)||0,qty:parseInt($('oqty').value)||0,actor:'MANUAL'};
-  const rep=await (await fetch('/api/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+  const body={symbol:$('osym').value,side:$('oside').value,type:$('otype').value,price:parseFloat($('oprice').value)||0,qty:parseInt($('oqty').value)||0};
+  const resp=await fetch('/api/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(resp.status===401){signedOut();return}
+  if(!resp.ok){$('ores').innerHTML='<span class="down">'+esc((await resp.text()).trim()||'refused')+'</span>';return}
+  const rep=await resp.json();
   const c=rep.status==='FILLED'?'up':(rep.status==='REJECTED'?'down':'');
   $('ores').innerHTML='<span class="'+c+'">'+rep.status+'</span> '+(rep.filled_qty?('· '+rep.filled_qty.toLocaleString()+' @ '+fmt(rep.avg_px)+(rep.leaves_qty?(' · '+rep.leaves_qty+' resting'):'')):'· resting in book');
   $('obtn').classList.add('flash');setTimeout(()=>$('obtn').classList.remove('flash'),600);loadBook();};
+// Order entry needs a signed-in console user (the order is placed in their name).
+function signedOut(){$('obtn').disabled=true;$('ores').innerHTML='<span class="down">Sign in to trade</span> · <a href="/" target="_top" style="color:inherit">sign in</a>'}
+fetch('/admin/api/me').then(r=>{if(r.status===401)signedOut()}).catch(()=>{});
 $('oside').onchange=()=>{$('obtn').className='btn '+($('oside').value==='BUY'?'buy':'sell');};
 // SSE
 const es=new EventSource('/events');

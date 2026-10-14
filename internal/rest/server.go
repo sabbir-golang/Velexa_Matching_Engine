@@ -47,6 +47,9 @@ func NewServer(d *deps.Deps) *Server {
 // Routes returns the HTTP handler for every route the engine serves.
 func (server *Server) Routes() http.Handler {
 	manager := middleware.NewManager()
+	// The last one added runs first: security headers go on every response,
+	// including CSRF refusals.
+	manager.Use(middleware.CSRF, middleware.SecurityHeaders)
 	return manager.WrapMux(server.newMux(manager))
 }
 
@@ -65,6 +68,8 @@ func (server *Server) newMux(manager *middleware.Manager) *http.ServeMux {
 
 // Start serves HTTP on addr (":8010") and blocks until the server stops.
 func (server *Server) Start(addr string) {
-	httpSrv := &http.Server{Addr: addr, Handler: server.Routes(), ReadHeaderTimeout: 5 * time.Second}
+	// No WriteTimeout: /events (SSE) and the WebSocket feeds stay open for hours.
+	httpSrv := &http.Server{Addr: addr, Handler: server.Routes(), ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout: 15 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 64 << 10}
 	log.Fatal(httpSrv.ListenAndServe())
 }

@@ -69,3 +69,20 @@ func TestFixAcceptorStartsWithDefaultPaths(t *testing.T) {
 	}
 	_ = fa // not stopped: quickfix's Acceptor.Stop races on a session that never logged on
 }
+
+// A user's message log only holds their own brokers' sessions.
+func TestMsgLogRecentWhere(t *testing.T) {
+	s := &msgLogStore{max: 100}
+	s.add("ALICE", "IN", []byte("8=FIXT.1.1\x0135=D\x0111=A1\x01"))
+	s.add("BOB", "IN", []byte("8=FIXT.1.1\x0135=D\x0111=B1\x01"))
+	s.add("ALICE", "OUT", []byte("8=FIXT.1.1\x0135=8\x0111=A1\x01"))
+	got := s.RecentWhere(func(sess string) bool { return sess == "ALICE" }, "", 10)
+	if len(got) != 2 {
+		t.Fatalf("got %d messages, want alice's 2", len(got))
+	}
+	for _, m := range got {
+		if m.Session != "ALICE" {
+			t.Fatalf("someone else's message leaked: %+v", m)
+		}
+	}
+}

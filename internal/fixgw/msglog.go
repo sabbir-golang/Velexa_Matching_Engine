@@ -3,6 +3,7 @@ package fixgw
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,13 @@ func initMsgLog() {
 	// in-memory; the file is the durable record). Line format:
 	//   2006-01-02 15:04:05.000 DIR SESSION RAW   (RAW has no spaces)
 	if b, err := os.ReadFile(path); err == nil {
+		// Older builds wrote logon passwords in clear: scrub the file once.
+		if masked := maskSecrets(string(b)); masked != string(b) {
+			tmp := path + ".tmp"
+			if os.WriteFile(tmp, []byte(masked), 0o600) == nil && os.Rename(tmp, path) == nil {
+				b = []byte(masked)
+			}
+		}
 		lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
 		if len(lines) > MsgLog.max {
 			lines = lines[len(lines)-MsgLog.max:]
@@ -64,9 +72,19 @@ func initMsgLog() {
 				Time: ts, Dir: f[2], Session: f[3], Raw: raw, MsgType: fixField(raw, "35"), ClOrdID: cl})
 		}
 	}
-	if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640); err == nil {
+	if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+		_ = f.Chmod(0o600)
 		MsgLog.file = f
 	}
+}
+
+// secretTagRE finds the logon password tags (554 Password, 925 NewPassword) in
+// a |-delimited FIX message.
+var secretTagRE = regexp.MustCompile(`(^|\|)(554|925)=[^|\s]*`)
+
+// maskSecrets replaces logon passwords with *** so they are never stored.
+func maskSecrets(raw string) string {
+	return secretTagRE.ReplaceAllString(raw, "${1}${2}=***")
 }
 
 // fixField extracts a tag's value from a |-delimited FIX string ("" if absent).
@@ -80,7 +98,7 @@ func fixField(raw, tag string) string {
 }
 
 func (s *msgLogStore) add(session, dir string, data []byte) {
-	raw := strings.ReplaceAll(strings.TrimRight(string(data), "\x01"), "\x01", "|")
+	raw := maskSecrets(strings.ReplaceAll(strings.TrimRight(string(data), "\x01"), "\x01", "|"))
 	mt := fixField(raw, "35")
 	if mt == "0" { // skip heartbeats
 		return
@@ -111,6 +129,24 @@ func (s *msgLogStore) Recent(broker, clordid string, limit int) []fixMsg {
 	for i := len(s.ring) - 1; i >= 0 && len(out) < limit; i-- {
 		m := s.ring[i]
 		if broker != "" && !strings.EqualFold(m.Session, broker) {
+			continue
+		}
+		if clordid != "" && !strings.Contains(strings.ToUpper(m.ClOrdID), strings.ToUpper(clordid)) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// RecentWhere is Recent restricted to the sessions keep accepts.
+func (s *msgLogStore) RecentWhere(keep func(session string) bool, clordid string, limit int) []fixMsg {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []fixMsg{}
+	for i := len(s.ring) - 1; i >= 0 && len(out) < limit; i-- {
+		m := s.ring[i]
+		if !keep(m.Session) {
 			continue
 		}
 		if clordid != "" && !strings.Contains(strings.ToUpper(m.ClOrdID), strings.ToUpper(clordid)) {

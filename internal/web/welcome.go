@@ -2,7 +2,7 @@ package web
 
 // WelcomeHTML is the landing page at "/": a welcome board with User and Admin
 // sign-in. Both post to /admin/login; "as" tells the server which option was used.
-const WelcomeHTML = `<!doctype html><html><head><meta charset="utf-8">` + ThemeHead + `
+const WelcomeHTML = `<!doctype html><html><head><meta charset="utf-8">` + ThemeHead + CSRFHead + `
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Welcome — Matching Engine</title>` + AdminFontLink + `
 <style>
@@ -58,7 +58,7 @@ select:focus{border-color:var(--acc)}
   <h1>Welcome to the <span>Velexa</span> matching engine</h1>
   <p class="lead">A DSE-style matching engine with FIX order entry, an ITCH market-data feed, and a live order book. Sign in to monitor the market, or to administer brokers and instruments.</p>
   <ul class="feat">
-   <li><i>U</i><span><b>User</b> &mdash; read-only access to the dashboard, Trade Terminal, broker credentials and message log.</span></li>
+   <li><i>U</i><span><b>User</b> &mdash; your own workspace: register your brokers, manage their credentials and FIX sessions, trace their messages, watch the market.</span></li>
    <li><i>A</i><span><b>Admin</b> &mdash; full control: broker credentials, IP allowlist, instruments, market session and console users.</span></li>
   </ul>
   <a class="term" href="/terminal">Open Trade Terminal &rarr;</a>
@@ -80,7 +80,7 @@ select:focus{border-color:var(--acc)}
  </form>
  <form class="card reg" method="post" action="/register" id="regcard" style="display:none">
   <h2>Create account</h2>
-  <p class="sub">Registered accounts get read-only <b>user</b> access.</p>
+  <p class="sub">New accounts start with an empty workspace and see only their own brokers.</p>
   <div class="two">
    <div><label>Full name *</label><input name="full_name" autocomplete="name" required maxlength="80"></div>
    <div><label>Username *</label><input name="user" autocomplete="username" required placeholder="letters, digits . _ -" minlength="3" maxlength="32"></div>
@@ -109,7 +109,7 @@ function pick(a){
  if(reg)return;
  document.getElementById("as").value=a;
  document.getElementById("t_user").classList.toggle("on",a=="user");document.getElementById("t_admin").classList.toggle("on",a=="admin");
- document.getElementById("who").textContent=a=="admin"?"Administrator access — full control.":"Read-only access to the console.";
+ document.getElementById("who").textContent=a=="admin"?"Administrator access — full control.":"Your own brokers and the market.";
  document.getElementById("go").textContent=a=="admin"?"Sign in as admin":"Sign in as user";
  document.getElementById("toReg").style.display=(REG&&a=="user")?"block":"none"}
 var start="__AS__";

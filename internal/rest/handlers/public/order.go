@@ -7,24 +7,21 @@ import (
 	"strings"
 
 	"velexa-sim-me/internal/engine"
+	"velexa-sim-me/internal/rest/middleware"
 	"velexa-sim-me/internal/utils"
 )
 
-// Order serves /api/order.
-// external order entry (this is where the OMS / fix acceptor will feed orders)
+// Order serves POST /api/order: manual order entry from the Trade Terminal by a
+// signed-in console user, who is recorded as the order's actor ("USER:<name>").
 func (h *Handler) Order(w http.ResponseWriter, r *http.Request) {
 	eng := h.Eng
-	if r.Method != http.MethodPost {
-		http.Error(w, "POST only", 405)
-		return
-	}
+	middleware.LimitBody(w, r)
 	var req struct {
 		Symbol  string  `json:"symbol"`
 		Side    string  `json:"side"`
 		Type    string  `json:"type"`
 		Price   float64 `json:"price"`
 		Qty     int64   `json:"qty"`
-		Actor   string  `json:"actor"`
 		ClOrdID string  `json:"cl_ord_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -49,11 +46,7 @@ func (h *Handler) Order(w http.ResponseWriter, r *http.Request) {
 	if req.Type == "MARKET" || req.Type == "market" || req.Price <= 0 {
 		typ = engine.Market
 	}
-	actor := req.Actor
-	if actor == "" {
-		actor = "API"
-	}
-	o := eng.NewOrder(req.Symbol, side, typ, req.Price, req.Qty, actor)
+	o := eng.NewOrder(req.Symbol, side, typ, req.Price, req.Qty, "USER:"+middleware.Username(r))
 	o.ClOrdID = req.ClOrdID
 	rep := eng.SubmitAndWait(o)
 	utils.WriteJSON(w, rep)

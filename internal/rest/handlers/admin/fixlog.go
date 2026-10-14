@@ -20,9 +20,18 @@ func (h *Handler) FixLog(w http.ResponseWriter, r *http.Request) {
 	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 && n <= 1000 {
 		limit = n
 	}
-	resp := map[string]any{"messages": fixgw.MsgLog.Recent(
-		strings.TrimSpace(r.URL.Query().Get("broker")),
-		strings.TrimSpace(r.URL.Query().Get("clordid")), limit)}
+	broker := strings.TrimSpace(r.URL.Query().Get("broker"))
+	clordid := strings.TrimSpace(r.URL.Query().Get("clordid"))
+	all, own := middleware.BrokerScope(r)
+	var resp map[string]any
+	if all {
+		resp = map[string]any{"messages": fixgw.MsgLog.Recent(broker, clordid, limit)}
+	} else { // a user: only their own brokers' sessions
+		resp = map[string]any{"messages": fixgw.MsgLog.RecentWhere(func(session string) bool {
+			s := strings.ToUpper(session)
+			return own[s] && (broker == "" || strings.EqualFold(session, broker))
+		}, clordid, limit)}
+	}
 	// The raw log holds broker logon passwords (tag 554, and 925 for a new one):
 	// only admins see them.
 	if u := middleware.CurrentUser(r); u != nil && !u.Role.Allows(users.RoleAdmin) {

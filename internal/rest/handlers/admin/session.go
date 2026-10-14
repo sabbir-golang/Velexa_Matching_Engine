@@ -15,6 +15,10 @@ import (
 // Per-broker session controls: force-disconnect or reset sequence numbers.
 func (h *Handler) Session(w http.ResponseWriter, r *http.Request) {
 	broker := strings.TrimSpace(r.URL.Query().Get("broker"))
+	if broker != "" && !middleware.CanAccessBroker(r, broker) {
+		middleware.Forbid(w)
+		return
+	}
 	if fixgw.Active == nil || broker == "" {
 		utils.WriteJSON(w, map[string]any{"ok": false, "error": "broker required"})
 		return

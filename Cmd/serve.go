@@ -61,6 +61,10 @@ func newServer(eng *engine.Engine, bus *engine.Bus) *rest.Server {
 	go itchgw.NewFeed(eng).Run()      // DSE-ITCH market feed (SoupBinTCP) for the OMS itch service
 	go itchgw.NewIndexFeed(eng).Run() // DSE-ITCH index feed: 'Z' index values
 	go itchgw.NewNewsFeed(eng).Run()  // DSE-ITCH news feed: 'N' announcements
+	if config.AdminPass() == "" {
+		log.Printf("[auth] ME_ADMIN_PASS is not set (or is the old default): the break-glass environment admin is off")
+	}
+	config.SessionKey() // create the session key now, not on the first sign-in
 	return rest.NewServer(&deps.Deps{Eng: eng, Bus: bus, Itch: itch,
 		Users: users.Load(users.Path(), config.AdminUser(), config.AdminPass())})
 }

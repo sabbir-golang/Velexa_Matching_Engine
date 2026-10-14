@@ -2,7 +2,9 @@
 
 This page lists everything that configures the matching engine at runtime: every environment variable the code reads, every data and config file it loads or writes, the directory layout those defaults assume, and the security issues to fix before running it anywhere shared.
 
-The engine has no command-line flags and no config file of its own. Everything comes from environment variables read through `envOr` in `config/config.go` (which treats an empty or whitespace-only value as unset) or, for a few older settings, `os.Getenv`. The process does not load an env file itself; whatever starts it must export the variables. The repo's `.gitignore` reserves `me.env` for a local env file.
+The engine has no command-line flags. Everything comes from environment variables read through `EnvOr` in `config/config.go` (which treats an empty or whitespace-only value as unset) or, for a few settings, `os.Getenv`.
+
+**Env file.** At start-up the engine loads an env file (`config/envfile.go`): `ME_ENV_FILE` if set, otherwise `me.env` in the working directory, otherwise `/opt/velexa-sim-me/me.env` on a server. Each line is `KEY=VALUE`; blank lines and `#` comments are skipped, `export ` and quotes are allowed. **A variable already set in the environment wins over the file.** The start-up log says which file was loaded (`[config] loaded N settings from me.env …`). `me.env` is git-ignored.
 
 ## Environment variables
 
@@ -17,6 +19,7 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `FIX_SENDER` | `DSEME` | SenderCompID of the FIX acceptor; also printed as the TargetCompID on broker onboarding sheets. | `Cmd/serve.go`, `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
 | `ITCH_PORT` | `5501` | TCP port of the SoupBinTCP ITCH market-data feed. | `itchgw/market.go` |
 | `ME_USERS_FILE` | `<state dir>/users.json` | Console accounts and roles (PBKDF2 password hashes, mode 0600). | `database/users/users.go` (`Path`) |
+| `ME_RATE_LIMIT` | `off` | `on` turns on the sign-in lockout (5 failures lock an IP or a username for 15 minutes, also on the change-password form) and the sign-up quota (5 attempts per IP per hour). | `config/admin.go` (`RateLimit`) |
 | `ME_REGISTRATION` | `on` | Set `off` to close self-registration on the welcome page. | `config/admin.go` (`RegistrationOpen`) |
 | `ME_OBID_FILE` | `<state dir>/orderbook_ids.json` | Permanent symbol → ITCH orderbook id map. Ids never change once handed out, so adding or sorting instruments cannot shift other symbols' ids. | `Cmd/serve.go`, `engine/obids.go` |
 | `ME_ITCH_MODE` | journal-driven feed | `legacy` brings back the old market feed that re-publishes the depth as synthetic orders. | `itchgw/market.go` |
@@ -25,15 +28,18 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `ME_JOURNAL_CAP` | `400000` | Market events kept in memory; an ITCH client can resume (log in again with its next sequence) while its missed events are still held. | `engine/events.go` |
 | `ME_SESSION_AUTO` | `on` | `off` starts with the session clock off: phases change only from the admin console or `/api/session/*`. | `engine/schedule.go` |
 | `ME_SESSION_SCHEDULE` | `09:30,10:00,14:30,14:40,15:00` | Dhaka start times of pre-open, continuous trading, close, post-close and the end of the day (Sunday to Thursday). | `engine/schedule.go` |
-| `ME_ADMIN_PASS` | built-in default (see [Security notes](#security-notes)) | Admin console password. | `config/admin.go` (`AdminPass`) |
-| `ME_ADMIN_SECRET` | built-in default derived from the admin password | HMAC key that signs the `me_admin` session cookie. | `rest/handlers/broker/broker_helpers.go` (`adminSecret`) |
-| `ME_ADMIN_USER` | `admin` | Admin console username. | `config/admin.go` (`AdminUser`) |
+| `ME_ENV_FILE` | `me.env` (then `/opt/velexa-sim-me/me.env` on a server) | Env file loaded at start-up; the environment wins over it. | `config/envfile.go` |
+| `ME_ADMIN_PASS` | unset | Password of the environment admin. Seeds the first `admin` account and works as a break-glass admin only while `users.json` has no enabled admin. Unset (or the old published default) turns the environment admin off; the first admin then gets a random password written to `initial-admin-password`. | `config/admin.go` (`AdminPass`) |
+| `ME_ADMIN_SECRET` | random key in `<state dir>/session.key` | HMAC key that signs console session cookies. Used only when at least 32 bytes long; otherwise a random key is generated once and kept in `session.key`. Changing it signs everyone out. | `config/admin.go` (`SessionKey`) |
+| `ME_ADMIN_USER` | `admin` | Username of the environment admin; also reserved against self-registration. | `config/admin.go` (`AdminUser`) |
+| `ME_COOKIE_SECURE` | `off` | `on` when users reach the console over HTTPS through a proxy: session and CSRF cookies get `Secure` (the session cookie is then named `__Host-me_admin`) and responses carry HSTS. Leave off on plain HTTP or the browser drops the cookie. | `config/admin.go` (`CookieSecure`) |
+| `ME_TRUSTED_PROXIES` | `127.0.0.1,::1` | Comma-separated IPs or CIDRs of reverse proxies whose `X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP` and `X-Forwarded-Proto` headers are believed. From any other peer these headers are ignored, so a client cannot pick its own address to dodge the sign-in lockout. | `config/admin.go` (`TrustedProxies`), `rest/middleware/session.go` (`ClientIP`) |
 | `ME_AUDIT_FILE` | `/opt/velexa-sim-me/admin_audit.jsonl` | Append-only admin audit log. | `database/audit/audit.go` (`Path`) |
 | `ME_AUTO_LIST` | `on` | Whether an order for an unknown but well-formed symbol opens a new book instead of being rejected. `off`, `0`, `false` or `no` disable it. | `engine/instruments.go` (`autoListEnabled`) |
 | `ME_BROKER_META_FILE` | `/opt/velexa-sim-me/broker_meta.json` | Broker metadata store (company, SenderCompID, linked ITCH user). | `brokers/meta.go` (`loadBrokerMeta`) |
 | `ME_FIXS_PORT` | `5443` | External FIX gateway port printed on onboarding sheets. Display only: the engine does not listen on it (nginx does, see [operations](operations.md#external-fix-gateway-port-5443)). | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
 | `ME_FIX_APPLVER` | `9` | `DefaultApplVerID` when the BeginString is `FIXT.1.1` (`9` = FIX 5.0 SP2). | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
-| `ME_FIX_AUTH` | `off` | `on` makes the FIX acceptor check every Logon against `fix_brokers.json`. | `fixgw/fixacceptor.go` (`loadFixAuth`) |
+| `ME_FIX_AUTH` | `on` | The FIX acceptor checks every Logon (CompID + tag 554) against `fix_brokers.json`. `off` lets any CompID log on (test rigs only). | `fixgw/fixacceptor.go` (`loadFixAuth`) |
 | `ME_FIX_AUTH_FILE` | `/opt/velexa-sim-me/fix_brokers.json` | FIX logon credential store (CompID → password). | `fixgw/fixacceptor.go` (`loadFixAuth`) |
 | `ME_FIX_BEGIN` | `FIXT.1.1` | FIX BeginString of the acceptor session. The code comment names `FIX.4.4` as the rollback value. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
 | `ME_FIX_DD` | `on` | `off` turns off FIX 5.0 SP2 data-dictionary validation. Only applies when the BeginString is `FIXT.1.1`. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
@@ -73,9 +79,12 @@ With no variables set, the engine runs standalone on one machine:
 | `fix_brokers.json` | `ME_FIX_AUTH_FILE` | JSON object: SenderCompID → password | FIX logon credentials. Rewritten (mode `0600`) when brokers are added or revoked in the admin console. |
 | `itch_brokers.json` | `ME_ITCH_AUTH_FILE` | JSON object: username → password | ITCH feed credentials. Rewritten (mode `0600`) from the admin console. |
 | `broker_meta.json` | `ME_BROKER_META_FILE` | JSON object: SenderCompID → `{company, sender, itch_user, contact, created}` | Links each broker's FIX CompID to its ITCH user and company for the admin console. Holds no passwords. |
-| `fix_allow.json` | `FIXS_ALLOW_FILE` | JSON object: IP address → label | Source-IP allowlist for the external FIX gateway. Read by `deploy/regen-fixs-gateway.sh`. |
+| `fix_allow.json` | `FIXS_ALLOW_FILE` | JSON object: IP address → label | Source-IP allowlist for the external FIX gateway. Written mode `0600`; read by `deploy/regen-fixs-gateway.sh` (run with sudo). |
+| `users.json` | `ME_USERS_FILE` | JSON array of accounts | Console accounts: role, profile, PBKDF2-SHA256 hash (600 000 iterations) and a per-account session token. Mode `0600`. Git-ignored. |
+| `session.key` | `ME_ADMIN_SECRET` | 32 random bytes | Key that signs session cookies, created on first start. Mode `0600`. Deleting it signs everyone out. Git-ignored. |
+| `initial-admin-password` | — | `username password` | Written next to `users.json` only when the first admin was created with a random password (no `ME_ADMIN_PASS`). Mode `0600`. Delete it after signing in. |
 | `admin_audit.jsonl` | `ME_AUDIT_FILE` | JSON lines: `{time, actor, action, target}` | Admin audit trail. The last 300 entries are reloaded at startup. Git-ignored. |
-| `fix_messages.log` | `ME_FIX_MSGLOG_FILE` | Text lines: `YYYY-MM-DD HH:MM:SS.mmm DIR SESSION RAW`, with FIX SOH shown as `\|` | Every FIX message in and out except heartbeats. The last 4000 lines are reloaded at startup. Git-ignored. |
+| `fix_messages.log` | `ME_FIX_MSGLOG_FILE` | Text lines: `YYYY-MM-DD HH:MM:SS.mmm DIR SESSION RAW`, with FIX SOH shown as `\|` | Every FIX message in and out except heartbeats. Logon passwords (tags 554 and 925) are replaced with `***` before anything is stored; an older log is scrubbed once at startup. Mode `0600`. The last 4000 lines are reloaded at startup. Git-ignored. |
 | `spec/FIXT11.xml`, `spec/FIX50SP2.xml` | `ME_FIX_SPEC_DIR` | QuickFIX XML data dictionaries | Transport and application dictionaries for FIX 5.0 SP2 validation. |
 <!-- /AUTO:config-files -->
 
@@ -136,6 +145,8 @@ Every file default points into one directory:
 ├── itch_brokers.json       # ITCH feed credentials
 ├── broker_meta.json        # broker ↔ ITCH user linkage
 ├── fix_allow.json          # external FIX gateway IP allowlist
+├── users.json              # console accounts (written at runtime)
+├── session.key             # session-cookie signing key (written at runtime)
 ├── spec/
 │   ├── FIXT11.xml
 │   └── FIX50SP2.xml
@@ -147,12 +158,16 @@ Every file default points into one directory:
 
 ## Security notes
 
-Fix these before exposing the engine beyond a trusted network.
+What protects the console and the gateways, and what you still have to do yourself.
 
-- **Console roles.** `ME_ADMIN_USER` / `ME_ADMIN_PASS` seed the first `admin` account in `users.json` and stay valid as a break-glass admin even if that file is lost. Further accounts are managed on the console **Users** page. Roles: `admin` (everything) and `user` (read-only). The public endpoints (`/api/order`, `/api/bots/*`, `/api/session/*`, the Trade Terminal) are not role-protected.
-- **Hardcoded credential defaults.** `ME_ADMIN_PASS` (`config/admin.go`) falls back to a password compiled into the binary, and `ME_ADMIN_SECRET` derives from the admin password. Both must be overridden in production. Because they are in the source, treat the defaults as public.
-- **Credential stores are committed to git.** `fix_brokers.json` and `itch_brokers.json` are tracked in the repository and hold broker passwords. `broker_meta.json`, `fix_allow.json` and `brokers.tsv` are tracked too and contain real broker and network details.
-- **Authentication is off by default.** `ME_FIX_AUTH` and `ME_ITCH_AUTH` both default to `off`, so any FIX CompID can log on and any ITCH client can subscribe.
+- **Sign-in.** Passwords are stored as salted PBKDF2-SHA256 hashes (600 000 iterations; older hashes are upgraded at the next sign-in). Rules: 10–128 characters, not containing the username, and at least three of lower-case, upper-case, digits and symbols. With `ME_RATE_LIMIT=on` (off by default for now), failed sign-ins are counted per client IP and per username: 5 failures lock that IP or that account for 15 minutes; the same lock covers the "change my password" form. Without it, passwords can be guessed without limit — turn it on before exposing the console. An unknown username costs the same time and gets the same answer as a wrong password.
+- **Sessions.** The session cookie is `HttpOnly`, `SameSite=Strict`, signed with `session.key`, and carries the account's session token. It lasts at most 8 hours and ends after 30 minutes without use. Signing out, changing or resetting a password, disabling or deleting an account changes the token, which ends every session of that account at once.
+- **Environment admin.** `ME_ADMIN_USER` / `ME_ADMIN_PASS` seed the first admin and act as a break-glass admin only while `users.json` has no enabled admin. The old built-in default password is refused: an account still holding it is re-keyed to `ME_ADMIN_PASS` at startup (or disabled if that is unset). To recover a lost admin password: stop the engine, remove that account from `users.json`, set `ME_ADMIN_PASS`, start again.
+- **Self-registration.** With `ME_RATE_LIMIT=on`, every sign-up attempt counts against a quota of 5 per IP per hour. A taken username, a taken email and a reserved name (`admin`, `root`, `administrator`, the environment admin's name …) all get the same answer.
+- **CSRF and methods.** Every POST needs the browser's CSRF token (`me_csrf` cookie echoed in the `X-CSRF-Token` header or a `csrf` form field) and must not come from another site (`Sec-Fetch-Site` / `Origin`). Every action that changes state answers only POST.
+- **Browser protections.** Every response carries `Content-Security-Policy` (scripts, styles, frames and form targets limited to this origin; Google Fonts allowed), `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` and `Permissions-Policy`; console pages are `Cache-Control: no-store`; HSTS is sent over HTTPS. The console pages use inline scripts and event handlers, so the CSP allows `'unsafe-inline'`; values shown in the console are escaped before they reach the page, and FIX logons with a CompID other than 1–20 letters, digits, `.`, `-`, `_` are refused.
+- **Order entry and session control.** `/api/order` needs a signed-in console user and records them as the order's actor (`USER:<name>`). `/api/session/preopen` and `/api/session/open` need an admin and POST; `GET /api/session` stays public. Market data (`/api/market`, `/api/book`, `/events`, the WebSocket feeds) is public.
+- **Behind a reverse proxy.** Set `ME_TRUSTED_PROXIES` to the proxy's address so client IPs are right, and `ME_COOKIE_SECURE=on` when users come in over HTTPS. See [operations](operations.md).
+- **FIX and ITCH credentials.** `ME_FIX_AUTH` defaults to `on`. `ME_ITCH_AUTH` still defaults to `off`; turn it on once every ITCH client has a login in `itch_brokers.json`. Passwords are compared in constant time. `/admin/api/broker/detail` returns a broker's FIX and ITCH passwords to admins and to the broker's owner.
 - **ITCH login check.** With `ME_ITCH_AUTH=on`, every login (market, index and news feeds) is checked against `itch_brokers.json`; a short or malformed login packet has empty credentials and is refused with a LoginReject. The legacy feed (`ME_ITCH_MODE=legacy`) still skips the check for a login body shorter than 16 bytes.
-- **Most HTTP control endpoints are unauthenticated.** Only `/admin/api/*` and `/admin` need a login. `/api/order` and the session controls (`/api/session/*`) are open to anyone who can reach `PORT`.
-- **The broker detail API returns passwords.** `/admin/api/broker/detail` returns a broker's FIX and ITCH passwords in plain JSON (behind the admin login).
+- **Credentials in git history.** `deploy/state/fix_brokers.json`, `itch_brokers.json` and `broker_meta.json` are no longer tracked (`*.example` files show the format), but older commits still contain them. Rotate every password that was in them, and rewrite history (for example with `git filter-repo`) if the repository is shared.

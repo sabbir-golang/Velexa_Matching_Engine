@@ -157,6 +157,7 @@ type Engine struct {
 	mdMap        atomic.Pointer[map[string]*MarketData]
 	instrList    atomic.Pointer[[]Instrument]
 	obIDs        atomic.Pointer[map[string]int] // symbol -> ITCH orderbook id
+	actorStats   map[string]*ActorStats         // per order source ("FIX:<CompID>", "API"…); matching goroutine writes, Mu guards
 	schedule     Schedule                       // the trading-day clock (set by StartClock)
 	tradingDate  string                         // Dhaka date of the current trading day (set when a day starts)
 	lastReplaced *Order                         // the order doReplace worked on, for ReplaceAs (matching goroutine only)
@@ -306,6 +307,7 @@ func (e *Engine) process(o *Order) {
 		o.ID = e.Seq
 	}
 	e.orderCount++
+	e.statOf(o.Actor).Orders++
 
 	// Session rules: nothing is accepted between the close and the next pre-open,
 	// and in post-close only at the closing price.
@@ -511,6 +513,8 @@ func (e *Engine) match(o *Order) *ExecReport {
 		o.CumQty += q
 		o.CumValue += float64(q) * px
 		o.Qty -= q
+		e.statTrade(o.Actor, q, px)
+		e.statTrade(lv.Orders[0].Actor, q, px)
 		e.consumeFront(lv, q, EvExec, tr)
 		if len(lv.Orders) == 0 {
 			if o.Side == Buy {
@@ -913,6 +917,8 @@ func (e *Engine) uncross(sym string) {
 		tr := Trade{ID: e.TradeSeq, Symbol: sym, Price: P, Qty: q, Aggressor: Buy, Time: time.Now()}
 		e.recordTrade(tr, md)
 		toFill -= q
+		e.statTrade(bid.Orders[0].Actor, q, P)
+		e.statTrade(ask.Orders[0].Actor, q, P)
 		e.consumeFront(bid, q, EvExecAuction, tr)
 		if len(bid.Orders) == 0 {
 			b.DropBestBid()
@@ -1107,4 +1113,48 @@ func oppositeSide(s Side) Side {
 		return Sell
 	}
 	return Buy
+}
+
+// ActorStats counts one order source's activity since the engine started.
+type ActorStats struct {
+	Orders int64   `json:"orders"`
+	Trades int64   `json:"trades"` // fills on its orders
+	Volume int64   `json:"volume"`
+	Value  float64 `json:"value"`
+}
+
+// statOf returns the counters for actor. The engine lock is held.
+func (e *Engine) statOf(actor string) *ActorStats {
+	if e.actorStats == nil {
+		e.actorStats = map[string]*ActorStats{}
+	}
+	st := e.actorStats[actor]
+	if st == nil {
+		st = &ActorStats{}
+		e.actorStats[actor] = st
+	}
+	return st
+}
+
+func (e *Engine) statTrade(actor string, q int64, px float64) {
+	st := e.statOf(actor)
+	st.Trades++
+	st.Volume += q
+	st.Value += float64(q) * px
+}
+
+// StatsFor sums the counters of the given order sources.
+func (e *Engine) StatsFor(actors []string) ActorStats {
+	e.Mu.RLock()
+	defer e.Mu.RUnlock()
+	var sum ActorStats
+	for _, a := range actors {
+		if st := e.actorStats[a]; st != nil {
+			sum.Orders += st.Orders
+			sum.Trades += st.Trades
+			sum.Volume += st.Volume
+			sum.Value += st.Value
+		}
+	}
+	return sum
 }

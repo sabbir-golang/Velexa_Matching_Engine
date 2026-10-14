@@ -10,13 +10,19 @@ import (
 
 // TradingSession serves /admin/api/trading-session: the market's session phase
 // and the DSE clock. Reading it is open to every signed-in user; changing it
-// needs an admin.
+// needs an admin and a POST.
 func (h *Handler) TradingSession(w http.ResponseWriter, r *http.Request) {
 	eng := h.Eng
-	if r.URL.Query().Get("action") != "" && !middleware.RequireAdminRole(w, r) {
+	action := r.URL.Query().Get("action")
+	if action != "" && r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, `{"ok":false,"error":"POST only"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	switch r.URL.Query().Get("action") {
+	if action != "" && !middleware.RequireAdminRole(w, r) {
+		return
+	}
+	switch action {
 	// Forcing a phase switches the clock off; auto_on hands the phases back to it.
 	case "preopen":
 		eng.ForcePhase(engine.PhasePreOpen)

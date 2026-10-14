@@ -3,51 +3,73 @@ package admin
 import (
 	"net/http"
 	"net/url"
+	"strconv"
 
+	"velexa-sim-me/internal/database/audit"
 	"velexa-sim-me/internal/database/users"
 	"velexa-sim-me/internal/rest/middleware"
 )
 
 // Login takes the sign-in form posted from the welcome page; any GET goes back to "/".
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	ip := middleware.ClientIP(r)
-	if r.Method == http.MethodPost {
-		r.ParseForm()
-		if loginBlocked(ip) {
-			http.Redirect(w, r, "/?e=lock", http.StatusSeeOther)
-			return
-		}
-		as := r.FormValue("as") // set by the welcome page: "user" or "admin"
-		if u, ok := middleware.Authenticate(h.Users, r.FormValue("user"), r.FormValue("pass")); ok {
-			if as == "admin" && u.Role != users.RoleAdmin {
-				http.Redirect(w, r, "/?e=role&as=admin", http.StatusSeeOther)
-				return
-			}
-			if as == "user" && u.Role == users.RoleAdmin {
-				http.Redirect(w, r, "/?e=admin&as=user", http.StatusSeeOther)
-				return
-			}
-			ClearLoginFail(ip)
-			middleware.SetSessionCookie(w, r, u.Username)
-			http.Redirect(w, r, middleware.HomeFor(u), http.StatusSeeOther)
-			return
-		}
-		noteLoginFail(ip)
-		if as != "" {
-			http.Redirect(w, r, "/?e=1&as="+url.QueryEscape(as), http.StatusSeeOther)
-			return
-		}
-		http.Redirect(w, r, "/?e=1", http.StatusSeeOther)
+	if r.Method != http.MethodPost {
+		// There is no separate login page: sign-in lives on the welcome page at "/".
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	// There is no separate login page: sign-in lives on the welcome page at "/".
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	ip := middleware.ClientIP(r)
+	name := r.FormValue("user")
+	if len(name) > 64 { // no account name is longer; keeps junk out of the audit trail
+		name = name[:64]
+	}
+	as := r.FormValue("as") // set by the welcome page: "user" or "admin"
+	back := func(code string) {
+		q := "/?e=" + code
+		if as != "" {
+			q += "&as=" + url.QueryEscape(as)
+		}
+		http.Redirect(w, r, q, http.StatusSeeOther)
+	}
+	if middleware.LoginBlocked(ip, name) {
+		audit.Record(strconv.Quote(name)+" ("+ip+")", "login.locked", "")
+		back("lock")
+		return
+	}
+	u, ok := middleware.Authenticate(h.Users, name, r.FormValue("pass"))
+	if !ok {
+		middleware.NoteLoginFail(ip, name)
+		audit.Record(strconv.Quote(name)+" ("+ip+")", "login.fail", "")
+		back("1")
+		return
+	}
+	// The password was right, so naming the account's real role leaks nothing.
+	if as == "admin" && u.Role != users.RoleAdmin {
+		http.Redirect(w, r, "/?e=role&as=admin", http.StatusSeeOther)
+		return
+	}
+	if as == "user" && u.Role == users.RoleAdmin {
+		http.Redirect(w, r, "/?e=admin&as=user", http.StatusSeeOther)
+		return
+	}
+	middleware.ClearLoginFail(ip, name)
+	if !middleware.StartSession(w, r, h.Users, u.Username) {
+		back("1")
+		return
+	}
+	audit.Record(u.Username+" ("+ip+")", "login.ok", string(u.Role))
+	http.Redirect(w, r, middleware.HomeFor(u), http.StatusSeeOther)
 }
 
-// Logout serves /admin/logout.
+// Logout serves /admin/logout. A POST (with the CSRF token) ends every session
+// of the signed-in account and clears the cookie; a GET only goes home, so a
+// link on another site cannot sign anyone out.
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	for _, p := range []string{"/", "/admin"} { // "/admin" clears cookies set before the console moved to "/"
-		http.SetCookie(w, &http.Cookie{Name: middleware.SessionCookie, Value: "", Path: p, MaxAge: -1})
+	if r.Method == http.MethodPost {
+		if u := middleware.SessionUser(h.Users, r); u != nil {
+			_ = h.Users.RevokeSessions(u.Username)
+			audit.Record(u.Username+" ("+middleware.ClientIP(r)+")", "logout", "")
+		}
+		middleware.ClearSession(w)
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

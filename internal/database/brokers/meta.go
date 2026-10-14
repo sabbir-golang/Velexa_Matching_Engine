@@ -23,6 +23,14 @@ type Record struct {
 	ItchUser string `json:"itch_user"` // linked ITCH username
 	Contact  string `json:"contact"`   // optional technical contact
 	Created  string `json:"created"`   // human timestamp
+	// Owner is the console user who registered the broker. Empty means it
+	// belongs to the exchange (admins): normal users never see it.
+	Owner string `json:"owner,omitempty"`
+}
+
+// OwnedBy reports whether the record belongs to the console user username.
+func (r *Record) OwnedBy(username string) bool {
+	return r != nil && r.Owner != "" && strings.EqualFold(r.Owner, username)
 }
 
 type brokerMeta struct {
@@ -66,6 +74,48 @@ func (m *brokerMeta) Del(sender string) {
 	delete(m.recs, strings.ToUpper(strings.TrimSpace(sender)))
 	m.mu.Unlock()
 	m.save()
+}
+
+// ReleaseOwner hands every broker owned by username back to the exchange (no
+// owner), so a later account with the same name cannot inherit them. It returns
+// how many brokers were released.
+func (m *brokerMeta) ReleaseOwner(username string) int {
+	m.mu.Lock()
+	n := 0
+	for _, r := range m.recs {
+		if r.OwnedBy(username) {
+			r.Owner = ""
+			n++
+		}
+	}
+	m.mu.Unlock()
+	if n > 0 {
+		m.save()
+	}
+	return n
+}
+
+// ItchUserTaken reports whether an ITCH username is already linked to a broker.
+func (m *brokerMeta) ItchUserTaken(user string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, r := range m.recs {
+		if strings.EqualFold(r.ItchUser, user) {
+			return true
+		}
+	}
+	return false
+}
+
+// ListOwnedBy returns the records belonging to username, newest first.
+func (m *brokerMeta) ListOwnedBy(username string) []*Record {
+	out := []*Record{}
+	for _, r := range m.List() {
+		if r.OwnedBy(username) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // List returns the managed broker records, newest-created first.
