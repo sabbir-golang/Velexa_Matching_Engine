@@ -5710,6 +5710,7 @@
    <value enum='r' description='EXECUTE_AS_DELTA_NEUTRAL_USING_VOLATILITY_PROVIDED' />
    <value enum='s' description='EXECUTE_AS_DURATION_NEUTRAL' />
    <value enum='t' description='EXECUTE_AS_FX_NEUTRAL' />
+   <value enum='w' description='DSE_BLOCK' />
   </field>
   <field number='19' name='ExecRefID' type='STRING' />
   <field number='20' name='ExecTransType' type='CHAR'>
@@ -5943,6 +5944,7 @@
    <value enum='M' description='NEXT_FUND_VALUATION_POINT' />
    <value enum='P' description='PEGGED' />
    <value enum='Q' description='COUNTER_ORDER_SELECTION' />
+   <value enum='Z' description='DSE_MARKET_AT_BEST' />
   </field>
   <field number='41' name='OrigClOrdID' type='STRING' />
   <field number='42' name='OrigTime' type='UTCTIMESTAMP' />
@@ -6017,6 +6019,7 @@
    <value enum='7' description='AT_THE_CLOSE' />
    <value enum='8' description='GOOD_THROUGH_CROSSING' />
    <value enum='9' description='AT_CROSSING' />
+   <value enum='S' description='DSE_SESSION' />
   </field>
   <field number='60' name='TransactTime' type='UTCTIMESTAMP' />
   <field number='61' name='Urgency' type='CHAR'>

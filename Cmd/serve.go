@@ -4,7 +4,6 @@ package cmd
 import (
 	"log"
 	"os"
-	"time"
 
 	"velexa-sim-me/internal/config"
 	"velexa-sim-me/internal/database/audit"
@@ -13,7 +12,6 @@ import (
 	"velexa-sim-me/internal/engine"
 	"velexa-sim-me/internal/fixgw"
 	"velexa-sim-me/internal/itchgw"
-	"velexa-sim-me/internal/loadtest"
 	"velexa-sim-me/internal/rest"
 	"velexa-sim-me/internal/rest/deps"
 )
@@ -30,7 +28,7 @@ func Serve() {
 	eng := engine.NewEngine(engine.LoadUniverse(), bus)
 	eng.LoadOrderBookIDs(config.EnvOr("ME_OBID_FILE", config.StateFile("orderbook_ids.json")))
 	go eng.Run()
-	eng.StartBots(time.Now().UnixNano())
+	eng.StartClock(engine.ScheduleFromEnv()) // DSE trading day on the Dhaka clock (ME_SESSION_AUTO=off to drive it by hand)
 
 	// FIX acceptor — brokers' fix_initiator_go connect here (real FIX round-trip)
 	fixPort := os.Getenv("FIX_PORT")
@@ -48,25 +46,21 @@ func Serve() {
 
 	srv := newServer(eng, bus)
 
-	log.Printf("Velexa Simulator Matching Engine on :%s  (%d instruments from %s, auto-list=%v, phase=%s)",
+	log.Printf("Velexa Matching Engine on :%s  (%d instruments from %s, auto-list=%v, phase=%s)",
 		port, len(eng.Instr()), engine.UniverseSource(), engine.AutoListEnabled(), eng.Phase)
 	srv.Start(":" + port)
 }
 
 // newServer starts the services the HTTP layer sits on: the admin stores, the
-// ITCH gateway and feed, and the benchmark and load-test runners.
+// ITCH gateway and feeds.
 func newServer(eng *engine.Engine, bus *engine.Bus) *rest.Server {
 	audit.Load()
 	brokers.LoadMeta()
 	itch := itchgw.NewGateway(eng)
 	go itch.Run()
-	go itchgw.NewFeed(eng).Run() // native DSE-ITCH SoupBinTCP feed for the C++ itch service
-	pool, poolErr := loadtest.MustPool()
-	if poolErr != nil {
-		log.Printf("[bench] pool init: %v", poolErr)
-	}
-	bench := loadtest.NewBench(pool, eng)
-	live := loadtest.NewLiveBench(eng)
-	return rest.NewServer(&deps.Deps{Eng: eng, Bus: bus, Itch: itch, Bench: bench, Live: live, Pool: pool,
+	go itchgw.NewFeed(eng).Run()      // DSE-ITCH market feed (SoupBinTCP) for the OMS itch service
+	go itchgw.NewIndexFeed(eng).Run() // DSE-ITCH index feed: 'Z' index values
+	go itchgw.NewNewsFeed(eng).Run()  // DSE-ITCH news feed: 'N' announcements
+	return rest.NewServer(&deps.Deps{Eng: eng, Bus: bus, Itch: itch,
 		Users: users.Load(users.Path(), config.AdminUser(), config.AdminPass())})
 }

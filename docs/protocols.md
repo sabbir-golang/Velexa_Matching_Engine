@@ -43,6 +43,7 @@ The source-IP allowlist for external connections is enforced by nginx on port 54
 | `D` | NewOrderSingle | `handleNewOrder` |
 | `F` | OrderCancelRequest | `handleCancel` |
 | `G` | OrderCancelReplaceRequest | `handleReplace` |
+| `H` | OrderStatusRequest | `handleStatus` |
 
 Other application message types are accepted at session level and then ignored; no business reject is sent.
 
@@ -50,42 +51,44 @@ Other application message types are accepted at session level and then ignored; 
 
 | Tag | Field | Handling |
 |---|---|---|
-| 11 | ClOrdID | Echoed back; the key for later cancel and replace requests. |
+| 11 | ClOrdID | Echoed back; the key for later cancel, replace and status requests. |
 | 55 | Symbol | Required. Must be a valid ticker: 1–20 characters from `A–Z`, `0–9`, `.`, `-` and `_`. |
-| 54 | Side | `2` = sell; any other value = buy. |
+| 54 | Side | `1` buy, `2` sell. Anything else is rejected. |
 | 38 | OrderQty | Required. Must be greater than 0 and a whole number. |
-| 40 | OrdType | `1` market, `2` limit, `3` stop, `4` stop-limit. Missing or any other value is treated as limit, or as market if the price is 0 or less. |
-| 44 | Price | Limit price, rounded to 2 decimals. |
+| 40 | OrdType | `1` market, `2` limit (needs tag 44), `3` stop, `4` stop-limit, `Z` market-at-best (DSE). Anything else is rejected. |
+| 44 | Price | Limit price, rounded to 2 decimals. On a market order it is allowed only in post-close and must be the close price. |
 | 99 | StopPx | Trigger price. Required for OrdType 3 and 4. |
-| 111 | MaxFloor | Iceberg display size: only this much shows on the book at a time. |
-| 59 | TimeInForce | `0` or missing: DAY. `1` GTC, `3` IOC, `4` FOK, `6` GTD. Any other value: DAY. |
+| 111 / 1138 | MaxFloor / DisplayQty | Iceberg display size: only this much shows on the book at a time. The OMS sends 1138. |
+| 59 | TimeInForce | `0` or missing: DAY. `1` GTC, `3` IOC, `4` FOK, `6` GTD. `S` (session) and other values: DAY. |
 | 126 | ExpireTime | GTD expiry, UTC, as `YYYYMMDD-HH:MM:SS` or `YYYYMMDD-HH:MM:SS.sss`. |
 | 432 | ExpireDate | GTD expiry date if 126 is missing; the order expires at 23:59:59 UTC that day. |
+| 1, 50, 453, 529, 762 | Account, SenderSubID, Parties, OrderRestrictions, SecuritySubType | Not used for matching; echoed on every report about the order (50 comes back as 57). |
+| 18, 110 | ExecInst, MinQty | Accepted (`18=S`, `q`, `w` are in the dictionary) but not acted on. |
 
-Orders are tagged with the actor `FIX:<CompID>`. The engine's behaviour for each order type and time-in-force is described in [architecture](architecture.md#matching-rules).
+Orders are tagged with the actor `FIX:<CompID>`; only that session can cancel, replace or query them. The engine's behaviour for each order type and time-in-force is described in [architecture](architecture.md#matching-rules).
 
-**Rejects.** A rejected order gets an ExecutionReport with 150=8, 39=8 and the reason in tag 58:
+**Rejects.** A rejected order gets an ExecutionReport with 150=8, 39=8, OrderID `NONE`, OrdRejReason 103=99 and the reason in tag 58. Reasons the DSE also uses carry its error number in front, in the DSE form `(nnn): text`; the others are sent as plain text (no numbers are made up):
 
-| Reason text starts with | Cause |
+| Tag 58 | Cause |
 |---|---|
-| `missing Symbol (tag 55)` | No symbol. |
-| `invalid symbol … (tag 55)` | Not a valid ticker. |
-| `invalid OrderQty (tag 38)` | Quantity is 0 or less, or not a whole number. |
-| `stop order with no StopPx (tag 99)` | Stop or stop-limit order without a trigger price. |
-| `unknown symbol …` | Not listed, and auto-listing is off (`ME_AUTO_LIST`). |
+| `(792): Minimum quantity step: N` | Quantity is not a whole number of market lots. |
+| `(293): Orders are not being accepted at this time` | The market is closed (Close or Closed phase). |
+| `(1116): Order price is not equal to close price` | Post-close order at any price other than the close. |
+| `Price is not allowed for market order` | Market order with a price outside post-close. |
+| `price band: P outside +/-x% limit [lo-hi] of prev N` | Limit price outside the daily band. **The OMS parses this exact wording** to learn the band, so it is kept as it is. |
 | `off-tick: …` | Limit price isn't a multiple of the instrument's tick size. |
-| `price band: …` | Limit price is outside the daily price band. |
-| `market orders are not accepted during the Pre-Open call auction …` | Market order sent during Pre-Open. |
+| `limit order without a price (tag 44)`, `unsupported order type (tag 40): …`, `unsupported side (tag 54): …` | Malformed order. |
+| `missing Symbol (tag 55)`, `invalid symbol … (tag 55)`, `invalid OrderQty (tag 38)`, `stop order with no StopPx (tag 99)`, `unknown symbol …` | Validation. |
+| `market orders are not accepted during the Pre-Open call auction …` | Market order during Pre-Open. |
 | `no liquidity: …` | Market order found nothing on the other side. |
-| `matching engine did not respond within 3s` | The engine took longer than 3 s to answer. |
 
 The tick-size and price-band checks are described in [architecture](architecture.md#pre-trade-checks-fix-orders-only).
 
 #### OrderCancelRequest (35=F)
 
-Send OrigClOrdID (41) of the resting order and a new ClOrdID (11).
-- **Success:** an ExecutionReport with 150=4, 39=4, carrying the new ClOrdID. A parked stop order can be cancelled the same way.
-- **Unknown or already-finished order:** an OrderCancelReject (35=9) with 39=8, 434=1, 102=1 and the text `unknown or already-done order`.
+Send OrigClOrdID (41) of the order and a new ClOrdID (11).
+- **Success:** an ExecutionReport 150=4, 39=4 with 11 = the cancel's ClOrdID, 41 = the original and the same OrderID (37). A parked stop order can be cancelled the same way.
+- **Unknown, finished or another session's order:** an OrderCancelReject (35=9) as the DSE sends it: 37=`NONE`, 39=8, 434=1, 102=99, 58=`(226): Invalid order number`.
 
 #### OrderCancelReplaceRequest (35=G)
 
@@ -93,51 +96,48 @@ Send OrigClOrdID (41), a new ClOrdID (11), the new total OrderQty (38) and optio
 
 | Situation | Result |
 |---|---|
-| New qty is no more than what has already filled. **This includes leaving out tag 38.** | ExecutionReport Canceled (150=4, 39=4). |
-| Nothing fills on resubmission | ExecutionReport Replaced (150=5, 39=0). |
-| It fills on resubmission | ExecutionReport for the fill (see below). |
-| Order unknown, already finished, or a parked stop order | OrderCancelReject (35=9) with 434=2. |
+| New qty is no more than what has already filled (including leaving out tag 38) | 150=4, 39=4 (the order is done). |
+| Otherwise | 150=5 Replaced (39=0, or 1 if it had fills), then one 150=F per trade if the new price trades. |
+| Order unknown, finished, another session's, or a parked stop | OrderCancelReject (35=9) with 434=2, as for a cancel. |
 
-A price of 0 or a missing tag 44 keeps the current price. An iceberg keeps its display size: the new remaining quantity is split into a visible slice and a hidden reserve again.
+#### OrderStatusRequest (35=H)
+
+Send the order's ClOrdID (11) and an OrdStatusReqID (790). A working order is answered with an ExecutionReport 150=I carrying its current 39/14/151/6 and the 790. Any other order gets 150=I, 39=8, 37=`NONE`, 58=`(226): Invalid order number`.
 
 ### Outbound ExecutionReport (35=8)
 
-Each order gets one report when it's accepted. If it trades on arrival, that report covers all its fills: tag 14 is the total filled, and tags 31/32 are the last fill.
+Reports follow the DSE: every event is its own report, and both sides of a trade are told.
+
+| Event | Reports |
+|---|---|
+| New order accepted | 150=0, 39=0, then **one 150=F per trade** (39=1 or 2), then 150=4 for any IOC/FOK/market remainder that does not rest. |
+| Resting order traded by someone else | one 150=F per trade, to the resting order's owner. |
+| Opening auction trade | one 150=F per trade to each side. |
+| Cancel / replace | as above. |
+| Stop accepted / triggered | 150=A, 39=A; when it triggers: 150=0 then the trades. |
+| Expiry (GTD time, or DAY at end of day) | 150=C, 39=C, with 11 = 41 = the order's ClOrdID, 14 = filled so far. |
 
 | Tag | Field | Value |
 |---|---|---|
-| 37 | OrderID | Engine order sequence number (`0` on validation rejects). |
-| 11 | ClOrdID | From the request. |
-| 17 | ExecID | Counter for this process; restarts from 1 on every restart. |
-| 150 | ExecType | See the status table below. |
-| 39 | OrdStatus | See the status table below. |
-| 55 / 54 | Symbol / Side | `1` buy, `2` sell. |
-| 38 | OrderQty | The quantity ordered (filled plus leaves if unknown). |
-| 151 / 14 | LeavesQty / CumQty | Quantity still working on the book and total quantity filled. |
-| 6 | AvgPx | Average fill price, 2 decimals. |
-| 44 | Price | Limit price, when greater than 0. |
-| 31 / 32 | LastPx / LastQty | Last fill; only sent when there was a fill. |
-| 58 | Text | Reject reason. Only on rejects. |
-| 207 | SecurityExchange | Always `XDHA`. |
-| 48 / 22 | SecurityID / SecurityIDSource | ISIN with source `4`, when the security master has one. |
-| 1300 | MarketSegmentID | Board (`MAIN`, `SME`, `ATB`…), when known. |
+| 37 | OrderID | Dhaka trade date + engine order number, e.g. `2026101412345`; the same on every report about the order. `NONE` on rejects. |
+| 11 / 41 | ClOrdID / OrigClOrdID | 41 on cancel, replace and expiry reports. |
+| 17 | ExecID | Unique across restarts (start time + counter, hex). |
+| 150 / 39 | ExecType / OrdStatus | `0`, `F`, `4`, `5`, `8`, `A`, `C`, `I` (FIX 5.0 SP2 values). |
+| 55 / 54 / 38 | Symbol / Side / OrderQty | |
+| 40 / 59 / 44 | OrdType / TimeInForce / Price | As sent; 44 only for priced orders. The OMS needs 40 to book market-order fills. |
+| 1, 453, 529, 762, header 57 | Account, Parties, OrderRestrictions, SecuritySubType, TargetSubID | Echoed from the order (57 = the order's 50). |
+| 14 / 151 / 6 | CumQty / LeavesQty / AvgPx | Over the order's life. |
+| 31 / 32 | LastPx / LastQty | On 150=F only: this trade. |
+| 880 | TrdMatchID | On 150=F: the trade number, the same on both sides of the trade. |
+| 75 / 64 | TradeDate / SettlDate | On 150=F: Dhaka trade date and T+2 business days (Friday and Saturday skipped; holidays are not known). |
+| 381 | GrossTradeAmt | On 150=F: LastQty × LastPx. |
+| 1057 | AggressorIndicator | On 150=F: `Y` for the order that took liquidity, `N` for the resting one (both `N` in the auction). |
+| 103 / 58 | OrdRejReason / Text | On rejects: 103=99 and the reason. |
 | 60 | TransactTime | UTC, `YYYYMMDD-HH:MM:SS.sss`. |
 
-| Engine status | 150 ExecType | 39 OrdStatus | When |
-|---|---|---|---|
-| `NEW` | `0` | `0` | Resting on the book with no fills. |
-| `PARTIALLY_FILLED` | `TRADE` | `1` | Partly filled. |
-| `FILLED` | `TRADE` | `2` | Completely filled. |
-| `PENDING` | `A` | `A` | Stop order accepted and waiting for its trigger. |
-| `REPLACED` | `5` | `0` | Cancel/replace succeeded with no fill. |
-| `CANCELED` | `4` | `4` | Cancelled. Also: an IOC order that filled nothing, a FOK order that couldn't fill completely, or a replace down to the filled quantity. |
-| `REJECTED` | `8` | `8` | Rejected; reason in tag 58. |
+Tags 48/22/207/1300 are no longer sent: the DSE identifies the instrument by Symbol only.
 
-Tag 150 carries the literal string `TRADE` for fills, not the FIX enum value `F`. The engine doesn't validate its own outbound messages, so receivers see exactly that string.
-
-**Later reports.** When a parked stop order triggers, the result of matching it goes to the broker's session as a separate ExecutionReport. No other later events are reported:
-- When another order fills a resting order, the resting order's owner gets no ExecutionReport.
-- When a GTD order expires, its owner gets no ExecutionReport.
+All reports are queued and sent by one goroutine in the order the engine produced them, so a resting order's fills can never overtake its own acknowledgement.
 
 ### Session control and diagnostics
 
@@ -161,9 +161,19 @@ Each file line looks like:
 
 The fields are the UTC time, the direction (`IN` or `OUT`), the session (the broker's CompID) and the raw message with SOH shown as `|`. The ClOrdID used for searching is taken from tag 11, or from tag 41 if 11 is missing. At startup, the last 4000 lines of the file are loaded back into memory.
 
-## ITCH market-data feed
+## ITCH feeds
 
-`itchgw/feed.go` implements a SoupBinTCP server on `ITCH_PORT` (default `5501`) that streams DSE-ITCH messages. It's designed for the exchange's C++ `itch` service. The byte layouts match what that service's decoders expect, per the file header comment.
+The engine serves the three DSE-ITCH feeds the OMS itch service connects to, each a SoupBinTCP server:
+
+| Feed | Port (env) | Default | Carries |
+|---|---|---|---|
+| Market | `ITCH_PORT` | `5501` | Directory, trading state, reference prices, the order book (A/E/C/D), session events, closing prices. `itchgw/market.go` |
+| Index | `ME_ITCH_INDEX_PORT` | `5502` | `Z` index values once a second. `itchgw/index.go` |
+| News | `ME_ITCH_NEWS_PORT` | `5503` | `N` announcements. `itchgw/news.go` |
+
+Set a port to `off` to disable that feed. `ME_ITCH_MODE=legacy` brings back the old market feed (synthetic depth re-published every 700 ms, `itchgw/feed_legacy.go`).
+
+To use the index and news feeds, point the itch service's `index:` and `news:` sections (its `config.docker.yml`) at the engine, the same way `market:` already is: host `172.20.0.1`, ports `5502` and `5503`.
 
 ### Framing
 
@@ -175,48 +185,75 @@ Every SoupBinTCP packet has this frame:
 
 | Direction | Type | Packet |
 |---|---|---|
-| server → client | `A` | LoginAccept: session `SIM0000001` (10 bytes) and sequence `1` (20 bytes, right-aligned), padded with spaces. |
-| server → client | `H` | Server heartbeat, every 5 s. |
-| server → client | `S` | SequencedData: one or more ITCH messages back to back, about 8000 bytes or less per packet. |
-| client → server | `L` | LoginRequest. The first packet of any type is treated as the login; non-`L` types are logged and accepted. |
+| server → client | `A` | LoginAccept: session (10 bytes) and next sequence number (20 bytes, right-aligned), padded with spaces. |
+| server → client | `J` | LoginReject (`A` = not authorised), when ITCH authentication is on. |
+| server → client | `H` | Server heartbeat, every 2 s. |
+| server → client | `S` | SequencedData: one or more ITCH messages back to back, at most about 8000 bytes. Each packet is one sequence number. |
+| client → server | `L` | LoginRequest: user (6), password (10), session (10), sequence (20). |
 | client → server | `O` | Logout: the server closes the connection. |
 | client → server | other | Read and ignored (including `R` client heartbeats). |
 
-### Login and authentication
+### Login, sequence numbers and replay
 
-With `ME_ITCH_AUTH` off (the default), any login is accepted. With `ME_ITCH_AUTH=on`, the username (body bytes 0–6) and password (bytes 6–16), with spaces trimmed, are checked against `itch_brokers.json`. A failed check closes the connection without a LoginReject. A login body shorter than 16 bytes isn't checked (see [Security notes](configuration.md#security-notes)).
+With `ME_ITCH_AUTH` off (the default), any login is accepted; with it on, the username and password are checked against `itch_brokers.json`.
 
-The session and sequence number the client asks for in its LoginRequest are ignored. Every connection starts fresh at sequence 1 and receives the full start-of-day snapshot. Missed data can't be replayed.
+A login with a blank session (or sequence 1) starts fresh: the start-of-day set below, then the live stream. A client that logs in again with the session and the next sequence number it last received continues where it stopped, without a second start-of-day set, as long as the engine still holds the missed events (`ME_JOURNAL_CAP`, default 400000 events). Otherwise it starts fresh.
 
-### Message flow
+### Market feed message flow
 
-**On connect**, in SequencedData packets:
-1. `S` system event with code `O` (start of messages)
-2. `T` seconds
-3. `L` price tick table
-4. for each instrument: `P` company directory, `R` order book directory, and an `A` add-order carrying the reference price (previous close) with order number 0 and quantity 0
+The feed is driven by the engine's market-event journal (`engine/events.go`): every order added to the book, every execution of a resting order, every removal, every trading-state and session change is one ITCH message, in the order the engine made them. **Order numbers are the engine's own order numbers**, so the receiver's book is the engine's book.
 
-**Every 700 ms:**
-1. `T` seconds
-2. for each new trade since the last cycle: an `A` add-order on the aggressor's side, immediately followed by an `E` full execution with an increasing match number. This sets last price, volume, trade count and high/low without leaving the order on the book.
-3. for each order book: a `D` delete for every synthetic order sent last cycle, then an `A` for each current depth level, up to 10 bid and 10 ask levels. This keeps the client's top of book and depth in line with the engine.
+**Start of day**, in the order the itch decoders need:
+1. `T` seconds, `S` code `O` (start of messages), `L` price tick and `M` quantity tick tables
+2. per instrument: `P` company, `R` order book directory, `H` trading state (`T` tradable, `V` suspended)
+3. per index (DSEX, DS30): `P`, `R` with market type `I` and group `INDEX`, `H`
+4. per instrument and index: the reference price, an `A` with order number 0 and quantity 0 (previous close; the receiver derives the circuit limits from it)
+5. every order resting on the book (`A`)
+6. `S` for the current session (`S` pre-open, `Q` continuous, `M` close, `V` post-close, `E` end)
+
+**Live**, as it happens:
+
+| Engine event | ITCH |
+|---|---|
+| Order rests on the book (also each new iceberg slice) | `A` add order (visible quantity) |
+| A resting order trades in continuous trading | `E` order executed, once per trade, on the resting order; the match number is the trade number |
+| A resting order trades in the opening auction | `C` executed with price, for each side (same match number) |
+| Order cancelled, replaced (re-added as a new `A`) or expired | `D` delete |
+| Instrument halted / resumed / delisted | `H` trading state |
+| New instrument listed | `P`, `R`, `H` and its reference price |
+| Session change | `S` with the code above, and `C` (end of messages) after `E` |
+| Close | `Q` closing price per traded instrument |
+| New trading day | reference-price `A` per instrument (the previous close) |
+| No event for a second | `T` seconds |
 
 ### Message layouts
 
-All integers are big-endian. Text fields are fixed-width and padded with spaces. Sizes don't include the 1-byte message type.
+All integers are big-endian. Text fields are fixed-width and padded with spaces. Sizes don't include the 1-byte message type. Every message except `T` starts with a 4-byte nanosecond timestamp within the second given by the last `T` (seconds since Dhaka midnight).
 
 | Type | Size | Fields (bytes) |
 |---|---|---|
+| `T` seconds | 4 | seconds since Dhaka midnight (4) |
 | `S` system event | 17 | timestamp (4), group (8), event code (1), order book (4) |
-| `T` seconds | 4 | seconds since local midnight (4) |
-| `L` price tick | 16 | timestamp (4), tick table ID `1` (4), tick size `1` (4), price start `0` (4) |
+| `L` price tick | 16 | timestamp, tick table ID `1`, tick size `1` (= 0.01), price start `0` |
+| `M` quantity tick | 24 | timestamp (4), tick table ID `1` (4), tick size `1` (8), quantity start `0` (8) |
 | `P` company directory | 68 | timestamp (4), company = order book ID (4), name (30), symbol (30) |
-| `R` order book directory | 170 | timestamp (4), order book (4), price type `P` (1), ISIN (12: the symbol, as a placeholder), security code (12: the symbol), currency `BDT` (3), group `PUBLIC` (8), min qty `1` (8), qty tick table `1` (4), price tick table `1` (4), price decimals `2` (4), delisting date (4), delisting time (4), market type `P` (1), company (4), listing type `N` (1), `General` (12), `EQ` (12), security name (60), maturity date (4), yield decimals (4) |
+| `R` order book directory | 170 | timestamp, order book, price type `P`, ISIN (12), security code (12), currency `BDT` (3), group (8: `PUBLIC`, `SPUBLIC`, `ATBPUB`, `DEBT` or `INDEX`), min qty = market lot (8), qty and price tick tables `1`, price decimals `2`, delisting date and time `0`, market type (`P` or `I`), company, listing type (the category letter), sector (12), instrument type (12: `EQ`, `MF`, `CB`, `DB`, `IN`), security name (60), maturity date, yield decimals |
+| `H` trading state | 10 | timestamp (4), order book (4), state `T`/`V` (1), reason (1) |
 | `A` add order | 33 | timestamp (4), order number (8), side `B`/`S` (1), quantity (8), order book (4), price (4), yield `0` (4) |
 | `E` order executed | 28 | timestamp (4), order number (8), executed quantity (8), match number (8) |
+| `C` executed with price | 37 | timestamp (4), order number (8), quantity (8), match number (8), printable `Y` (1), price (4), order book (4) |
 | `D` order delete | 12 | timestamp (4), order number (8) |
+| `Q` closing price | 33 | timestamp (4), quantity (8), order book (4), printable (1), price (4), yield (4), match number (8) |
+| `Z` index value (index feed) | 16 | timestamp (4), index order book (4), value × 100 (8) |
+| `N` news (news feed) | variable | timestamp (4), order book (4), news id (4), firm (30), then title, reference and text, each ending in a NUL byte |
 
-- **Timestamps** are the nanosecond part of the current second; the `T` message gives the second.
 - **Prices** are unsigned 32-bit integers equal to price × 100 (2 decimals).
-- **Order book IDs** are `100001` plus the instrument's position in the instrument list. They stay stable while the process runs, because the list only grows. `orderBookID` in `engine/engine.go` is the one source of these IDs for the ITCH feed, the WebSocket gateway and the live load test.
-- **Order numbers** and **match numbers** are counted separately for each connection.
+- **Order book IDs** are permanent per symbol (`data/orderbook_ids.json`, see `engine/obids.go`). Index order books are `90001` (DSEX) and `90002` (DS30).
+
+### Index feed
+
+`Z` messages carry the current value of each index once a second. DSEX covers every tradable instrument; DS30 the 30 highest-priced equities. Both are price-sum indices scaled to a base value (6000 and 2200), because the simulator has no market capitalisation to weight by. The previous value comes from the market feed's reference price for the index order book; the up / down / unchanged / trades / volume / value figures shown with an index are counted by the receiver from the market feed's executions.
+
+### News feed
+
+`N` announcements are generated from the journal: session changes (pre-open, continuous trading, market closed, post-close, end of day), trading suspended / resumed for an instrument (with its order book) and new listings. A new connection first receives the day's announcements still held in the journal, one per packet.

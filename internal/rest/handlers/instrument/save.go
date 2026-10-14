@@ -156,6 +156,9 @@ func saveInstrument(w http.ResponseWriter, r *http.Request, eng *engine.Engine, 
 		Instr: []engine.Instrument{{Symbol: sym, Name: name, Prev: engine.Round2(prev)}},
 		Meta:  map[string]engine.InstrMeta{sym: meta},
 	})
+	if !create && cur.Tradable() != engine.MetaFor(sym).Tradable() {
+		eng.PublishTradingState(sym) // suspended or resumed by this edit
+	}
 	action := "instrument.update"
 	if create {
 		action = "instrument.add"

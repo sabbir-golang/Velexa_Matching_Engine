@@ -3,7 +3,6 @@ package admin
 import (
 	"net"
 	"net/http"
-	"sync/atomic"
 	"time"
 
 	"velexa-sim-me/internal/database/audit"
@@ -42,8 +41,8 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 	eng.Mu.RUnlock()
 	utils.WriteJSON(w, map[string]any{
 		"phase": phase, "instruments": instr, "orders": orders, "trades": trades, "running": running,
-		"bots_paused": atomic.LoadInt32(&engine.BotsPaused) == 1,
-		"fix_auth":    brokers.Fix.Enabled, "itch_auth": brokers.Itch.Enabled,
+		"auto_clock": eng.AutoClock(), "schedule": eng.ScheduleText(),
+		"fix_auth": brokers.Fix.Enabled, "itch_auth": brokers.Itch.Enabled,
 		"uptime": time.Since(meStart).Round(time.Second).String(),
 		"listeners": map[string]bool{
 			"FIX :5001":     portOpen("127.0.0.1:5001"),

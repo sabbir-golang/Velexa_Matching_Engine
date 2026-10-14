@@ -15,7 +15,6 @@ import (
 	"velexa-sim-me/internal/config"
 	"velexa-sim-me/internal/database/brokers"
 	"velexa-sim-me/internal/engine"
-	"velexa-sim-me/internal/latency"
 )
 
 // FIX tags (numeric — avoids tag-package name drift across versions).
@@ -49,10 +48,6 @@ const (
 	tUsername     quickfix.Tag = 553
 	tPassword     quickfix.Tag = 554
 	tMsgSeqNum    quickfix.Tag = 34
-	tSecurityID   quickfix.Tag = 48
-	tSecIDSource  quickfix.Tag = 22
-	tSecExchange  quickfix.Tag = 207
-	tMarketSeg    quickfix.Tag = 1300
 )
 
 // Acceptor is a quickfix acceptor that stands in for the DSE Matching Engine
@@ -61,8 +56,9 @@ const (
 type Acceptor struct {
 	eng     *engine.Engine
 	acc     *quickfix.Acceptor
-	execSeq uint64
+	execSeq uint64 // ExecID counter (atomic)
 	auth    *brokers.FixAuth
+	out     chan outItem // reports waiting to be sent, in engine order
 
 	sessMu   sync.Mutex
 	sessions map[string]time.Time          // broker → logon time (currently connected)
@@ -225,6 +221,7 @@ TargetCompID=DSE_BROKER
 	fa := &Acceptor{eng: eng, auth: brokers.Fix,
 		sessions: map[string]time.Time{}, sids: map[string]quickfix.SessionID{}, seqs: map[string]*seqPair{}}
 	Active = fa
+	fa.startSender()
 	acc, err := quickfix.NewAcceptor(fa, quickfix.NewMemoryStoreFactory(), settings, msgLogFactory{store: MsgLog})
 	if err != nil {
 		return nil, err
@@ -305,6 +302,8 @@ func (fa *Acceptor) FromApp(m *quickfix.Message, sid quickfix.SessionID) quickfi
 		fa.handleCancel(m, sid)
 	case "G": // OrderCancelReplaceRequest
 		fa.handleReplace(m, sid)
+	case "H": // OrderStatusRequest
+		fa.handleStatus(m, sid)
 	}
 	return nil
 }
@@ -345,8 +344,6 @@ func (fa *Acceptor) validateNew(symbol string, qty float64, typ engine.OrdType, 
 }
 
 func (fa *Acceptor) handleNewOrder(m *quickfix.Message, sid quickfix.SessionID) {
-	t0 := time.Now()
-	defer func() { latency.Fix.Rec(time.Since(t0).Nanoseconds()) }()
 	clOrdID := fa.getStr(m, tClOrdID)
 	symbol := fa.getStr(m, tSymbol)
 	sideStr := fa.getStr(m, tSide)
@@ -354,33 +351,54 @@ func (fa *Acceptor) handleNewOrder(m *quickfix.Message, sid quickfix.SessionID) 
 	px, _ := strconv.ParseFloat(fa.getStr(m, tPrice), 64)
 	stopPx, _ := strconv.ParseFloat(fa.getStr(m, tStopPx), 64)
 	display, _ := strconv.ParseFloat(fa.getStr(m, tMaxFloor), 64)
+	if display <= 0 { // the OMS sends DisplayQty (1138) rather than MaxFloor (111)
+		display, _ = strconv.ParseFloat(fa.getStr(m, tDisplayQty), 64)
+	}
 	ordType := fa.getStr(m, tOrdType)
+	ctx := newOrderCtx(m, sid)
 
 	side := engine.Buy
 	if sideStr == "2" {
 		side = engine.Sell
 	}
-	// FIX OrdType (40): 1=Market 2=Limit 3=Stop 4=Stop-Limit.
+	// FIX OrdType (40): 1=Market 2=Limit 3=Stop 4=Stop-Limit Z=market-at-best (DSE).
 	var typ engine.OrdType
+	reason := ""
 	switch ordType {
 	case "1":
 		typ = engine.Market
+	case "2":
+		typ = engine.Limit
+		if px <= 0 {
+			reason = "limit order without a price (tag 44)"
+		}
 	case "3":
 		typ = engine.StopMkt
 	case "4":
 		typ = engine.StopLim
+	case "Z": // DSE market-at-best
+		typ = engine.MarketBest
 	default:
-		typ = engine.Limit
-		if px <= 0 {
-			typ = engine.Market
-		}
+		reason = fmt.Sprintf("unsupported order type (tag 40): %q", ordType)
+	}
+	if sideStr != "1" && sideStr != "2" {
+		reason = fmt.Sprintf("unsupported side (tag 54): %q — only 1 (buy) and 2 (sell) are traded", sideStr)
 	}
 	// Reject with a cause the OMS can act on. A blank Text(58) here is what made
 	// every one of these arrive as an unexplained "rejected by simulator ME".
-	if reason := fa.validateNew(symbol, qty, typ, px, stopPx); reason != "" {
-		fa.send(sid, &engine.ExecReport{ClOrdID: clOrdID, Symbol: symbol, Side: side,
-			Status: "REJECTED", Reason: reason, OrderQty: int64(qty), Price: px})
+	if reason == "" {
+		reason = fa.validateNew(symbol, qty, typ, px, stopPx)
+	}
+	if reason == "" && (typ == engine.Market || typ == engine.MarketBest) {
+		reason = fa.marketPriceRule(symbol, px)
+	}
+	if reason != "" {
+		fa.deliver(&engine.ExecReport{ClOrdID: clOrdID, Symbol: symbol, Side: side,
+			Status: "REJECTED", Reason: reason, OrderQty: int64(qty), Price: px, Ctx: ctx})
 		return
+	}
+	if typ == engine.Market || typ == engine.MarketBest {
+		px = 0 // a priced market order in post-close trades at the close; the engine prices it
 	}
 	o := fa.eng.NewOrder(symbol, side, typ, px, int64(qty), "FIX:"+sid.TargetCompID)
 	o.ClOrdID = clOrdID
@@ -390,23 +408,40 @@ func (fa *Acceptor) handleNewOrder(m *quickfix.Message, sid quickfix.SessionID) 
 	if o.TIF == engine.GTD {
 		o.Expire = parseExpire(fa.getStr(m, tExpireTime), fa.getStr(m, tExpireDate))
 	}
-	// Async follow-ups (e.g. a stop triggering later) reach the broker here.
-	o.Notify = func(rep *engine.ExecReport) { fa.send(sid, rep) }
-	fa.send(sid, fa.eng.SubmitAndWait(o))
+	// Every report about this order — the reply, later fills while it rests,
+	// cancel/replace confirmations, a triggered stop, expiry — reaches the broker
+	// through Notify, in the order the engine produced them.
+	o.Ctx = ctx
+	o.Notify = fa.deliver
+	fa.eng.SubmitAndWait(o)
+}
+
+// marketPriceRule applies the DSE rule for a price on a market order: only in
+// the post-closing session, and then it must be the closing price.
+func (fa *Acceptor) marketPriceRule(symbol string, px float64) string {
+	if fa.eng.CurrentPhase() != "Post-Close" {
+		if px > 0 {
+			return engine.ReasonPriceNotAllowed
+		}
+		return ""
+	}
+	last, ok := fa.eng.LastPrice(symbol)
+	if !ok || px <= 0 || engine.Round2(px) != engine.Round2(last) {
+		return engine.ReasonNotClosePrice
+	}
+	return ""
 }
 
 // handleCancel processes an OrderCancelRequest (35=F): OrigClOrdID identifies the
-// resting order to pull; on success an ExecutionReport(Canceled), else a reject.
+// order to pull. The confirmation (150=4) reaches the broker through the order's
+// Notify; an unknown, finished or another broker's order gets an OrderCancelReject.
 func (fa *Acceptor) handleCancel(m *quickfix.Message, sid quickfix.SessionID) {
 	orig := fa.getStr(m, tOrigClOrdID)
 	cl := fa.getStr(m, tClOrdID)
-	rep := fa.eng.Cancel(orig)
-	rep.ClOrdID = cl
+	rep := fa.eng.CancelAs(orig, cl, "FIX:"+sid.TargetCompID)
 	if rep.Status == "REJECT_CXL" {
-		fa.sendCxlReject(sid, cl, orig, "1")
-		return
+		fa.queueMsg(cxlReject(cl, orig, "1"), sid)
 	}
-	fa.send(sid, rep)
 }
 
 // handleReplace processes an OrderCancelReplaceRequest (35=G): amend qty (38)
@@ -416,28 +451,22 @@ func (fa *Acceptor) handleReplace(m *quickfix.Message, sid quickfix.SessionID) {
 	cl := fa.getStr(m, tClOrdID)
 	newQty, _ := strconv.ParseFloat(fa.getStr(m, tOrderQty), 64)
 	newPx, _ := strconv.ParseFloat(fa.getStr(m, tPrice), 64)
-	rep := fa.eng.Replace(orig, cl, int64(newQty), newPx)
+	rep := fa.eng.ReplaceAs(orig, cl, "FIX:"+sid.TargetCompID, int64(newQty), newPx)
 	if rep.Status == "REJECT_CXL" {
-		fa.sendCxlReject(sid, cl, orig, "2")
-		return
+		fa.queueMsg(cxlReject(cl, orig, "2"), sid)
 	}
-	fa.send(sid, rep)
 }
 
-// sendCxlReject emits an OrderCancelReject (35=9) for an unknown/undone order.
-// respTo: 1=cancel request, 2=cancel/replace request.
-func (fa *Acceptor) sendCxlReject(sid quickfix.SessionID, cl, orig, respTo string) {
-	m := quickfix.NewMessage()
-	m.Header.SetString(tMsgType, "9")
-	m.Body.SetString(tClOrdID, cl)
-	m.Body.SetString(tOrigClOrdID, orig)
-	m.Body.SetString(tOrdStatus, "8") // Rejected
-	m.Body.SetString(tCxlRejRespTo, respTo)
-	m.Body.SetString(tCxlRejReason, "1") // Unknown order
-	m.Body.SetString(tText, "unknown or already-done order")
-	if err := quickfix.SendToTarget(m, sid); err != nil {
-		log.Printf("[FIX] send cxl-reject failed: %v", err)
+// handleStatus answers an OrderStatusRequest (35=H) with an execution report
+// 150=I carrying the request's OrdStatusReqID (790).
+func (fa *Acceptor) handleStatus(m *quickfix.Message, sid quickfix.SessionID) {
+	rep := fa.eng.Status(fa.getStr(m, tClOrdID), "FIX:"+sid.TargetCompID)
+	if rep.Status == "REJECT_CXL" || rep.Ctx == nil {
+		fa.queueMsg(fa.statusUnknown(m), sid)
+		return
 	}
+	rep.ReqID = fa.getStr(m, tOrdStatusReqID)
+	fa.deliver(rep)
 }
 
 // mapTIF maps FIX tag 59 (TimeInForce) to the engine's TIF. Empty/unknown → Day
@@ -473,74 +502,4 @@ func parseExpire(t, d string) time.Time {
 		}
 	}
 	return time.Time{}
-}
-
-func (fa *Acceptor) send(sid quickfix.SessionID, rep *engine.ExecReport) {
-	fa.execSeq++
-	m := quickfix.NewMessage()
-	m.Header.SetString(tMsgType, "8") // ExecutionReport
-	m.Body.SetString(tOrderID, strconv.FormatUint(rep.OrderID, 10))
-	m.Body.SetString(tClOrdID, rep.ClOrdID)
-	m.Body.SetString(tExecID, strconv.FormatUint(fa.execSeq, 10))
-	execType, ordStatus := "0", "0"
-	switch rep.Status {
-	case "FILLED":
-		execType, ordStatus = "TRADE", "2"
-	case "PARTIALLY_FILLED":
-		execType, ordStatus = "TRADE", "1"
-	case "NEW":
-		execType, ordStatus = "0", "0"
-	case "PENDING":
-		execType, ordStatus = "A", "A" // PendingNew — a stop accepted but parked
-	case "REPLACED":
-		execType, ordStatus = "5", "0" // Replaced, still working
-	case "CANCELED":
-		execType, ordStatus = "4", "4" // Canceled (IOC/FOK remainder, cancel/replace)
-	case "REJECTED":
-		execType, ordStatus = "8", "8"
-	}
-	m.Body.SetString(tExecType, execType)
-	m.Body.SetString(tOrdStatus, ordStatus)
-	m.Body.SetString(tSymbol, rep.Symbol)
-	sv := "1"
-	if rep.Side == engine.Sell {
-		sv = "2"
-	}
-	m.Body.SetString(tSide, sv)
-	m.Body.SetString(tLeavesQty, strconv.FormatInt(rep.LeavesQty, 10))
-	m.Body.SetString(tCumQty, strconv.FormatInt(rep.FilledQty, 10))
-	ordQty := rep.OrderQty // tag 38 OrderQty — what the OMS asked for
-	if ordQty <= 0 {
-		ordQty = rep.FilledQty + rep.LeavesQty
-	}
-	m.Body.SetString(tOrderQty, strconv.FormatInt(ordQty, 10))
-	m.Body.SetString(tAvgPx, strconv.FormatFloat(rep.AvgPx, 'f', 2, 64))
-	if rep.Price > 0 {
-		m.Body.SetString(tPrice, strconv.FormatFloat(rep.Price, 'f', 2, 64)) // tag 44 limit price -> blotter
-	}
-	if rep.LastQty > 0 {
-		m.Body.SetString(tLastPx, strconv.FormatFloat(rep.LastPx, 'f', 2, 64))
-		m.Body.SetString(tLastQty, strconv.FormatInt(rep.LastQty, 10))
-	}
-	if rep.Status == "REJECTED" {
-		txt := rep.Reason
-		if txt == "" {
-			txt = "rejected by simulator ME"
-		}
-		m.Body.SetString(tText, txt)
-	}
-	// FIX enrichment — echo the DSE market identity so the OMS side can key on
-	// ISIN / exchange / board without a separate security master.
-	m.Body.SetString(tSecExchange, "XDHA")
-	if rep.ISIN != "" {
-		m.Body.SetString(tSecurityID, rep.ISIN)
-		m.Body.SetString(tSecIDSource, "4") // 4 = ISIN
-	}
-	if rep.Board != "" {
-		m.Body.SetString(tMarketSeg, rep.Board)
-	}
-	m.Body.SetString(tTransactTime, time.Now().UTC().Format("20060102-15:04:05.000"))
-	if err := quickfix.SendToTarget(m, sid); err != nil {
-		log.Printf("[FIX] send exec report failed: %v", err)
-	}
 }

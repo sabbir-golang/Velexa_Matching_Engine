@@ -1,6 +1,8 @@
 package itchgw
 
-// itchfeed.go — native DSE-ITCH market-data feed emitted by the simulator
+// feed_legacy.go — the original (ME_ITCH_MODE=legacy) feed: it re-publishes the depth
+// as synthetic orders. The default feed is journal driven (market.go). Original header:
+// native DSE-ITCH market-data feed emitted by the simulator
 // matching engine. It is a SoupBinTCP *server*: the C++ `itch` service connects
 // as a SoupBinTCP client, logs in, and receives a stream of SequencedData
 // packets whose bodies are concatenated ITCH messages. The byte layouts here
@@ -38,15 +40,15 @@ import (
 	"velexa-sim-me/internal/engine"
 )
 
-type itchFeed struct {
+type legacyFeed struct {
 	eng *engine.Engine
 }
 
-func NewFeed(eng *engine.Engine) *itchFeed {
-	return &itchFeed{eng: eng}
+func newLegacyFeed(eng *engine.Engine) *legacyFeed {
+	return &legacyFeed{eng: eng}
 }
 
-func (f *itchFeed) Run() {
+func (f *legacyFeed) Run() {
 	port := os.Getenv("ITCH_PORT")
 	if port == "" {
 		port = "5501"
@@ -68,8 +70,8 @@ func (f *itchFeed) Run() {
 
 // ---- SoupBinTCP session ----
 
-type itchSession struct {
-	f         *itchFeed
+type legacySession struct {
+	f         *legacyFeed
 	c         net.Conn
 	wmu       sync.Mutex
 	stop      chan struct{}
@@ -81,7 +83,7 @@ type itchSession struct {
 	depthRefs map[int][]uint64 // orderbook id -> synthetic add-order refs currently resting
 }
 
-func (f *itchFeed) session(c net.Conn) {
+func (f *legacyFeed) session(c net.Conn) {
 	peer := c.RemoteAddr().String()
 	if ok, probe := f.readLogin(c); !ok {
 		// A connection that closes without sending a byte is a port health check
@@ -98,7 +100,7 @@ func (f *itchFeed) session(c net.Conn) {
 	}
 	log.Printf("[ITCH] %s: LoginAccept sent (session=SIM0000001 seq=1)", peer)
 
-	s := &itchSession{f: f, c: c, stop: make(chan struct{}), nextRef: 1, depthRefs: map[int][]uint64{}}
+	s := &legacySession{f: f, c: c, stop: make(chan struct{}), nextRef: 1, depthRefs: map[int][]uint64{}}
 	if err := s.sendInitial(); err != nil {
 		s.close()
 		return
@@ -121,7 +123,7 @@ func (f *itchFeed) session(c net.Conn) {
 	}
 }
 
-func (s *itchSession) close() {
+func (s *legacySession) close() {
 	s.closeOnce.Do(func() {
 		close(s.stop)
 		s.c.Close()
@@ -130,7 +132,7 @@ func (s *itchSession) close() {
 
 // readLogin consumes one SoupBinTCP LoginRequest ('L': user6+pass10+session10+
 // seq20). Any credentials are accepted (this is a simulator feed).
-func (f *itchFeed) readLogin(c net.Conn) (ok, probe bool) {
+func (f *legacyFeed) readLogin(c net.Conn) (ok, probe bool) {
 	hdr := make([]byte, 3)
 	if n, err := io.ReadFull(c, hdr); err != nil {
 		return false, n == 0 && err == io.EOF
@@ -175,7 +177,7 @@ func loginAcceptBody() []byte {
 	return body
 }
 
-func (f *itchFeed) writeSoup(c net.Conn, ptype byte, body []byte) error {
+func (f *legacyFeed) writeSoup(c net.Conn, ptype byte, body []byte) error {
 	length := len(body) + 1
 	buf := make([]byte, 3+len(body))
 	binary.BigEndian.PutUint16(buf[0:2], uint16(length))
@@ -185,15 +187,15 @@ func (f *itchFeed) writeSoup(c net.Conn, ptype byte, body []byte) error {
 	return err
 }
 
-func (s *itchSession) writePkt(ptype byte, body []byte) error {
+func (s *legacySession) writePkt(ptype byte, body []byte) error {
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
 	return s.f.writeSoup(s.c, ptype, body)
 }
 
-func (s *itchSession) sendSeq(payload []byte) error { return s.writePkt('S', payload) }
+func (s *legacySession) sendSeq(payload []byte) error { return s.writePkt('S', payload) }
 
-func (s *itchSession) heartbeatLoop() {
+func (s *legacySession) heartbeatLoop() {
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 	for {
@@ -210,7 +212,7 @@ func (s *itchSession) heartbeatLoop() {
 }
 
 // readerLoop drains client ClientHeartbeat ('R') / Logout ('O') frames.
-func (s *itchSession) readerLoop() {
+func (s *legacySession) readerLoop() {
 	hdr := make([]byte, 3)
 	for {
 		if _, err := io.ReadFull(s.c, hdr); err != nil {
@@ -234,11 +236,11 @@ func (s *itchSession) readerLoop() {
 	}
 }
 
-func (s *itchSession) nextMatch() uint64 { s.matchSeq++; return s.matchSeq }
+func (s *legacySession) nextMatch() uint64 { s.matchSeq++; return s.matchSeq }
 
 // sendInitial streams the start-of-day directory: system-event(O) + seconds +
 // price-tick + per-instrument company('P') / orderbook('R') / reference-price('A').
-func (s *itchSession) sendInitial() error {
+func (s *legacySession) sendInitial() error {
 	batch := []byte{}
 	batch = append(batch, msgSystemEvent('O')...) // start_message
 	batch = append(batch, msgSeconds(secOfDay())...)
@@ -276,7 +278,7 @@ func (s *itchSession) sendInitial() error {
 
 // refresh emits one tick's worth of updates: new trades (add+execute) then a
 // full depth re-publish (delete prior synthetic orders, add current levels).
-func (s *itchSession) refresh() error {
+func (s *legacySession) refresh() error {
 	e := s.f.eng
 
 	type lvl struct {
@@ -417,8 +419,6 @@ func secOfDay() uint32 {
 }
 
 func rawPx(p float64) uint32 { return uint32(int64(p*100 + 0.5)) }
-
-// price_decimals = 2
 
 func msgSeconds(sec uint32) []byte { // 'T' payload 4
 	x := &ibuf{}

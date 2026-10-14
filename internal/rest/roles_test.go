@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 	"velexa-sim-me/internal/database/audit"
@@ -151,26 +150,25 @@ func TestAdminRoleReachesEverything(t *testing.T) {
 	}
 }
 
-func TestSimulatorActionsNeedAdmin(t *testing.T) {
+func TestTradingSessionControlNeedsAdmin(t *testing.T) {
 	e := newRoleEnv(t)
-	atomic.StoreInt32(&engine.BotsPaused, 0)
-	defer atomic.StoreInt32(&engine.BotsPaused, 0)
 	user, admin := e.login("alice", "alicePass99"), e.login(adminName, adminPW)
+	e.srv.Eng.SetPhase(engine.PhaseOpen)
 
-	if code := e.do(http.MethodGet, "/admin/api/sim", user, nil).Code; code != 403 {
-		t.Fatalf("user reading simulator status: %d, want 403", code)
+	if code := e.do(http.MethodGet, "/admin/api/trading-session", user, nil).Code; code != 403 {
+		t.Fatalf("user reading the trading session: %d, want 403", code)
 	}
-	if code := e.do(http.MethodGet, "/admin/api/sim?action=bots_pause", user, nil).Code; code != 403 {
-		t.Fatalf("user pausing the bots: %d, want 403", code)
+	if code := e.do(http.MethodGet, "/admin/api/trading-session?action=endofday", user, nil).Code; code != 403 {
+		t.Fatalf("user ending the day: %d, want 403", code)
 	}
-	if atomic.LoadInt32(&engine.BotsPaused) != 0 {
-		t.Fatal("a forbidden request still paused the bots")
+	if e.srv.Eng.CurrentPhase() != engine.PhaseOpen {
+		t.Fatal("a forbidden request still changed the phase")
 	}
-	if code := e.do(http.MethodGet, "/admin/api/sim?action=bots_pause", admin, nil).Code; code != 200 {
-		t.Fatalf("admin pausing the bots: %d", code)
+	if code := e.do(http.MethodGet, "/admin/api/trading-session?action=preopen", admin, nil).Code; code != 200 {
+		t.Fatalf("admin forcing pre-open: %d", code)
 	}
-	if atomic.LoadInt32(&engine.BotsPaused) != 1 {
-		t.Fatal("admin request did not pause the bots")
+	if e.srv.Eng.CurrentPhase() != engine.PhasePreOpen || e.srv.Eng.AutoClock() {
+		t.Fatalf("admin request: phase %s, clock %v; want Pre-Open with the clock off", e.srv.Eng.CurrentPhase(), e.srv.Eng.AutoClock())
 	}
 }
 

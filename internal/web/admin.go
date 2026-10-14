@@ -112,17 +112,16 @@ label.fl{display:block;font-size:11px;color:var(--mut);margin:0 0 6px;font-weigh
 .reveal .kv{display:grid;grid-template-columns:160px 1fr;gap:7px 14px;font-family:"IBM Plex Mono",monospace;font-size:13px;margin:12px 0 14px}
 .reveal .kv .k{color:var(--mut)}.reveal .kv .val{color:var(--amber);font-weight:600}
 .muted{color:var(--mut)}.pad16{padding:16px}
-/* embedded simulator */
 .simbar{margin-bottom:14px}
-.benchframe{border:1px solid var(--line);border-radius:13px;overflow:hidden;background:#0b0f16;box-shadow:0 6px 20px rgba(0,0,0,.35)}
-.benchframe iframe{width:100%;height:calc(100vh - 142px);min-height:480px;border:0;display:block}
-/* iframe views (Simulator / Trade) fill the page — trim the wrap's bottom padding */
+.viewframe{border:1px solid var(--line);border-radius:13px;overflow:hidden;background:#0b0f16;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+.viewframe iframe{width:100%;height:calc(100vh - 142px);min-height:480px;border:0;display:block}
+/* iframe view (Trade Terminal) fills the page — trim the wrap's bottom padding */
 body.iframeview .wrap{padding-bottom:12px}
 .tt-bar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
 .tt-frame{border:0;border-radius:0;box-shadow:none;background:transparent;overflow:visible}
 .tt-frame iframe{height:760px;min-height:480px}
-.benchframe:fullscreen{border:0;border-radius:0}
-.benchframe:fullscreen iframe{height:100vh}
+.viewframe:fullscreen{border:0;border-radius:0}
+.viewframe:fullscreen iframe{height:100vh}
 /* instruments page */
 .exp{position:relative}
 .exp-menu{display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:240px;background:var(--panel);border:1px solid var(--line2);border-radius:11px;box-shadow:0 14px 40px rgba(0,0,0,.5);z-index:30;padding:6px}
@@ -199,7 +198,7 @@ body.role-user [data-admin-only]{display:none!important}
    <div class="navgrp">Trading</div>
    <div class="navitem" data-v="trade"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l3-4 3 2 4-6"/></svg>Trade Terminal</div>
    <div class="navitem" data-v="sessions" data-admin-only><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>FIX Sessions<span class="badge" id="navSess"></span></div>
-   <div class="navitem" data-v="sim" data-admin-only><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>Simulator</div>
+   <div class="navitem" data-v="market" data-admin-only><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Market Session</div>
    <div class="navitem" data-v="instruments" data-admin-only><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>Instruments</div>
    <div class="navgrp">Access</div>
    <div class="navitem" data-v="creds"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4M18 5l2 2M15 8l2 2"/></svg>Broker Credentials</div>
@@ -245,26 +244,29 @@ body.role-user [data-admin-only]{display:none!important}
    </section>
 
    <section class="view" id="view-trade">
-    <div class="benchframe tt-frame"><iframe id="tradeIframe" title="Trade terminal"></iframe></div>
+    <div class="viewframe tt-frame"><iframe id="tradeIframe" title="Trade terminal"></iframe></div>
    </section>
 
-   <section class="view" id="view-sim">
-    <div class="simbar">
-     <div class="row">
-      <span class="muted">Bots</span><span id="botState" class="chip">—</span>
-      <button class="btn sm" onclick="sim('bots_pause')" data-admin-only>Pause</button>
-      <button class="btn sm" onclick="sim('bots_resume')" data-admin-only>Resume</button>
-      <span style="width:18px"></span>
+   <section class="view" id="view-market" data-admin-only>
+    <h2>Trading session</h2>
+    <div class="panel pad">
+     <div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <span class="muted">Phase</span><span id="phaseState" class="chip">—</span>
-      <button class="btn sm" onclick="sim('preopen')" data-admin-only>Pre-Open</button>
-      <button class="btn sm acc" onclick="sim('open')" data-admin-only>Open</button>
-      <span style="flex:1"></span>
-      <button class="btn sm acc" onclick="goFull('simFrame')">⛶ Full screen</button>
-      <button class="btn sm ghost" onclick="reloadBench()">↻ Reload</button>
-      <a class="btn sm ghost" href="/bench" target="_blank">New tab ↗</a>
+      <span style="width:12px"></span>
+      <span class="muted">Clock</span><span id="clockState" class="chip">—</span>
+      <button class="btn sm ghost" onclick="tsess(window._auto?'auto_off':'auto_on')" id="clockBtn">Follow schedule</button>
+     </div>
+     <p class="note" style="margin:14px 0 10px">Force a phase by hand (this switches the clock to manual). Each change runs the exchange's housekeeping: the open runs the opening auction, Close publishes closing prices, End of day expires day orders, and the next Pre-Open starts a new trading day.</p>
+     <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn sm" onclick="tsess('preopen')">Pre-Open</button>
+      <button class="btn sm acc" onclick="tsess('open')">Open (continuous trading)</button>
+      <button class="btn sm" onclick="tsess('close')">Close</button>
+      <button class="btn sm" onclick="tsess('postclose')">Post-Close</button>
+      <button class="btn sm danger" onclick="if(confirm('End the trading day? Day orders will expire.'))tsess('endofday')">End of day</button>
      </div>
     </div>
-    <div class="benchframe" id="simFrame"><iframe id="benchIframe" title="Simulator benchmark"></iframe></div>
+    <h2>DSE schedule (Asia/Dhaka, Sunday–Thursday)</h2>
+    <div class="panel"><table><thead><tr><th>Phase</th><th>From</th><th>Orders</th></tr></thead><tbody id="schedTbl"></tbody></table></div>
    </section>
 
    <section class="view" id="view-creds">
@@ -318,7 +320,7 @@ body.role-user [data-admin-only]{display:none!important}
      <div class="panel">
       <div class="card-hd" style="padding:14px 16px"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--mut);fill:none;stroke-width:2"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg><h3>Asset Classes</h3></div>
       <div id="in_classes"></div>
-      <div class="muted" style="font-size:11.5px;padding:11px 16px;border-top:1px solid var(--line);line-height:1.5">Listed scrips get an order book, ITCH id and market-making bots immediately and show in the Trade Terminal. Changes are saved to the instrument master file.</div>
+      <div class="muted" style="font-size:11.5px;padding:11px 16px;border-top:1px solid var(--line);line-height:1.5">Listed scrips get an order book and ITCH id immediately, appear on the market feed and show in the Trade Terminal. Changes are saved to the instrument master file.</div>
      </div>
     </div>
     <div class="modal" id="instModal" onclick="if(event.target==this)closeInstr()">
@@ -417,14 +419,13 @@ body.role-user [data-admin-only]{display:none!important}
 <script>
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]})}
 function j(p,o){return fetch("/admin/api/"+p,o).then(function(r){return r.json()})}
-var titles={dash:["Dashboard","Live engine status"],trade:["Trade Terminal","Live order book, trade tape &amp; order entry"],sessions:["FIX Sessions","Connected brokers &amp; controls"],sim:["Simulator","Benchmark &amp; live order generation"],creds:["Broker Credentials","Issue &amp; manage FIX/ITCH access"],instruments:["Instruments","List &amp; manage tradeable securities (DSE board, tick, previous close)"],access:["External OMS Access","Source-IP allowlist for the plain-FIX gateway"],msglog:["Message Log","FIX message trace — every order in &amp; out"],users:["Users","Console accounts &amp; roles"],diag:["Diagnostics","Auth state &amp; event log"]};
+var titles={dash:["Dashboard","Live engine status"],trade:["Trade Terminal","Live order book, trade tape &amp; order entry"],sessions:["FIX Sessions","Connected brokers &amp; controls"],market:["Market Session","Trading phase &amp; the DSE clock"],creds:["Broker Credentials","Issue &amp; manage FIX/ITCH access"],instruments:["Instruments","List &amp; manage tradeable securities (DSE board, tick, previous close)"],access:["External OMS Access","Source-IP allowlist for the plain-FIX gateway"],msglog:["Message Log","FIX message trace — every order in &amp; out"],users:["Users","Console accounts &amp; roles"],diag:["Diagnostics","Auth state &amp; event log"]};
 function show(v){
  document.querySelectorAll(".navitem").forEach(function(n){n.classList.toggle("on",n.dataset.v==v)});
  document.querySelectorAll(".view").forEach(function(s){s.classList.remove("on")});
  document.getElementById("view-"+v).classList.add("on");
  document.getElementById("pageTitle").innerHTML=titles[v][0];document.getElementById("pageSub").innerHTML=titles[v][1];
- document.body.classList.toggle("iframeview",v=="sim"||v=="trade");
- if(v=="sim"){var f=document.getElementById("benchIframe");if(!f.getAttribute("src"))f.src="/bench"}
+ document.body.classList.toggle("iframeview",v=="trade");
  if(v=="trade"){var t=document.getElementById("tradeIframe");if(!t.getAttribute("src"))t.src="/?embed=1"}
  if(v=="users"){loadUsers()}
  if(v=="msglog"){loadMsgLog()}
@@ -442,7 +443,6 @@ function loadMsgLog(){
   document.getElementById("ml_count").textContent=n+" messages";
  });
 }
-function reloadBench(){document.getElementById("benchIframe").src="/bench"}
 window.addEventListener("message",function(e){
  if(e.origin!==location.origin||!e.data||e.data.type!=="tt-height")return;
  var f=document.getElementById("tradeIframe");if(f)f.style.height=Math.max(480,Math.ceil(e.data.h)+4)+"px"});
@@ -476,9 +476,12 @@ function renderStatus(d){
      "<span data-admin-only><button class='btn sm ghost' onclick=\"sess('"+esc(s.broker)+"','reset')\">Reset seq</button> <button class='btn sm danger' onclick=\"sess('"+esc(s.broker)+"','disconnect')\">Disconnect</button></span></td></tr>"});
   document.getElementById("sessions").innerHTML=ss||"<tr><td colspan=4 class='pad16 muted'>No matching sessions.</td></tr>";
   setc("sess_cnt",sc+" of "+(d.sessions||[]).length);
-  document.getElementById("botState").className="chip "+(d.bots_paused?"down":"up");
-  document.getElementById("botState").innerHTML="<span class=d></span>"+(d.bots_paused?"PAUSED":"RUNNING");
   document.getElementById("phaseState").className="chip up";document.getElementById("phaseState").innerHTML="<span class=d></span>"+esc(d.phase);
+  window._auto=!!d.auto_clock;document.getElementById("clockState").className="chip "+(d.auto_clock?"up":"down");
+  document.getElementById("clockState").innerHTML="<span class=d></span>"+(d.auto_clock?"DSE SCHEDULE":"MANUAL");
+  document.getElementById("clockBtn").textContent=d.auto_clock?"Switch to manual":"Follow schedule";
+  var sc=(d.schedule||"").split(","),ph=[["Pre-Open","limit orders collect for the opening auction"],["Continuous Trading","normal matching"],["Close","not accepted"],["Post-Close","at the closing price only"],["Closed","not accepted (until the next pre-open)"]];
+  if(sc.length==5)document.getElementById("schedTbl").innerHTML=ph.map(function(p,i){return "<tr"+(p[0]==d.phase?" style='background:var(--panel2)'":"")+"><td><b>"+p[0]+"</b></td><td class=mono>"+esc(sc[i])+"</td><td class=muted>"+p[1]+"</td></tr>"}).join("");
   document.getElementById("authState").innerHTML=
     "<tr><td>FIX logon authentication</td><td class=right><span class='chip "+(d.fix_auth?"up":"down")+"'><span class=d></span>"+(d.fix_auth?"ENFORCED":"OPEN")+"</span></td></tr>"+
     "<tr><td>ITCH feed authentication</td><td class=right><span class='chip "+(d.itch_auth?"up":"down")+"'><span class=d></span>"+(d.itch_auth?"ENFORCED":"OPEN")+"</span></td></tr>";
@@ -602,7 +605,7 @@ function renderBrokers(b){
   document.getElementById("brokerCount").textContent="· "+n+" of "+(b.brokers||[]).length+" managed · "+b.fix_total+" FIX · "+b.itch_total+" ITCH";
 }
 function applyFilters(){renderStatus(_s);renderBrokers(_b)}
-function sim(a){j("sim?action="+a,{method:"POST"}).then(refresh)}
+function tsess(a){j("trading-session?action="+a,{method:"POST"}).then(refresh)}
 function sess(b,a){if(a=="disconnect"&&!confirm("Disconnect "+b+"?"))return;
  j("session?broker="+encodeURIComponent(b)+"&action="+a,{method:"POST"}).then(function(r){if(!r.ok)alert(r.error||"failed");refresh()})}
 function addBroker(){

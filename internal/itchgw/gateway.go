@@ -296,7 +296,7 @@ func (g *Gateway) newTsmFrames() [][]byte {
 	return out
 }
 
-// eventsSnapshot sends each instrument's recent tape (newest first) + empty news.
+// eventsSnapshot sends each instrument's recent tape (newest first) and today's announcements.
 func (g *Gateway) eventsSnapshot() [][]byte {
 	e := g.eng
 	e.Mu.RLock()
@@ -306,7 +306,7 @@ func (g *Gateway) eventsSnapshot() [][]byte {
 		bySym[t.Symbol] = append([]map[string]any{tsmItem(t)}, bySym[t.Symbol]...) // prepend => newest first
 	}
 	out := [][]byte{}
-	nf, _ := json.Marshal(map[string]any{"tp": "news", "d": simNews()})
+	nf, _ := json.Marshal(map[string]any{"tp": "news", "d": journalNews(g.eng)})
 	out = append(out, nf)
 	for sym, items := range bySym {
 		f, _ := json.Marshal(map[string]any{"tp": "tsm", "ob": g.eng.OrderBookID(sym), "d": items})
@@ -315,30 +315,30 @@ func (g *Gateway) eventsSnapshot() [][]byte {
 	return out
 }
 
-// simNews returns DSE-style news items in the trader panel's news shape
-// (compact keys: dt,t,ob,nid,fid,tl,rf,nt via newsContext keyMap).
-func simNews() []map[string]any {
-	items := []struct {
-		ob    int
-		title string
-	}{
-		{100001, "Grameenphone Ltd. — Board meeting on 28 Aug to consider Q2 dividend"},
-		{100002, "Square Pharmaceuticals declares 55% cash dividend for FY2026"},
-		{100003, "Beximco Ltd. resumes trading after brief circuit-breaker halt"},
-		{100005, "British American Tobacco BD reports 12% YoY revenue growth"},
-		{100009, "BRAC Bank Ltd. — credit rating reaffirmed AAA by CRAB"},
-		{100016, "United Power Generation commissions new 150MW plant"},
-		{100007, "Renata Ltd. announces record date for rights issue"},
-		{0, "DSEX crosses 6,100 as turnover tops BDT 5.5 billion"},
+// journalNews is the day's exchange announcements (the same ones the ITCH news
+// feed sends), newest first, in the trader panel's news shape (dt,t,ob,nid,fid,tl,rf,nt).
+func journalNews(eng *engine.Engine) []map[string]any {
+	nf := &newsFeed{eng: eng}
+	j := eng.Journal()
+	out := []map[string]any{}
+	for from := j.Oldest(); ; {
+		evs, next, ok := j.Read(from, 5000)
+		if !ok || len(evs) == 0 {
+			break
+		}
+		for _, ev := range evs {
+			n := nf.item(ev)
+			if n == nil {
+				continue
+			}
+			at := time.Unix(0, ev.At).In(dhaka)
+			out = append([]map[string]any{{"dt": at.Format("2006-01-02"), "t": at.Format("15:04:05"), "ob": ev.OB,
+				"nid": ev.Seq, "fid": n[0], "tl": n[1], "rf": n[2], "nt": n[3]}}, out...)
+		}
+		from = next
 	}
-	dt := time.Now().Format("2006-01-02")
-	tm := time.Now().Format("15:04:05")
-	out := make([]map[string]any, 0, len(items))
-	for i, it := range items {
-		out = append(out, map[string]any{
-			"dt": dt, "t": tm, "ob": it.ob, "nid": 90000 + i,
-			"fid": "DSE", "tl": it.title, "rf": "", "nt": it.title + ".",
-		})
+	if len(out) > 200 {
+		out = out[:200]
 	}
 	return out
 }

@@ -20,7 +20,6 @@ Unless a route says otherwise:
 | GET (WebSocket) | `/marketdepth` | none | Streams 10-level depth per order book every 500 ms. |
 | GET (WebSocket) | `/index` | none | Streams the DSEX index and market breadth every 500 ms. |
 | GET | `/events` | none | WebSocket upgrade: time-and-sales and news stream. Plain GET: Server-Sent Events market stream. |
-| any | `/bench` | none | Pipeline benchmark web page. |
 | any | `/api/status` | none | Engine counters: phase, index, instrument/order/trade counts, universe source. |
 | any | `/api/market` | none | Full market watch: index, phase and one row per instrument. |
 | any | `/api/book` | none | Order book (10 levels per side), market data and last 30 trades for `?symbol=`. |
@@ -28,20 +27,6 @@ Unless a route says otherwise:
 | any | `/api/session` | none | Current trading phase. |
 | any | `/api/session/preopen` | none | Switches to the Pre-Open call auction. |
 | any | `/api/session/open` | none | Switches to Continuous Trading, running the opening auction first. |
-| any | `/api/bots` | none | Whether the market-maker and noise-trader bots are paused. |
-| any | `/api/bots/pause` | none | Pauses the bots. |
-| any | `/api/bots/resume` | none | Resumes the bots. |
-| any | `/api/loadtest` | none | Times raw matching throughput on one symbol. |
-| any | `/api/bench/start` | none | Starts the synthetic pipeline benchmark. |
-| any | `/api/bench/stop` | none | Stops the synthetic benchmark. |
-| any | `/api/bench/stats` | none | Live benchmark metrics. |
-| any | `/api/bench/summary.csv` | none | Downloads the benchmark report as CSV. |
-| any | `/api/bench/orders.csv` | none | Downloads persisted benchmark orders as CSV. |
-| any | `/api/live/start` | none | Starts the live load test through the real OMS pipeline. |
-| any | `/api/live/stop` | none | Stops the live load test. |
-| any | `/api/live/stats` | none | Live load-test metrics and the broker list. |
-| any | `/api/live/latency` | none | Per-stage latency gathered from the OMS API, the FIX initiator and this engine. |
-| any | `/api/live/cleanup` | none | **Destructive.** Truncates OMS order tables in every broker database (see [below](#live-load-test)). |
 | any | `/register` | none | Self-registration (POST) with profile details: creates a `user` account, then returns to the sign-in form. `GET /admin/api/users` returns the profile fields for admins. |
 | any | `/admin/login` | none | Sign-in form submit (POST, posted from the welcome page). A GET redirects to `/`. |
 | any | `/admin/logout` | none | Clears the admin cookie. |
@@ -55,7 +40,7 @@ Unless a route says otherwise:
 | any | `/admin/api/allowlist` | admin login | Lists the external FIX gateway IP allowlist. |
 | any | `/admin/api/allowlist/add` | admin login | Adds an IP to the allowlist. |
 | any | `/admin/api/allowlist/del` | admin login | Removes an IP from the allowlist. |
-| any | `/admin/api/sim` | admin login | Bot and session controls (`?action=`). |
+| any | `/admin/api/trading-session` | admin role | Market session phase and the DSE clock (`?action=`). |
 | any | `/admin/api/session` | admin login | Disconnects a FIX session or resets its sequence numbers. |
 | any | `/admin/api/fixlog` | admin login | Searches the FIX message log. |
 | any | `/admin/api/instruments` | admin login | Lists the instrument universe and auto-listed symbols. |
@@ -83,7 +68,7 @@ curl -s localhost:8010/api/status
              "source":"built-in DSE reference list (430 instruments, DSE end-of-day file 14 Sep 2023) — symbols outside this list will not trade"}}
 ```
 
-`orders` and `trades` are the engine's running sequence numbers; the bots count too. `universe.source` says where the instrument list came from (see [Instrument universe](architecture.md#instrument-universe)).
+`orders` and `trades` are the engine's running sequence numbers. `universe.source` says where the instrument list came from (see [Instrument universe](architecture.md#instrument-universe)).
 
 ### `GET /api/market`
 
@@ -155,16 +140,13 @@ Errors that come back as plain text instead of a report:
 | 400 | `invalid quantity …` | `qty` is 0 or less. |
 | 400 | `unknown symbol …` | The symbol isn't listed and can't be auto-listed. |
 
-## Session and bot controls
+## Session controls
 
 | Route | Response | Effect |
 |---|---|---|
-| `/api/session` | `{"phase": "…"}` | Shows the current phase. |
-| `/api/session/preopen` | `{"phase": "Pre-Open"}` | Starts collecting limit orders for the call auction. Market orders are rejected. |
-| `/api/session/open` | `{"phase": "Continuous Trading"}` | Runs the opening auction for each instrument, then triggers any stop orders that have been hit. |
-| `/api/bots` | `{"paused": bool}` | Shows whether the bots are paused. |
-| `/api/bots/pause` | `{"paused": true}` | Bots stop sending orders; their goroutines keep running. |
-| `/api/bots/resume` | `{"paused": false}` | Bots resume. |
+| `/api/session` | `{"phase": "…", "auto_clock": bool}` | Shows the current phase and whether the DSE clock drives it. |
+| `/api/session/preopen` | `{"phase": "Pre-Open"}` | Starts collecting limit orders for the call auction. Market orders are rejected. Switches the clock to manual. |
+| `/api/session/open` | `{"phase": "Continuous Trading"}` | Runs the opening auction for each instrument, then triggers any stop orders that have been hit. Switches the clock to manual. |
 
 ```bash
 curl -s -X POST localhost:8010/api/session/preopen
@@ -172,94 +154,6 @@ curl -s -X POST localhost:8010/api/session/open
 ```
 
 The phase names and the auction itself are described in [architecture](architecture.md#trading-sessions).
-
-## Benchmarks
-
-### `GET /api/loadtest?n=N&symbol=SYM`
-
-Measures how fast the live engine matches. It generates `n` orders on one symbol (about 30% market, the rest limit orders within ±0.5% of the reference price), feeds them to the matching goroutine, times them, then removes the leftover orders. `n` defaults to 100000 and is capped at 2,000,000. An unknown or missing `symbol` falls back to the first instrument.
-
-```bash
-curl -s 'localhost:8010/api/loadtest?n=20000&symbol=GP'
-# {"elapsed_ms":16,"ns_per_order":814,"orders":20000,"orders_per_sec":1228331,"symbol":"GP"}
-```
-
-### Synthetic pipeline benchmark: `/api/bench/*`
-
-Runs a generate → RMS → match → Postgres pipeline on separate books seeded with 300 levels per side. It doesn't touch the live engine's books. See [operations](operations.md#synthetic-pipeline-benchmark) for how to run it.
-
-`/api/bench/start` takes a JSON body:
-
-| Field | Default when the body omits it | Meaning |
-|---|---|---|
-| `rate` | `0` | Target orders/sec; `0` means as fast as possible. |
-| `total` | `0` | Orders to generate; `0` means run until stopped. |
-| `rms` | `true` | Run the RMS checks in `loadtest/rms.go`. |
-| `persist` | `true` | Write orders and executions to Postgres. Truncates `sim_orders` and `sim_execs` at start. |
-| `side` | `""` | `BUY`, `SELL`, or mixed (`BOTH` or empty). |
-
-```bash
-curl -s -X POST localhost:8010/api/bench/start -d '{"rate":8000,"total":100000,"rms":true,"persist":false}'
-curl -s localhost:8010/api/bench/stats
-curl -s -X POST localhost:8010/api/bench/stop
-```
-
-Calling start with no body runs until stopped, at full speed, with persistence on. A second start while one is running returns `{"ok":false,"error":"benchmark already running"}`.
-
-`/api/bench/stats` returns:
-- counters: `generated`, `rms_pass`, `rms_rej`, `matched`, `trades`, `persisted`
-- rates: `orders_per_sec`, `trades_per_sec`
-- `reject_reasons`, keyed by RMS code
-- per-stage latency objects `stage_rms`, `stage_match`, `stage_persist` and `stage_e2e`, each `{count, avg_us, p50_us, p95_us, p99_us}`
-- a sampled `tape`
-- `target_tps` (8000)
-
-`/api/bench/summary.csv` downloads `velexa_bench_summary.csv`: throughput, per-stage latency in microseconds, and RMS reject reasons.
-
-`/api/bench/orders.csv?limit=N` downloads `velexa_bench_orders.csv`, streaming rows from `sim_orders` newest first. `limit` defaults to 100000 and can't exceed 2,000,000. It returns 500 if the Postgres pool couldn't be created.
-
-### Live load test
-
-Drives real orders through the external pipeline (OMS API → RMS → FIX initiator → this engine → blotter). See [operations](operations.md#live-load-test) for prerequisites.
-
-`/api/live/start` takes a JSON body:
-
-| Field | Meaning |
-|---|---|
-| `broker` | An OMS subdomain from the broker list. `ALL`, `*` or empty means every broker, with orders split evenly between them. |
-| `rate` | Target orders/sec; `0` means as fast as possible. |
-| `total` | Orders to send; `0` means run until stopped. |
-| `side` | `BUY` (default), `SELL`, or `BOTH` (about 30% sells). Sells only use `GP`, `SQURPHARMA`, `BEXIMCO`, `ROBI` and `BATBC`. |
-| `sells` | Older flag: `true` means `BOTH` when `side` is empty. |
-| `workers` | Concurrent HTTP senders; defaults to 96, maximum 4096. |
-
-```bash
-curl -s -X POST localhost:8010/api/live/start -d '{"broker":"ALL","rate":500,"total":5000,"side":"BOTH"}'
-curl -s localhost:8010/api/live/stats
-curl -s -X POST localhost:8010/api/live/stop
-```
-
-`/api/live/stats` returns:
-- counters: `sent`, `accepted`, `rejected`, `filled`
-- rates: `sent_per_sec`, `accepted_per_sec`
-- latency in milliseconds: `lat_avg_ms`, `lat_p50_ms`, `lat_p95_ms`, `lat_p99_ms`
-- `reject_reasons`, normalised
-- a sampled `tape`
-- `brokers`, the subdomains available to `broker`
-- `targets`
-
-`filled` is counted only when the test targets 8 brokers or fewer.
-
-`/api/live/latency` returns `{"stages": [...], "target_ms": 10}`. The stages are API, RMS, Kafka, FIX Initiator, Matching Engine and DB Store, each with `count`, `avg_us`, `p50_us`, `p95_us` and `p99_us`. The values are null when the source service doesn't report that stage. The Matching Engine row is measured here: the time from receiving a FIX NewOrderSingle to sending its execution report.
-
-> **Warning: `/api/live/cleanup` deletes data and needs no login.** It stops any running live test, then:
-> 1. Finds every `terminal_*` and `tenant_*` database on the OMS Postgres.
-> 2. In each one, runs `TRUNCATE orders_fixorder, orders_fixorderexec, orders_fixmessage, orders_fixorderstatus RESTART IDENTITY CASCADE`, and resets intraday cash and positions in `broker_house_clientcashlimit` and `broker_house_clientposition`.
-> 3. Truncates `client_order_routes` in `bdtask_trade_master`.
-> 4. Truncates `sim_orders` and `sim_execs` in `velexa_sim`.
-> 5. Posts to `ME_AUDIT_URL/purge`.
->
-> The code comment says only simulator (`LIVE-*`) rows are touched, but the statements truncate whole tables. Point it only at OMS databases that hold nothing but test data.
 
 ## Streams
 
@@ -279,7 +173,7 @@ websocat ws://localhost:8010/index
 
 What `/events` does depends on the request:
 
-- **WebSocket upgrade:** the time-and-sales and news stream for the trader SPA. On connect, the client gets a fixed list of simulated news items (`{"tp":"news","d":[…]}`) and each instrument's recent trades (`{"tp":"tsm","ob":…,"d":[…]}`). After that, one `tsm` frame arrives per new trade: `{"p","v","tst","s","tsm_id"}`.
+- **WebSocket upgrade:** the time-and-sales and news stream for the trader SPA. On connect, the client gets the day's exchange announcements (session changes, suspensions, listings — the same as the ITCH news feed) (`{"tp":"news","d":[…]}`) and each instrument's recent trades (`{"tp":"tsm","ob":…,"d":[…]}`). After that, one `tsm` frame arrives per new trade: `{"p","v","tst","s","tsm_id"}`.
 - **Plain GET:** a Server-Sent Events stream used by the trade terminal page. A `market` event arrives every 700 ms with the whole market (`{"type":"market","index","phase","rows","ts"}`), and a `trade` event for each trade (`{"type":"trade","data":{…}}`). A `: keepalive` comment is sent every 15 s. Slow clients drop messages instead of blocking the engine.
 
 ```bash
@@ -305,7 +199,7 @@ curl -s -b jar localhost:8010/admin/api/status
 
 | Route | Input | Output and effect |
 |---|---|---|
-| `/admin/api/status` | none | `phase`, `instruments`, `orders`, `trades`, `running`, `bots_paused`, `fix_auth`, `itch_auth`, `uptime`; `listeners` (TCP checks of `127.0.0.1` ports 5001, 5443, 5501 and 8010; the port numbers are fixed in code); `sessions` (connected FIX brokers with logon time and last sequence numbers); `events` (last 50 logon, logout and reject events); `audit` (last 60 entries); `universe`. |
+| `/admin/api/status` | none | `phase`, `instruments`, `orders`, `trades`, `running`, `auto_clock`, `schedule`, `fix_auth`, `itch_auth`, `uptime`; `listeners` (TCP checks of `127.0.0.1` ports 5001, 5443, 5501 and 8010; the port numbers are fixed in code); `sessions` (connected FIX brokers with logon time and last sequence numbers); `events` (last 50 logon, logout and reject events); `audit` (last 60 entries); `universe`. |
 | `/admin/api/brokers` | none | `brokers` (records from `broker_meta.json`, newest first), `fix_total`, `itch_total`. |
 | `/admin/api/broker/detail` | `?sender=` | Company and contact, **FIX and ITCH passwords**, the linked ITCH user, `endpoints` (onboarding values from the `ME_PUB_*`, `ME_INT_*` and `ME_ITCH_*` variables) and active flags. |
 | `/admin/api/broker/add` | JSON `{Sender, Company, Contact, FixPass, ItchUser, ItchPass}`; only `Sender` is required | Stores FIX and ITCH credentials and the metadata, and writes the audit action `ISSUE`. Missing passwords are generated (`FIX-<12 hex>` and `ITCH-<12 hex>`). A missing ITCH user defaults to the first 6 characters of the SenderCompID. Returns the issued credentials. |
@@ -314,13 +208,13 @@ curl -s -b jar localhost:8010/admin/api/status
 | `/admin/api/allowlist` | none | `{"list": [{ip, label}], "count"}` |
 | `/admin/api/allowlist/add` | JSON `{IP, Label}` | Validates the IP, writes `fix_allow.json`, and writes the audit action `ALLOW+`. Doesn't reload nginx (see [operations](operations.md#external-fix-gateway-port-5443)). |
 | `/admin/api/allowlist/del` | JSON `{IP}` | Removes the IP and writes the audit action `ALLOW-`. |
-| `/admin/api/sim` | `?action=bots_pause`, `bots_resume`, `preopen` or `open` | Same effects as the matching `/api/*` controls. Returns `phase` and `bots_paused`. |
+| `/admin/api/trading-session` | `?action=preopen`, `open`, `close`, `postclose`, `endofday` (force a phase; switches the clock to manual), `auto_on` or `auto_off` | Returns `phase`, `auto_clock` and `schedule`. |
 | `/admin/api/session` | `?broker=` and `?action=disconnect` or `reset` | `disconnect` sends a FIX Logout (35=5) and unregisters the session. `reset` resets the session's sequence numbers. Writes an audit entry. |
 | `/admin/api/fixlog` | `?broker=` (exact, case-insensitive), `?clordid=` (substring), `?limit=` (1 to 1000, default 250) | `{"messages": [{time, session, dir, msg_type, clordid, raw}]}`, newest first, from the 4000-message in-memory log. |
 | `/admin/api/instruments` | none | `count`, `source`, `file`, `exchange_url`, `auto_list`, `auto_listed` (symbols opened on the fly), `symbols`, `rows` (per instrument: `symbol`, `name`, `asset_class`, `board`, `sector`, `lot`, `isin`, `tick`, `prev`, `last`, `volume`, `status`), `summary` (`total`, `main_equity`, `bonds`, `pending`), `classes` (asset-class counts), `note`. |
-| `/admin/api/instrument/add` | POST `{Symbol,Name,AssetClass,Board,Sector,Lot,Tick,Prev,ISIN,Status}` | Lists a new scrip live (book, ITCH id, bots; shows in the Trade Terminal) and saves the whole universe to `ME_INSTRUMENT_FILE`. `Board` is one of Main (A)/(B)/(N)/(Z), Bond, Mutual Fund, SME / ATB (legacy MAIN/SME/ATB still accepted). `AssetClass` is `EQ`, `MF`, `CB` or `DB` (derived from the board when omitted). `Status` is `active` (default), `halted` or `pending`. Listing a delisted symbol re-lists it. Errors: invalid symbol, already listed, bad board, bad ISIN, `Prev` <= 0. Returns `ok`, `symbol`, `count`, optional `warning`. |
+| `/admin/api/instrument/add` | POST `{Symbol,Name,AssetClass,Board,Sector,Lot,Tick,Prev,ISIN,Status}` | Lists a new scrip live (book, ITCH id, market-feed directory; shows in the Trade Terminal) and saves the whole universe to `ME_INSTRUMENT_FILE`. `Board` is one of Main (A)/(B)/(N)/(Z), Bond, Mutual Fund, SME / ATB (legacy MAIN/SME/ATB still accepted). `AssetClass` is `EQ`, `MF`, `CB` or `DB` (derived from the board when omitted). `Status` is `active` (default), `halted` or `pending`. Listing a delisted symbol re-lists it. Errors: invalid symbol, already listed, bad board, bad ISIN, `Prev` <= 0. Returns `ok`, `symbol`, `count`, optional `warning`. |
 | `/admin/api/instrument/update` | POST same body | Edits an existing scrip; blank/zero fields keep their current value. |
-| `/admin/api/instrument/halt` | POST `{Symbol,Halted}` | `Halted:true` halts; `Halted:false` activates (also lifts a `pending` listing). New orders on a halted, pending or delisted scrip are rejected and the bots stop quoting it. |
+| `/admin/api/instrument/halt` | POST `{Symbol,Halted}` | `Halted:true` halts; `Halted:false` activates (also lifts a `pending` listing). New orders on a halted, pending or delisted scrip are rejected, and the market feed sends its trading state (`H`). |
 | `/admin/api/instrument/delist` | POST `{Symbol}` | Delists: orders are rejected, it leaves the directory and the saved master (gone after a restart). |
 | `/admin/api/instruments/reload` | admin login | Reloads the security master from the configured sources. |
 | POST | `/admin/api/instruments/import` | admin role | Imports a security master from the request body. |
@@ -346,7 +240,7 @@ curl -s localhost:8010/api/status
              "source":"built-in DSE reference list (430 instruments, DSE end-of-day file 14 Sep 2023) — symbols outside this list will not trade"}}
 ```
 
-`orders` and `trades` are the engine's running sequence numbers; the bots count too. `universe.source` says where the instrument list came from (see [Instrument universe](architecture.md#instrument-universe)).
+`orders` and `trades` are the engine's running sequence numbers. `universe.source` says where the instrument list came from (see [Instrument universe](architecture.md#instrument-universe)).
 
 ### `GET /api/market`
 
@@ -418,16 +312,13 @@ Errors that come back as plain text instead of a report:
 | 400 | `invalid quantity …` | `qty` is 0 or less. |
 | 400 | `unknown symbol …` | The symbol isn't listed and can't be auto-listed. |
 
-## Session and bot controls
+## Session controls
 
 | Route | Response | Effect |
 |---|---|---|
-| `/api/session` | `{"phase": "…"}` | Shows the current phase. |
-| `/api/session/preopen` | `{"phase": "Pre-Open"}` | Starts collecting limit orders for the call auction. Market orders are rejected. |
-| `/api/session/open` | `{"phase": "Continuous Trading"}` | Runs the opening auction for each instrument, then triggers any stop orders that have been hit. |
-| `/api/bots` | `{"paused": bool}` | Shows whether the bots are paused. |
-| `/api/bots/pause` | `{"paused": true}` | Bots stop sending orders; their goroutines keep running. |
-| `/api/bots/resume` | `{"paused": false}` | Bots resume. |
+| `/api/session` | `{"phase": "…", "auto_clock": bool}` | Shows the current phase and whether the DSE clock drives it. |
+| `/api/session/preopen` | `{"phase": "Pre-Open"}` | Starts collecting limit orders for the call auction. Market orders are rejected. Switches the clock to manual. |
+| `/api/session/open` | `{"phase": "Continuous Trading"}` | Runs the opening auction for each instrument, then triggers any stop orders that have been hit. Switches the clock to manual. |
 
 ```bash
 curl -s -X POST localhost:8010/api/session/preopen
@@ -435,94 +326,6 @@ curl -s -X POST localhost:8010/api/session/open
 ```
 
 The phase names and the auction itself are described in [architecture](architecture.md#trading-sessions).
-
-## Benchmarks
-
-### `GET /api/loadtest?n=N&symbol=SYM`
-
-Measures how fast the live engine matches. It generates `n` orders on one symbol (about 30% market, the rest limit orders within ±0.5% of the reference price), feeds them to the matching goroutine, times them, then removes the leftover orders. `n` defaults to 100000 and is capped at 2,000,000. An unknown or missing `symbol` falls back to the first instrument.
-
-```bash
-curl -s 'localhost:8010/api/loadtest?n=20000&symbol=GP'
-# {"elapsed_ms":16,"ns_per_order":814,"orders":20000,"orders_per_sec":1228331,"symbol":"GP"}
-```
-
-### Synthetic pipeline benchmark: `/api/bench/*`
-
-Runs a generate → RMS → match → Postgres pipeline on separate books seeded with 300 levels per side. It doesn't touch the live engine's books. See [operations](operations.md#synthetic-pipeline-benchmark) for how to run it.
-
-`/api/bench/start` takes a JSON body:
-
-| Field | Default when the body omits it | Meaning |
-|---|---|---|
-| `rate` | `0` | Target orders/sec; `0` means as fast as possible. |
-| `total` | `0` | Orders to generate; `0` means run until stopped. |
-| `rms` | `true` | Run the RMS checks in `loadtest/rms.go`. |
-| `persist` | `true` | Write orders and executions to Postgres. Truncates `sim_orders` and `sim_execs` at start. |
-| `side` | `""` | `BUY`, `SELL`, or mixed (`BOTH` or empty). |
-
-```bash
-curl -s -X POST localhost:8010/api/bench/start -d '{"rate":8000,"total":100000,"rms":true,"persist":false}'
-curl -s localhost:8010/api/bench/stats
-curl -s -X POST localhost:8010/api/bench/stop
-```
-
-Calling start with no body runs until stopped, at full speed, with persistence on. A second start while one is running returns `{"ok":false,"error":"benchmark already running"}`.
-
-`/api/bench/stats` returns:
-- counters: `generated`, `rms_pass`, `rms_rej`, `matched`, `trades`, `persisted`
-- rates: `orders_per_sec`, `trades_per_sec`
-- `reject_reasons`, keyed by RMS code
-- per-stage latency objects `stage_rms`, `stage_match`, `stage_persist` and `stage_e2e`, each `{count, avg_us, p50_us, p95_us, p99_us}`
-- a sampled `tape`
-- `target_tps` (8000)
-
-`/api/bench/summary.csv` downloads `velexa_bench_summary.csv`: throughput, per-stage latency in microseconds, and RMS reject reasons.
-
-`/api/bench/orders.csv?limit=N` downloads `velexa_bench_orders.csv`, streaming rows from `sim_orders` newest first. `limit` defaults to 100000 and can't exceed 2,000,000. It returns 500 if the Postgres pool couldn't be created.
-
-### Live load test
-
-Drives real orders through the external pipeline (OMS API → RMS → FIX initiator → this engine → blotter). See [operations](operations.md#live-load-test) for prerequisites.
-
-`/api/live/start` takes a JSON body:
-
-| Field | Meaning |
-|---|---|
-| `broker` | An OMS subdomain from the broker list. `ALL`, `*` or empty means every broker, with orders split evenly between them. |
-| `rate` | Target orders/sec; `0` means as fast as possible. |
-| `total` | Orders to send; `0` means run until stopped. |
-| `side` | `BUY` (default), `SELL`, or `BOTH` (about 30% sells). Sells only use `GP`, `SQURPHARMA`, `BEXIMCO`, `ROBI` and `BATBC`. |
-| `sells` | Older flag: `true` means `BOTH` when `side` is empty. |
-| `workers` | Concurrent HTTP senders; defaults to 96, maximum 4096. |
-
-```bash
-curl -s -X POST localhost:8010/api/live/start -d '{"broker":"ALL","rate":500,"total":5000,"side":"BOTH"}'
-curl -s localhost:8010/api/live/stats
-curl -s -X POST localhost:8010/api/live/stop
-```
-
-`/api/live/stats` returns:
-- counters: `sent`, `accepted`, `rejected`, `filled`
-- rates: `sent_per_sec`, `accepted_per_sec`
-- latency in milliseconds: `lat_avg_ms`, `lat_p50_ms`, `lat_p95_ms`, `lat_p99_ms`
-- `reject_reasons`, normalised
-- a sampled `tape`
-- `brokers`, the subdomains available to `broker`
-- `targets`
-
-`filled` is counted only when the test targets 8 brokers or fewer.
-
-`/api/live/latency` returns `{"stages": [...], "target_ms": 10}`. The stages are API, RMS, Kafka, FIX Initiator, Matching Engine and DB Store, each with `count`, `avg_us`, `p50_us`, `p95_us` and `p99_us`. The values are null when the source service doesn't report that stage. The Matching Engine row is measured here: the time from receiving a FIX NewOrderSingle to sending its execution report.
-
-> **Warning: `/api/live/cleanup` deletes data and needs no login.** It stops any running live test, then:
-> 1. Finds every `terminal_*` and `tenant_*` database on the OMS Postgres.
-> 2. In each one, runs `TRUNCATE orders_fixorder, orders_fixorderexec, orders_fixmessage, orders_fixorderstatus RESTART IDENTITY CASCADE`, and resets intraday cash and positions in `broker_house_clientcashlimit` and `broker_house_clientposition`.
-> 3. Truncates `client_order_routes` in `bdtask_trade_master`.
-> 4. Truncates `sim_orders` and `sim_execs` in `velexa_sim`.
-> 5. Posts to `ME_AUDIT_URL/purge`.
->
-> The code comment says only simulator (`LIVE-*`) rows are touched, but the statements truncate whole tables. Point it only at OMS databases that hold nothing but test data.
 
 ## Streams
 
@@ -542,7 +345,7 @@ websocat ws://localhost:8010/index
 
 What `/events` does depends on the request:
 
-- **WebSocket upgrade:** the time-and-sales and news stream for the trader SPA. On connect, the client gets a fixed list of simulated news items (`{"tp":"news","d":[…]}`) and each instrument's recent trades (`{"tp":"tsm","ob":…,"d":[…]}`). After that, one `tsm` frame arrives per new trade: `{"p","v","tst","s","tsm_id"}`.
+- **WebSocket upgrade:** the time-and-sales and news stream for the trader SPA. On connect, the client gets the day's exchange announcements (session changes, suspensions, listings — the same as the ITCH news feed) (`{"tp":"news","d":[…]}`) and each instrument's recent trades (`{"tp":"tsm","ob":…,"d":[…]}`). After that, one `tsm` frame arrives per new trade: `{"p","v","tst","s","tsm_id"}`.
 - **Plain GET:** a Server-Sent Events stream used by the trade terminal page. A `market` event arrives every 700 ms with the whole market (`{"type":"market","index","phase","rows","ts"}`), and a `trade` event for each trade (`{"type":"trade","data":{…}}`). A `: keepalive` comment is sent every 15 s. Slow clients drop messages instead of blocking the engine.
 
 ```bash
@@ -568,7 +371,7 @@ curl -s -b jar localhost:8010/admin/api/status
 
 | Route | Input | Output and effect |
 |---|---|---|
-| `/admin/api/status` | none | `phase`, `instruments`, `orders`, `trades`, `running`, `bots_paused`, `fix_auth`, `itch_auth`, `uptime`; `listeners` (TCP checks of `127.0.0.1` ports 5001, 5443, 5501 and 8010; the port numbers are fixed in code); `sessions` (connected FIX brokers with logon time and last sequence numbers); `events` (last 50 logon, logout and reject events); `audit` (last 60 entries); `universe`. |
+| `/admin/api/status` | none | `phase`, `instruments`, `orders`, `trades`, `running`, `auto_clock`, `schedule`, `fix_auth`, `itch_auth`, `uptime`; `listeners` (TCP checks of `127.0.0.1` ports 5001, 5443, 5501 and 8010; the port numbers are fixed in code); `sessions` (connected FIX brokers with logon time and last sequence numbers); `events` (last 50 logon, logout and reject events); `audit` (last 60 entries); `universe`. |
 | `/admin/api/brokers` | none | `brokers` (records from `broker_meta.json`, newest first), `fix_total`, `itch_total`. |
 | `/admin/api/broker/detail` | `?sender=` | Company and contact, **FIX and ITCH passwords**, the linked ITCH user, `endpoints` (onboarding values from the `ME_PUB_*`, `ME_INT_*` and `ME_ITCH_*` variables) and active flags. |
 | `/admin/api/broker/add` | JSON `{Sender, Company, Contact, FixPass, ItchUser, ItchPass}`; only `Sender` is required | Stores FIX and ITCH credentials and the metadata, and writes the audit action `ISSUE`. Missing passwords are generated (`FIX-<12 hex>` and `ITCH-<12 hex>`). A missing ITCH user defaults to the first 6 characters of the SenderCompID. Returns the issued credentials. |
@@ -577,13 +380,13 @@ curl -s -b jar localhost:8010/admin/api/status
 | `/admin/api/allowlist` | none | `{"list": [{ip, label}], "count"}` |
 | `/admin/api/allowlist/add` | JSON `{IP, Label}` | Validates the IP, writes `fix_allow.json`, and writes the audit action `ALLOW+`. Doesn't reload nginx (see [operations](operations.md#external-fix-gateway-port-5443)). |
 | `/admin/api/allowlist/del` | JSON `{IP}` | Removes the IP and writes the audit action `ALLOW-`. |
-| `/admin/api/sim` | `?action=bots_pause`, `bots_resume`, `preopen` or `open` | Same effects as the matching `/api/*` controls. Returns `phase` and `bots_paused`. |
+| `/admin/api/trading-session` | `?action=preopen`, `open`, `close`, `postclose`, `endofday` (force a phase; switches the clock to manual), `auto_on` or `auto_off` | Returns `phase`, `auto_clock` and `schedule`. |
 | `/admin/api/session` | `?broker=` and `?action=disconnect` or `reset` | `disconnect` sends a FIX Logout (35=5) and unregisters the session. `reset` resets the session's sequence numbers. Writes an audit entry. |
 | `/admin/api/fixlog` | `?broker=` (exact, case-insensitive), `?clordid=` (substring), `?limit=` (1 to 1000, default 250) | `{"messages": [{time, session, dir, msg_type, clordid, raw}]}`, newest first, from the 4000-message in-memory log. |
 | `/admin/api/instruments` | none | `count`, `source`, `file`, `exchange_url`, `auto_list`, `auto_listed` (symbols opened on the fly), `symbols`, `rows` (per instrument: `symbol`, `name`, `board`, `sector`, `lot`, `isin`, `tick`, `prev`, `last`, `volume`, `status`), `summary` (`total`, `main_equity`, `bonds`, `pending`), `classes` (asset-class counts), `note`. |
-| `/admin/api/instrument/add` | POST `{Symbol,Name,Board,ISIN,Prev,Tick}` | Lists a new scrip live (book, ITCH id, bots; shows in the Trade Terminal) and saves the whole universe to `ME_INSTRUMENT_FILE`. Errors: invalid symbol, already listed, bad board (MAIN/SME/ATB), bad ISIN, `Prev` <= 0. Returns `ok`, `symbol`, `count`, optional `warning`. |
+| `/admin/api/instrument/add` | POST `{Symbol,Name,Board,ISIN,Prev,Tick}` | Lists a new scrip live (book, ITCH id, market-feed directory; shows in the Trade Terminal) and saves the whole universe to `ME_INSTRUMENT_FILE`. Errors: invalid symbol, already listed, bad board (MAIN/SME/ATB), bad ISIN, `Prev` <= 0. Returns `ok`, `symbol`, `count`, optional `warning`. |
 | `/admin/api/instrument/update` | POST same body | Edits an existing scrip; blank/zero fields keep their current value. |
-| `/admin/api/instrument/halt` | POST `{Symbol,Halted}` | Halts or resumes trading. New orders are rejected with `trading halted in <SYM>` and the bots stop quoting. Persisted as `status: "halted"`. |
+| `/admin/api/instrument/halt` | POST `{Symbol,Halted}` | Halts or resumes trading. New orders are rejected with `trading halted in <SYM>` and the market feed sends the trading state (`H`). Persisted as `status: "halted"`. |
 | `/admin/api/instruments/export` | GET `?format=xml\|csv\|json` and optional `board`, `class` (EQ/MF/CB/DB), `status`, `q` | Downloads the instrument directory as an attachment. `xml` is a DSE end-of-day ticker file (`<EODTickers>` with one `<Ticker SecurityCode ISIN Category AssetClass Sector CompulsorySpot TradeDate Close Open High Low Var VarPercent />` per instrument, plus the DSEX index when unfiltered), downloaded as `YYYYMMDD-HHMMSS-eodtickers-ME.xml`; `json` is in the master-file shape, so it can be re-imported. Header `X-Export-Count` carries the row count. |
 | `/admin/api/instruments/reload` | POST | Reloads the configured sources (file, then exchange URL, then built-in) into the running engine. Returns `added`, `updated`, `count` and `source`. |
 | `/admin/api/instruments/import` | POST body: a security master in any format `parseMaster` accepts (up to 32 MiB) | Merges it into the running engine. If it has at least as many instruments as are currently listed, it is also saved to `ME_INSTRUMENT_FILE`. A smaller import is applied in memory only, with a `warning`. Returns `instruments`, `added`, `updated`, `count`, `persisted_to` and `warning`. |
@@ -597,12 +400,10 @@ curl -s -b jar -X POST --data-binary @instruments.json localhost:8010/admin/api/
 | Path | Source | What it is |
 |---|---|---|
 | `/` | `web/terminal.go` (`indexHTML`) | Trade terminal: market watch from the `/events` SSE stream, order book and tape polled from `/api/book`, an order form posting to `/api/order` (actor `MANUAL`), and counters from `/api/status`. |
-| `/bench` | `web/bench.go` (`benchHTML`) | Benchmark page. Switches between the synthetic benchmark (`/api/bench/*`) and the live load test (`/api/live/*`, including cleanup), with a pipeline latency view from `/api/live/latency` and a bot toggle. |
-| `/admin` | `web/admin.go` (`adminDashboardHTML`) | Admin console. Views: Dashboard, Trade Terminal (embeds `/`), FIX Sessions, Simulator (embeds `/bench`), Broker Credentials, External OMS Access (IP allowlist), Message Log and Diagnostics. Refreshes status every 3 s. |
 
 ## Console roles
 
-Console routes need a signed-in account. `admin` may call everything; `user` is read-only and gets `403 {"ok":false,"error":"forbidden: admin role required"}` on any route that changes state or reveals credentials (allowlist add/del, session control, instrument writes, `sim?action=`, all user management). Only the dashboard (`/admin`, `status`), broker credentials (`brokers` and `broker/detail|add|del|sheet`, the same as admin), the message log (`fixlog`) and `me` are open to both roles; the Trade Terminal is public. Everything else, including `allowlist`, `sim`, `instruments` and export, is admin-only, and the console hides those pages from `user` accounts; for `user`, tags 554 and 925 in `fixlog` are masked. Audit entries record `username (ip)`.
+Console routes need a signed-in account. `admin` may call everything; `user` is read-only and gets `403 {"ok":false,"error":"forbidden: admin role required"}` on any route that changes state or reveals credentials (allowlist add/del, session control, instrument writes, the trading session, all user management). Only the dashboard (`/admin`, `status`), broker credentials (`brokers` and `broker/detail|add|del|sheet`, the same as admin), the message log (`fixlog`) and `me` are open to both roles; the Trade Terminal is public. Everything else, including `allowlist`, `trading-session`, `instruments` and export, is admin-only, and the console hides those pages from `user` accounts; for `user`, tags 554 and 925 in `fixlog` are masked. Audit entries record `username (ip)`.
 
 `GET /` is the welcome page with **User login** and **Admin login** (both post to `/admin/login` with an `as` field; each option only accepts accounts of its own role). The Trade Terminal is at `/terminal` and, embedded, `/?embed=1`.
 

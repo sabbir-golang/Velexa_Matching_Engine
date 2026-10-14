@@ -1,4 +1,4 @@
-// Package admin serves sign-in, the console pages, status, simulator and session controls and the FIX message log.
+// Package admin serves sign-in, the console pages, status, trading-session control, FIX session control and the FIX message log.
 package admin
 
 import (

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"math/rand"
 	"sort"
 	"strings"
 	"sync"
@@ -27,6 +26,9 @@ const (
 	Market  OrdType = "MARKET"
 	StopMkt OrdType = "STOP"       // FIX 40=3: parked, becomes Market when triggered
 	StopLim OrdType = "STOP_LIMIT" // FIX 40=4: parked, becomes Limit(Price) when triggered
+	// MarketBest is DSE market-at-best (FIX 40=Z): it executes at the best opposite
+	// price only, and any remainder rests as a limit order at that price.
+	MarketBest OrdType = "MARKET_AT_BEST"
 )
 
 // TIF — Time-In-Force. Maps from FIX tag 59 (see mapTIF in fixacceptor.go).
@@ -60,8 +62,16 @@ type Order struct {
 	Display int64     // iceberg peak (visible slice); 0 = not an iceberg
 	Hidden  int64     // iceberg reserve not yet shown on the book
 	Time    time.Time
-	reply   chan *ExecReport  // first synchronous report (SubmitAndWait)
-	Notify  func(*ExecReport) // async follow-ups (stop triggers); nil = none
+	reply   chan *ExecReport // first synchronous report (SubmitAndWait)
+	// Notify, when set, receives every report about the order, in the order the
+	// engine produces them: the reply to its submission, fills while it rests,
+	// cancel / replace confirmations, a triggered stop and expiry. It is called on
+	// the matching goroutine, so it must not block.
+	Notify func(*ExecReport)
+	Ctx    any // opaque to the engine; echoed on every report (the FIX gateway's order context)
+
+	CumQty   int64   // filled so far, over the order's life
+	CumValue float64 // sum of fill qty x price, over the order's life
 }
 
 // ExecReport is the execution result returned for an externally-submitted order
@@ -83,6 +93,16 @@ type ExecReport struct {
 	Board     string  `json:"board,omitempty"`
 	ISIN      string  `json:"isin,omitempty"`
 	Reason    string  `json:"reason,omitempty"`
+
+	// Event says what produced the report: "" the reply to a new order, or
+	// REPLACE, TRIGGER (a stop went live), FILL (a resting order traded),
+	// CANCEL, EXPIRE, STATUS.
+	Event       string  `json:"event,omitempty"`
+	OrigClOrdID string  `json:"orig_cl_ord_id,omitempty"`
+	ReqID       string  `json:"-"` // the status request's id (FIX 790), for STATUS
+	CumValue    float64 `json:"-"` // exact sum of fill qty x price (AvgPx is rounded)
+	Aggressor   bool    `json:"-"` // the fills in this report took liquidity
+	Ctx         any     `json:"-"`
 }
 
 type Trade struct {
@@ -133,24 +153,28 @@ type Engine struct {
 	// ever replaced. Listing an instrument swaps in freshly built ones under the
 	// engine lock, so the feed, gateway and bench goroutines keep reading them
 	// lock-free. instrList is published last — see listInstruments.
-	booksMap   atomic.Pointer[map[string]*Book]
-	mdMap      atomic.Pointer[map[string]*MarketData]
-	instrList  atomic.Pointer[[]Instrument]
-	obIDs      atomic.Pointer[map[string]int] // symbol -> ITCH orderbook id
-	obStore    *obIDStore                     // keeps the ids permanent; nil = position based (tests)
-	Trades     []Trade                        // recent ring (newest last)
-	Seq        uint64
-	TradeSeq   uint64
-	orderCount uint64
-	submit     chan *Order
-	ctrl       chan func()         // serialized control ops (cancel/replace/session)
-	Open       map[string]*Order   // resting orders by ClOrdID (cancel/replace)
-	stops      map[string][]*Order // parked stop orders by symbol
-	bus        *Bus
-	Phase      string
-	Index      float64
-	IndexPrev  float64
-	Running    bool
+	booksMap     atomic.Pointer[map[string]*Book]
+	mdMap        atomic.Pointer[map[string]*MarketData]
+	instrList    atomic.Pointer[[]Instrument]
+	obIDs        atomic.Pointer[map[string]int] // symbol -> ITCH orderbook id
+	schedule     Schedule                       // the trading-day clock (set by StartClock)
+	tradingDate  string                         // Dhaka date of the current trading day (set when a day starts)
+	lastReplaced *Order                         // the order doReplace worked on, for ReplaceAs (matching goroutine only)
+	journal      *Journal                       // public market events, for the ITCH feed
+	obStore      *obIDStore                     // keeps the ids permanent; nil = position based (tests)
+	Trades       []Trade                        // recent ring (newest last)
+	Seq          uint64
+	TradeSeq     uint64
+	orderCount   uint64
+	submit       chan *Order
+	ctrl         chan func()         // serialized control ops (cancel/replace/session)
+	Open         map[string]*Order   // resting orders by ClOrdID (cancel/replace)
+	stops        map[string][]*Order // parked stop orders by symbol
+	bus          *Bus
+	Phase        string
+	Index        float64
+	IndexPrev    float64
+	Running      bool
 }
 
 func NewEngine(instr []Instrument, bus *Bus) *Engine {
@@ -160,6 +184,7 @@ func NewEngine(instr []Instrument, bus *Bus) *Engine {
 		Open:    map[string]*Order{},
 		stops:   map[string][]*Order{},
 		bus:     bus,
+		journal: NewJournal(journalCapacity()),
 		Phase:   "Continuous Trading",
 		Running: true,
 	}
@@ -216,7 +241,7 @@ func (e *Engine) Run() {
 				e.process(o) // process() branches on the session phase
 			} else {
 				e.replyTo(o, &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
-					Status: "REJECTED", Reason: "matching engine is halted"})
+					Status: "REJECTED", Reason: ReasonNotAccepting})
 			}
 			e.Mu.Unlock()
 		case fn := <-e.ctrl:
@@ -281,6 +306,50 @@ func (e *Engine) process(o *Order) {
 		o.ID = e.Seq
 	}
 	e.orderCount++
+
+	// Session rules: nothing is accepted between the close and the next pre-open,
+	// and in post-close only at the closing price.
+	switch e.Phase {
+	case PhaseClose, PhaseClosed:
+		e.replyTo(o, &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+			Status: "REJECTED", Reason: ReasonNotAccepting})
+		return
+	case PhasePostClose:
+		closePx := e.MdOf(o.Symbol).Last
+		switch o.Type {
+		case Market, MarketBest:
+			o.Type, o.Price = Limit, closePx
+		case Limit:
+			if px2k(o.Price) != px2k(closePx) {
+				e.replyTo(o, &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+					Status: "REJECTED", Reason: ReasonNotClosePrice})
+				return
+			}
+		default:
+			e.replyTo(o, &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+				Status: "REJECTED", Reason: ReasonNotAccepting})
+			return
+		}
+	}
+
+	// Market-at-best: price it at the best opposite level, then treat it as a limit.
+	if o.Type == MarketBest {
+		b := e.Book(o.Symbol)
+		lv := b.BestAsk()
+		if o.Side == Sell {
+			lv = b.BestBid()
+		}
+		if lv == nil {
+			e.replyTo(o, &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+				Status: "REJECTED", Reason: "no liquidity: no resting " + string(oppositeSide(o.Side)) + " orders on " + o.Symbol})
+			return
+		}
+		o.Type, o.Price = Limit, K2Px(lv.Px)
+		rep := e.match(o)
+		e.replyTo(o, rep)
+		e.triggerStops(o.Symbol)
+		return
+	}
 
 	// Stop / Stop-Limit: park off-book until the last price crosses the trigger.
 	if o.Type == StopMkt || o.Type == StopLim {
@@ -364,9 +433,40 @@ func (e *Engine) replyTo(o *Order, rep *ExecReport) {
 	if rep != nil && rep.OrderQty == 0 {
 		rep.OrderQty = o.OrigQty // echo OrderQty even on a reject, where filled+leaves is 0
 	}
+	if rep != nil && rep.Ctx == nil {
+		rep.Ctx = o.Ctx
+	}
+	if rep != nil && o.Notify != nil {
+		o.Notify(rep)
+	}
 	if o.reply != nil {
 		o.reply <- rep
 	}
+}
+
+// notify sends a follow-up report to the order's owner, if it has one.
+func (e *Engine) notify(o *Order, rep *ExecReport) {
+	if o.Notify == nil || rep == nil {
+		return
+	}
+	if rep.Ctx == nil {
+		rep.Ctx = o.Ctx
+	}
+	if rep.OrderQty == 0 {
+		rep.OrderQty = o.OrigQty
+	}
+	if rep.Price == 0 {
+		rep.Price = o.Price
+	}
+	o.Notify(rep)
+}
+
+// avgOf is an order's average fill price.
+func avgOf(o *Order) float64 {
+	if o.CumQty <= 0 {
+		return 0
+	}
+	return Round2(o.CumValue / float64(o.CumQty))
 }
 
 // match runs continuous price-time matching for an active order, rests any
@@ -378,13 +478,12 @@ func (e *Engine) match(o *Order) *ExecReport {
 
 	// Fill-Or-Kill: the whole quantity must be available now, or nothing trades.
 	if o.TIF == FOK && b.canFill(o.Side, o.Type, o.Price, o.Qty) < o.Qty {
-		return &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol,
-			Side: o.Side, Status: "CANCELED", LeavesQty: 0}
+		return &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+			Status: "CANCELED", LeavesQty: 0, FilledQty: o.CumQty, CumValue: o.CumValue, AvgPx: avgOf(o), OrderQty: o.OrigQty}
 	}
 
 	var fills []Trade
-	var cumQty int64
-	var notional float64
+	var cumQty int64 // filled in this call
 	for o.Qty > 0 {
 		var lv *PriceLevel
 		if o.Side == Buy {
@@ -409,9 +508,10 @@ func (e *Engine) match(o *Order) *ExecReport {
 		e.recordTrade(tr, md)
 		fills = append(fills, tr)
 		cumQty += q
-		notional += float64(q) * px
+		o.CumQty += q
+		o.CumValue += float64(q) * px
 		o.Qty -= q
-		e.consumeFront(lv, q)
+		e.consumeFront(lv, q, EvExec, tr)
 		if len(lv.Orders) == 0 {
 			if o.Side == Buy {
 				b.DropBestAsk()
@@ -434,7 +534,7 @@ func (e *Engine) match(o *Order) *ExecReport {
 	var leaves int64
 	if rested {
 		leaves = remaining
-		if cumQty > 0 {
+		if cumQty > 0 || o.CumQty > 0 {
 			status = "PARTIALLY_FILLED"
 		} else {
 			status = "NEW"
@@ -442,9 +542,9 @@ func (e *Engine) match(o *Order) *ExecReport {
 	} else { // nothing left working → any remainder is cancelled
 		leaves = 0
 		switch {
-		case cumQty >= o.OrigQty:
+		case o.CumQty >= o.OrigQty:
 			status = "FILLED"
-		case cumQty > 0:
+		case o.CumQty > 0:
 			status = "PARTIALLY_FILLED"
 		case o.TIF == IOC || o.TIF == FOK:
 			status = "CANCELED"
@@ -455,12 +555,9 @@ func (e *Engine) match(o *Order) *ExecReport {
 			reason = "no liquidity: no resting " + string(oppositeSide(o.Side)) + " orders on " + o.Symbol
 		}
 	}
-	avg := 0.0
-	if cumQty > 0 {
-		avg = Round2(notional / float64(cumQty))
-	}
 	rep := &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
-		Status: status, Fills: fills, FilledQty: cumQty, LeavesQty: leaves, AvgPx: avg, Reason: reason}
+		Status: status, Fills: fills, FilledQty: o.CumQty, LeavesQty: leaves, AvgPx: avgOf(o), Reason: reason,
+		CumValue: o.CumValue, Aggressor: true, OrderQty: o.OrigQty}
 	if n := len(fills); n > 0 {
 		rep.LastPx = fills[n-1].Price
 		rep.LastQty = fills[n-1].Qty
@@ -473,6 +570,9 @@ func (e *Engine) recordTrade(tr Trade, md *MarketData) {
 	e.Trades = append(e.Trades, tr)
 	if len(e.Trades) > 500 {
 		e.Trades = e.Trades[len(e.Trades)-500:]
+	}
+	if md.Trades == 0 { // the day's first trade opens the day's range
+		md.Open, md.High, md.Low = tr.Price, tr.Price, tr.Price
 	}
 	md.Last = tr.Price
 	md.Ref = tr.Price
@@ -489,10 +589,14 @@ func (e *Engine) recordTrade(tr Trade, md *MarketData) {
 
 // consumeFront applies a fill of q to the front order of a level, replenishing
 // the next slice of an iceberg (at the back of the queue) or removing the order.
-func (e *Engine) consumeFront(lv *PriceLevel, q int64) {
+func (e *Engine) consumeFront(lv *PriceLevel, q int64, kind EvKind, tr Trade) {
 	front := lv.Orders[0]
+	e.emitExec(kind, front, q, tr.ID)
 	front.Qty -= q
 	lv.Qty -= q
+	front.CumQty += q
+	front.CumValue += float64(q) * tr.Price
+	defer e.reportRestingFill(front, tr, q)
 	if front.Qty > 0 {
 		return
 	}
@@ -506,12 +610,30 @@ func (e *Engine) consumeFront(lv *PriceLevel, q int64) {
 		lv.PopFront()
 		lv.Orders = append(lv.Orders, front) // back of the queue → fresh time priority
 		lv.Qty += slice
+		e.emitAdd(front) // the exhausted slice left the feed's book; the next one is a new add
 		return
 	}
 	if front.ClOrdID != "" {
 		delete(e.Open, front.ClOrdID)
 	}
 	lv.PopFront()
+}
+
+// reportRestingFill tells a resting order's owner about one fill against it.
+func (e *Engine) reportRestingFill(o *Order, tr Trade, q int64) {
+	if o.Notify == nil {
+		return
+	}
+	leaves := o.Qty + o.Hidden
+	status := "PARTIALLY_FILLED"
+	if leaves == 0 {
+		status = "FILLED"
+	}
+	fill := tr
+	fill.Qty = q
+	e.notify(o, &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side, Status: status,
+		Fills: []Trade{fill}, FilledQty: o.CumQty, LeavesQty: leaves, AvgPx: avgOf(o), CumValue: o.CumValue,
+		LastPx: tr.Price, LastQty: q, Event: "FILL"})
 }
 
 // restTracked rests an order (showing only an iceberg's peak) and indexes it by
@@ -525,6 +647,7 @@ func (e *Engine) restTracked(o *Order) {
 	if o.ClOrdID != "" {
 		e.Open[o.ClOrdID] = o
 	}
+	e.emitAdd(o)
 }
 
 // triggerStops activates parked stops whose trigger the last price has crossed:
@@ -559,9 +682,8 @@ func (e *Engine) triggerStops(sym string) {
 			s.Type = Limit
 		}
 		rep := e.match(s)
-		if s.Notify != nil {
-			s.Notify(rep)
-		}
+		rep.Event = "TRIGGER"
+		e.notify(s, rep)
 	}
 	e.triggerStops(sym) // cascade
 }
@@ -581,47 +703,115 @@ func (e *Engine) removeStop(clOrdID string) *Order {
 
 // Cancel removes a resting order (or parked stop) by ClOrdID. Serialized on the
 // matching goroutine via ctrl.
-func (e *Engine) Cancel(clOrdID string) *ExecReport {
+func (e *Engine) Cancel(clOrdID string) *ExecReport { return e.CancelAs(clOrdID, clOrdID, "") }
+
+// CancelAs cancels the order orig on behalf of actor ("" = anyone) with the
+// cancel request's own ClOrdID cl. The confirmation also goes to the order's
+// Notify. An order that is unknown, done, or owned by another actor is not
+// touched and the report's Status is REJECT_CXL.
+func (e *Engine) CancelAs(orig, cl, actor string) *ExecReport {
 	res := make(chan *ExecReport, 1)
-	e.ctrl <- func() { res <- e.doCancel(clOrdID) }
+	e.ctrl <- func() { res <- e.doCancel(orig, cl, actor) }
 	return <-res
 }
 
-func (e *Engine) doCancel(clOrdID string) *ExecReport {
-	if o := e.Open[clOrdID]; o != nil {
+func (e *Engine) doCancel(orig, cl, actor string) *ExecReport {
+	if o := e.Open[orig]; o != nil && (actor == "" || o.Actor == actor) {
 		e.Book(o.Symbol).remove(o)
-		delete(e.Open, clOrdID)
+		delete(e.Open, orig)
+		e.emitDelete(o)
 		e.refreshTop(o.Symbol)
-		return &ExecReport{OrderID: o.ID, ClOrdID: clOrdID, Symbol: o.Symbol, Side: o.Side,
-			Status: "CANCELED", FilledQty: o.OrigQty - (o.Qty + o.Hidden), LeavesQty: 0}
+		rep := &ExecReport{OrderID: o.ID, ClOrdID: cl, OrigClOrdID: orig, Symbol: o.Symbol, Side: o.Side,
+			Status: "CANCELED", FilledQty: o.CumQty, CumValue: o.CumValue, AvgPx: avgOf(o), LeavesQty: 0,
+			OrderQty: o.OrigQty, Price: o.Price, Event: "CANCEL", Ctx: o.Ctx}
+		e.notify(o, rep)
+		return rep
 	}
-	if s := e.removeStop(clOrdID); s != nil {
-		return &ExecReport{OrderID: s.ID, ClOrdID: clOrdID, Symbol: s.Symbol, Side: s.Side, Status: "CANCELED"}
+	if s := e.findStop(orig); s != nil && (actor == "" || s.Actor == actor) {
+		e.removeStop(orig)
+		rep := &ExecReport{OrderID: s.ID, ClOrdID: cl, OrigClOrdID: orig, Symbol: s.Symbol, Side: s.Side,
+			Status: "CANCELED", OrderQty: s.OrigQty, Price: s.Price, Event: "CANCEL", Ctx: s.Ctx}
+		e.notify(s, rep)
+		return rep
 	}
-	return &ExecReport{ClOrdID: clOrdID, Status: "REJECT_CXL"}
+	return &ExecReport{ClOrdID: cl, OrigClOrdID: orig, Status: "REJECT_CXL"}
+}
+
+// findStop returns the parked stop with this ClOrdID, or nil.
+func (e *Engine) findStop(clOrdID string) *Order {
+	for _, pend := range e.stops {
+		for _, s := range pend {
+			if s.ClOrdID == clOrdID {
+				return s
+			}
+		}
+	}
+	return nil
+}
+
+// Status reports the current state of a working order (resting or a parked
+// stop) for an order status request; Status REJECT_CXL when there is none.
+func (e *Engine) Status(clOrdID, actor string) *ExecReport {
+	res := make(chan *ExecReport, 1)
+	e.ctrl <- func() {
+		o := e.Open[clOrdID]
+		if o == nil {
+			o = e.findStop(clOrdID)
+		}
+		if o == nil || (actor != "" && o.Actor != actor) {
+			res <- &ExecReport{ClOrdID: clOrdID, Status: "REJECT_CXL", Event: "STATUS"}
+			return
+		}
+		status := "NEW"
+		if o.CumQty > 0 {
+			status = "PARTIALLY_FILLED"
+		}
+		res <- &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side, Status: status,
+			FilledQty: o.CumQty, CumValue: o.CumValue, AvgPx: avgOf(o), LeavesQty: o.Qty + o.Hidden,
+			OrderQty: o.OrigQty, Price: o.Price, Event: "STATUS", Ctx: o.Ctx}
+	}
+	return <-res
 }
 
 // Replace amends a resting order's qty and/or price (cancel-replace semantics:
 // re-rested, so time priority is reset). A newly-marketable price will match.
 func (e *Engine) Replace(orig, newCl string, newQty int64, newPx float64) *ExecReport {
+	return e.ReplaceAs(orig, newCl, "", newQty, newPx)
+}
+
+// ReplaceAs amends the order orig on behalf of actor ("" = anyone). The result
+// also goes to the order's Notify; REJECT_CXL means the order was not touched.
+func (e *Engine) ReplaceAs(orig, newCl, actor string, newQty int64, newPx float64) *ExecReport {
 	res := make(chan *ExecReport, 1)
-	e.ctrl <- func() { res <- e.doReplace(orig, newCl, newQty, newPx) }
+	e.ctrl <- func() {
+		rep := e.doReplace(orig, newCl, actor, newQty, newPx)
+		if rep.Status != "REJECT_CXL" {
+			if o := e.lastReplaced; o != nil {
+				e.notify(o, rep)
+			}
+		}
+		e.lastReplaced = nil
+		res <- rep
+	}
 	return <-res
 }
 
-func (e *Engine) doReplace(orig, newCl string, newQty int64, newPx float64) *ExecReport {
+func (e *Engine) doReplace(orig, newCl, actor string, newQty int64, newPx float64) *ExecReport {
 	o := e.Open[orig]
-	if o == nil {
-		return &ExecReport{ClOrdID: newCl, Status: "REJECT_CXL"}
+	if o == nil || (actor != "" && o.Actor != actor) {
+		return &ExecReport{ClOrdID: newCl, OrigClOrdID: orig, Status: "REJECT_CXL"}
 	}
-	filled := o.OrigQty - (o.Qty + o.Hidden)
+	e.lastReplaced = o
+	filled := o.CumQty
 	e.Book(o.Symbol).remove(o)
 	delete(e.Open, orig)
+	e.emitDelete(o) // the re-rest below publishes the order again as a new add
 	remaining := newQty - filled
 	if remaining <= 0 { // amended down to/below what's already filled → done
 		e.refreshTop(o.Symbol)
-		return &ExecReport{OrderID: o.ID, ClOrdID: newCl, Symbol: o.Symbol, Side: o.Side,
-			Status: "CANCELED", FilledQty: filled, LeavesQty: 0}
+		return &ExecReport{OrderID: o.ID, ClOrdID: newCl, OrigClOrdID: orig, Symbol: o.Symbol, Side: o.Side,
+			Status: "CANCELED", FilledQty: filled, CumValue: o.CumValue, AvgPx: avgOf(o), LeavesQty: 0,
+			OrderQty: newQty, Price: o.Price, Event: "REPLACE", Ctx: o.Ctx}
 	}
 	o.ClOrdID = newCl
 	o.OrigQty = newQty
@@ -632,7 +822,8 @@ func (e *Engine) doReplace(orig, newCl string, newQty int64, newPx float64) *Exe
 	}
 	o.Time = time.Now()
 	rep := e.match(o)
-	if rep.FilledQty == 0 { // pure re-rest → report as Replaced (working)
+	rep.Event, rep.OrigClOrdID, rep.Ctx = "REPLACE", orig, o.Ctx
+	if len(rep.Fills) == 0 && rep.LeavesQty > 0 { // pure re-rest → report as Replaced (working)
 		rep.Status = "REPLACED"
 	}
 	e.triggerStops(o.Symbol)
@@ -646,11 +837,11 @@ func (e *Engine) SetPhase(phase string) string {
 	e.ctrl <- func() {
 		prev := e.Phase
 		e.Phase = phase
-		if prev == "Pre-Open" && phase == "Continuous Trading" {
-			for _, in := range e.Instr() {
-				e.uncross(in.Symbol)
-				e.triggerStops(in.Symbol)
+		if phase != prev {
+			if code := SessionCode(phase); code != 0 {
+				e.journal.Append(Event{Kind: EvSession, Code: code})
 			}
+			e.onPhase(prev, phase)
 		}
 		res <- e.Phase
 	}
@@ -722,11 +913,11 @@ func (e *Engine) uncross(sym string) {
 		tr := Trade{ID: e.TradeSeq, Symbol: sym, Price: P, Qty: q, Aggressor: Buy, Time: time.Now()}
 		e.recordTrade(tr, md)
 		toFill -= q
-		e.consumeFront(bid, q)
+		e.consumeFront(bid, q, EvExecAuction, tr)
 		if len(bid.Orders) == 0 {
 			b.DropBestBid()
 		}
-		e.consumeFront(ask, q)
+		e.consumeFront(ask, q, EvExecAuction, tr)
 		if len(ask.Orders) == 0 {
 			b.DropBestAsk()
 		}
@@ -791,10 +982,19 @@ func (e *Engine) sweepExpired() {
 				if o.ClOrdID != "" {
 					delete(e.Open, o.ClOrdID)
 				}
+				e.emitDelete(o)
+				e.expired(o)
 			}
 			e.refreshTop(in.Symbol)
 		}
 	}
+}
+
+// expired tells an order's owner that it expired unexecuted (in full or in part).
+func (e *Engine) expired(o *Order) {
+	e.notify(o, &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, OrigClOrdID: o.ClOrdID, Symbol: o.Symbol,
+		Side: o.Side, Status: "EXPIRED", FilledQty: o.CumQty, CumValue: o.CumValue, AvgPx: avgOf(o),
+		LeavesQty: 0, OrderQty: o.OrigQty, Price: o.Price, Event: "EXPIRE"})
 }
 
 // Submit is the public entry (bots + external orders).
@@ -898,60 +1098,6 @@ func (e *Engine) SubmitAndWait(o *Order) *ExecReport {
 	case <-time.After(3 * time.Second):
 		return &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side, Status: "REJECTED",
 			Reason: "matching engine did not respond within 3s"}
-	}
-}
-
-// LoadTest measures pure matching-engine throughput: it generates n orders
-// (mix of resting limits + marketable orders) and times how long the single
-// matching goroutine takes to process all of them. Returns orders/sec + avg
-// per-order latency — the numbers RFP Annexure B §19 & §21 ask for.
-func (e *Engine) LoadTest(n int, sym string) map[string]any {
-	if n <= 0 {
-		n = 100000
-	}
-	if e.MdOf(sym) == nil {
-		sym = e.Instr()[0].Symbol
-	}
-	e.Mu.RLock()
-	base := e.MdOf(sym).Ref
-	e.Mu.RUnlock()
-	if base <= 0 {
-		base = e.MdOf(sym).Prev
-	}
-	rng := rand.New(rand.NewSource(42))
-	orders := make([]*Order, n)
-	for i := 0; i < n; i++ {
-		side := Buy
-		if i%2 == 0 {
-			side = Sell
-		}
-		typ := Limit
-		px := RoundTick(base + (rng.Float64()-0.5)*base*0.01)
-		if rng.Float64() < 0.30 { // 30% marketable → real matches
-			typ = Market
-			px = 0
-		}
-		orders[i] = &Order{Symbol: sym, Side: side, Type: typ, Price: px, Qty: int64(100 + rng.Intn(400)), Actor: "LOADTEST", Time: time.Now()}
-	}
-	done := make(chan *ExecReport, 1)
-	orders[n-1].reply = done
-	start := time.Now()
-	for _, o := range orders {
-		e.submit <- o
-	}
-	<-done
-	el := time.Since(start)
-	// clear the load-test residue from the book
-	e.Mu.Lock()
-	e.Book(sym).cancelActor("LOADTEST")
-	e.Mu.Unlock()
-	ops := int64(float64(n) / el.Seconds())
-	return map[string]any{
-		"orders":         n,
-		"symbol":         sym,
-		"elapsed_ms":     el.Milliseconds(),
-		"orders_per_sec": ops,
-		"ns_per_order":   el.Nanoseconds() / int64(n),
 	}
 }
 

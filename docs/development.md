@@ -23,20 +23,18 @@ internal/
     server.go            Server: builds the handlers, registers their routes on one mux
     middleware/          Manager and Middlewares: role checks (Viewer, Admin), sessions
     handlers/<feature>/  handler.go, routes.go and one file per endpoint:
-                         public, control, bench, live, register, account, instrument, broker, admin
+                         public, control, register, account, instrument, broker, admin
     deps/                the engine and services every handler shares
   database/            file-backed stores
     users/               console accounts and roles (users.json, PBKDF2 hashes)
     brokers/             FIX/ITCH logon allowlists and broker metadata
     audit/               credential audit log
-  engine/              matching-engine core: orders, books, the matching loop, instrument universe, bots
+  engine/              matching-engine core: orders, books, the matching loop, sessions, market-event journal, instrument universe
   fixgw/               FIX 5.0 SP2 acceptor and the FIX message log
   itchgw/              DSE-ITCH SoupBinTCP feed and the WebSocket gateway for the trader SPA
-  loadtest/            synthetic benchmark, live OMS load test, risk checks, Postgres writer
   utils/               JSON reply helpers shared by the handlers
-  latency/             lock-free latency recorder shared by the FIX acceptor and the load tests
   config/              environment settings and where the data files live
-  web/                 HTML pages: trade terminal, welcome page, admin console, benchmark page
+  web/                 HTML pages: trade terminal, welcome page, admin console
   refdata/             DSE reference tables (asset class, category, sector, ISIN per ticker)
 spec/                  QuickFIX data dictionaries (FIXT11.xml, FIX50SP2.xml)
 docs/  tools/          documentation and the conformance report; helper scripts
@@ -49,8 +47,8 @@ Packages depend on each other in one direction only (the compiler enforces it, s
 ```
 Cmd ──► rest ──► rest/handlers ──► rest/middleware, rest/deps, database/*, utils, web
  │                  │
- └──────────────────┴──► fixgw, itchgw, loadtest ──► engine ──► config, refdata
-fixgw, itchgw, loadtest ──► engine, brokers, config      (loadtest and fixgw also use latency)
+ └──────────────────┴──► fixgw, itchgw ──► engine ──► config, refdata
+fixgw, itchgw ──► engine, brokers, config
 ```
 
 `engine` knows nothing about FIX, ITCH or HTTP. Process-wide state still exists, but each piece lives in the package that owns it and is exported from there: `fixgw.Active` (the running FIX acceptor), `fixgw.MsgLog`, `brokers.Fix`, `brokers.Itch` and `brokers.Meta` (in `database/brokers`) (the credential and metadata stores), `latency.Fix`, and the instrument metadata in `engine` (`MetaFor`, `SetStatus`).
@@ -61,7 +59,6 @@ Direct dependencies:
 |---|---|---|
 | `github.com/quickfixgo/quickfix` | v0.9.6 | FIX acceptor, sessions, data-dictionary validation |
 | `github.com/gorilla/websocket` | v1.5.3 | WebSocket market streams, and the live test's link to the FIX initiator |
-| `github.com/jackc/pgx/v5` | v5.10.0 | Postgres: benchmark persistence and the live-test OMS queries |
 
 To run a test copy next to a real deployment, move all three ports and point every data file at a scratch directory, so nothing under `/opt/velexa-sim-me` gets written:
 
@@ -81,20 +78,19 @@ Setting `EXCHANGE_INSTRUMENT_URL` to a closed local port makes the engine fall b
 <!-- AUTO:source-index -->
 | File (under `internal/`) | Responsibility |
 |---|---|
-| `Cmd/serve.go` (repo root) | `Serve()`: process startup — engine, bots, FIX acceptor, stores, ITCH gateway and feed, benchmark runners, then the HTTP server. Called from `main.go`. |
+| `Cmd/serve.go` (repo root) | `Serve()`: process startup — engine, session clock, FIX acceptor, stores, ITCH gateway and feeds, then the HTTP server. Called from `main.go`. |
 | `rest/server.go` | `Server`: builds one `Handler` per feature, registers every group's routes on one `http.ServeMux` (`Routes`), and serves it (`Start`). |
-| `rest/deps/deps.go` | `Deps`: the engine, bus, ITCH gateway, benchmark runners, Postgres pool and user store shared by every handler. |
+| `rest/deps/deps.go` | `Deps`: the engine, bus, ITCH gateway and user store shared by every handler. |
 | `rest/middleware/manager.go` | `Manager`: `With` wraps one route in middlewares, `Use`/`WrapMux` apply global ones (none are registered today). |
 | `rest/middleware/middlewares.go`, `roles.go` | `Middlewares` (holds the user store): `Viewer` and `Admin` route middlewares built on `RequireRole`; `CurrentUser`, `RequireAdminRole`, `ActorOf`, `Authenticate`. |
 | `rest/middleware/session.go` | Signed session cookie (`SignSession`, `VerifySession`, `SetSessionCookie`), `SessionUser`, `HomeFor`, `ClientIP`. |
 | `rest/handlers/<feature>/handler.go` | `Handler` (shared `Deps` plus the middlewares) and `NewHandler`, one per feature package. |
 | `rest/handlers/<feature>/routes.go` | `RegRoutes(mux, manager)`: every URL of the feature, with `manager.With(handler, middleware)`. This is where the access rule of each URL is set. |
-| `rest/handlers/public/` | `index.go` (Welcome page, Trade Terminal), `health.go`, `market.go` (`/api/status`, `/api/market`, `/api/book`, `/api/loadtest`), `order.go`, `events.go` (SSE stream and WebSocket upgrade); ITCH WebSocket routes in `routes.go`. |
-| `rest/handlers/control/` | `bots.go` (`/api/bots*`) and `session.go` (`/api/session*`). |
-| `rest/handlers/bench/`, `live/` | Benchmark API and `/bench` page; live load-test API. |
+| `rest/handlers/public/` | `index.go` (Welcome page, Trade Terminal), `health.go`, `market.go` (`/api/status`, `/api/market`, `/api/book`), `order.go`, `events.go` (SSE stream and WebSocket upgrade); ITCH WebSocket routes in `routes.go`. |
+| `rest/handlers/control/` | `session.go` (`/api/session*`). |
 | `rest/handlers/register/register.go` | `POST /register`: self-registration of `user` accounts with a profile, and the per-IP quota. |
 | `rest/handlers/account/` | `me.go` (own profile and password), `users.go` (the Users page API), `helpers.go`. |
-| `rest/handlers/admin/` | `login.go` (sign-in, sign-out), `dashboard.go` (`/admin`, `/user`), `status.go`, `simulator.go`, `session.go`, `fixlog.go`, `throttle.go` (login brute-force throttle). |
+| `rest/handlers/admin/` | `login.go` (sign-in, sign-out), `dashboard.go` (`/admin`, `/user`), `status.go`, `trading_session.go` (market phase and the DSE clock), `session.go`, `fixlog.go`, `throttle.go` (login brute-force throttle). |
 | `rest/handlers/broker/` | `list.go`, `detail.go`, `add.go`, `revoke.go`, `sheet.go` (broker credentials and onboarding sheet), `allowlist.go` (OMS IP allowlist), `helpers.go`, `sheet_html.go`. |
 | `rest/handlers/instrument/` | `list.go`, `save.go` (add / edit), `halt.go` (halt / delist), `export.go`, `import.go` (reload / import), `rows.go` (directory rows and the DSE-style XML/CSV builders). |
 | `database/users/users.go` | Console account store: roles `admin`/`user`, profile, password hashing, last-admin guard, `users.json`. |
@@ -103,32 +99,28 @@ Setting `EXCHANGE_INSTRUMENT_URL` to a closed local port makes the engine fall b
 | `config/admin.go` | Console credentials from the environment and the registration switch. |
 | `engine/engine.go` | Core types (`Order`, `ExecReport`, `Trade`, `MarketData`) and the `Engine`: matching loop, price-time matching, stops, icebergs, cancel/replace, sessions and the opening auction, pre-trade checks, index, snapshots, `LoadTest`. |
 | `engine/book.go` | Limit order book: price levels keyed by integer hundredths, sorted price lists, FIFO queues, depth, FOK check (`CanFill`), GTD expiry, removal. |
-| `engine/bots.go` | Market-maker and noise-trader bots, the pause flag (`BotsPaused`), and the tick ladder the bots quote on. |
 | `engine/bus.go` | Fan-out of SSE messages to subscribers; drops messages for slow clients. |
 | `engine/loader.go` | Instrument universe loading: source priority, JSON/CSV/TSV master parsing, per-symbol metadata (`InstrMeta`, `MetaFor`), symbol validation, default tick. |
 | `engine/instruments.go` | Changing the universe at runtime: `ListInstruments`, auto-listing, the universe status shown in the console. |
 | `engine/instref.go` | Fills in asset class, category, sector and board from `internal/refdata` and a deterministic classifier for synthetic tickers. |
+| `engine/events.go` | Market-event journal (orders added, executed, deleted; trading state; session; closes) that drives the ITCH feeds; DSE reject texts. |
+| `engine/schedule.go` | DSE trading day on the Dhaka clock: phases, day rollover, closing prices, day-order expiry, manual override. |
+| `engine/index.go` | DSEX and DS30 values for the ITCH index feed. |
+| `itchgw/market.go`, `itchgw/itchmsg.go`, `itchgw/soup.go` | Journal-driven ITCH market feed, the ITCH message builders, the SoupBinTCP server (login, resume, heartbeats). |
+| `itchgw/index.go`, `itchgw/news.go` | ITCH index feed (`Z`) and news feed (`N`). |
+| `itchgw/feed_legacy.go` | The old synthetic-depth feed (`ME_ITCH_MODE=legacy`). |
+| `fixgw/reports.go` | DSE-style execution reports: ack + one report per trade to both sides, echoed order fields, DSE reject form, cancel reject, status reply. |
 | `engine/obids.go` | Permanent orderbook ids (`orderbook_ids.json`): a symbol keeps its ITCH id across restarts and new listings get the next free id. |
 | `engine/universe_data.go` | The built-in list of 430 DSE instruments, used when no master is available. |
 | `fixgw/fixacceptor.go` | FIX acceptor: session config, NewOrderSingle/Cancel/Replace handlers, ExecutionReport and OrderCancelReject building, session controls. |
 | `fixgw/msglog.go` | quickfix log that captures FIX messages to an in-memory log and an append-only file. |
-| `itchgw/feed.go` | SoupBinTCP DSE-ITCH server: login, heartbeats, start-of-day directory, trade and depth publishing, binary message builders. |
 | `itchgw/gateway.go` | WebSocket gateway for the trader SPA: `/market`, `/marketdepth`, `/index`, and the `/events` time-and-sales/news socket. |
 | `database/brokers/fixauth.go` | FIX logon allowlist (`fix_brokers.json`): CompID to password, enforced when `ME_FIX_AUTH=on`. |
 | `database/brokers/itchauth.go` | ITCH feed credential store (`itch_brokers.json`). |
 | `database/brokers/meta.go` | Broker metadata store (`broker_meta.json`): links each broker FIX CompID to its ITCH user and company. |
-| `loadtest/bench.go` | Synthetic pipeline benchmark (`Bench`): order generator, RMS worker pool, single-goroutine matcher on seeded books. |
-| `loadtest/bench_export.go` | CSV exports: the benchmark summary and the persisted `sim_orders` rows. |
-| `loadtest/live.go` | Live load test (`LiveBench`): broker list, OMS test data, order generation through the OMS API, fill counting, and the destructive `Cleanup`. |
-| `loadtest/pipeline_latency.go` | Collects per-stage latency from the OMS API and FIX initiator, plus the engine own FIX timing, for `/api/live/latency`. |
-| `loadtest/persist.go` | Batched Postgres `COPY` writer for benchmark orders and executions. |
-| `loadtest/rms.go` | `RiskEngine`: pre-trade risk checks used by the synthetic benchmark. |
-| `latency/stat.go` | `Stat`: lock-free sample ring with percentiles. |
-| `latency/fix.go` | `Fix`: the FIX acceptor own order-to-ExecReport timer. |
 | `config/config.go` | `EnvOr`, data-file locations (`StateFile`, `SpecDir`) and the database and service endpoint settings. |
 | `web/terminal.go` | The `/` trade terminal page. |
 | `web/admin.go` | The admin login page and the console. |
-| `web/bench.go` | The `/bench` page. |
 | `refdata/dse.go` | DSE reference table: asset class, category, sector and ISIN per ticker. |
 <!-- /AUTO:source-index -->
 
@@ -150,9 +142,9 @@ Other files in the repo:
 - **HTTP responses.** Use `utils.WriteJSON`. Action endpoints return `{"ok": true, …}` or `{"ok": false, "error": "…"}`.
 - **Admin endpoints.** Add the handler to the matching package under `rest/handlers/` (`admin`, `broker`, `account` or `instrument`), list it in that package's `routes.go` with `h.middlewares.Admin` (or `Viewer` for read-only pages), and call `audit.Record(middleware.ActorOf(r), …)` for anything that changes state.
 - **FIX tags** are numeric `quickfix.Tag` constants at the top of `internal/fixgw/fixacceptor.go`. The code doesn't use quickfix's generated message packages.
-- **Logging.** Use the standard `log` package with a subsystem prefix: `[FIX]`, `[ITCH]`, `[universe]`, `[bench]`.
-- **Web pages** are HTML strings in Go constants in `internal/web` (`terminal.go`, `bench.go`, `admin.go`). There's no frontend build step and there are no static files.
-- **Theme.** Every page has a dark / light button (sun and moon icon). The choice is kept in the browser (`localStorage` key `me-theme`) and shared by the console, the embedded Trade Terminal and the benchmark page. Page styles live in `internal/web/theme.go` (`*LightCSS` overrides on `data-theme="light"`); dark is the default.
+- **Logging.** Use the standard `log` package with a subsystem prefix: `[FIX]`, `[ITCH]`, `[universe]`, `[session]`.
+- **Web pages** are HTML strings in Go constants in `internal/web` (`terminal.go`, `welcome.go`, `admin.go`). There's no frontend build step and there are no static files.
+- **Theme.** Every page has a dark / light button (sun and moon icon). The choice is kept in the browser (`localStorage` key `me-theme`) and shared by the console and the embedded Trade Terminal. Page styles live in `internal/web/theme.go` (`*LightCSS` overrides on `data-theme="light"`); dark is the default.
 
 ## Common changes
 
@@ -163,7 +155,7 @@ Other files in the repo:
 
 ### Add an HTTP route
 
-1. Write the handler as a method on `Handler` in the matching package under `rest/handlers/` (public, control, bench, live, register, account, instrument, broker or admin), then add a `mux.Handle(...)` line to that package's `routes.go`: `manager.With(http.HandlerFunc(h.Name), h.middlewares.Admin)` (or `.Viewer`, or no middleware for a public URL). `TestRouteTableIsComplete` lists every URL, so add the new one to `wantRoutes` in `rest/routes_test.go` too.
+1. Write the handler as a method on `Handler` in the matching package under `rest/handlers/` (public, control, register, account, instrument, broker or admin), then add a `mux.Handle(...)` line to that package's `routes.go`: `manager.With(http.HandlerFunc(h.Name), h.middlewares.Admin)` (or `.Viewer`, or no middleware for a public URL). `TestRouteTableIsComplete` lists every URL, so add the new one to `wantRoutes` in `rest/routes_test.go` too.
 2. If the route should accept only one method, check `r.Method` as `/api/order` does.
 3. Read or change engine state as described under **Engine state** in [Conventions](#conventions).
 4. Run `/update-docs` to add it to the [route index](http-api.md#route-index).

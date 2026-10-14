@@ -17,7 +17,6 @@ func (h *Handler) RegRoutes(mux *http.ServeMux, manager *middleware.Manager) {
 	mux.Handle("/api/book", manager.With(http.HandlerFunc(h.Book)))
 	mux.Handle("/api/order", manager.With(http.HandlerFunc(h.Order)))
 	mux.Handle("/events", manager.With(http.HandlerFunc(h.Events))) // SSE market stream, or the news WebSocket on an Upgrade
-	mux.Handle("/api/loadtest", manager.With(http.HandlerFunc(h.LoadTest)))
 
 	// ITCH WebSocket gateway for the trader SPA
 	mux.Handle("/market", manager.With(h.Itch.Serve(h.Itch.Market, itchgw.SelMarket)))

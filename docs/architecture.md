@@ -12,64 +12,54 @@ flowchart LR
         BRK[Broker FIX initiators]
         CPP[C++ itch service]
         SPA[Trader SPA]
-        WEB["Browsers: /, /bench, /admin"]
+        WEB["Browsers: /, /terminal, /admin"]
     end
 
     subgraph me[Matching engine process]
-        FIXA[FIX acceptor<br/>fixacceptor.go :5001]
-        HTTP[HTTP API<br/>main.go :8010]
-        ADM[Admin console<br/>admin.go]
+        FIXA[FIX acceptor<br/>fixgw :5001]
+        HTTP[HTTP API<br/>rest :8010]
+        ADM[Admin console]
         ENG[Engine run loop<br/>engine.go]
         BOOKS[(Order books<br/>book.go)]
-        BOTS[Bots: MM + NOISE<br/>bots.go]
+        JRN[Market-event journal<br/>events.go]
+        CLK[DSE session clock<br/>schedule.go]
         BUS[SSE bus<br/>bus.go]
-        GW[ITCH WebSocket gateway<br/>itchgw.go]
-        FEED[SoupBinTCP ITCH feed<br/>itchfeed.go :5501]
+        GW[ITCH WebSocket gateway<br/>gateway.go]
+        FEED[ITCH feeds<br/>market :5501 · index :5502 · news :5503]
         LOAD[Instrument loader<br/>loader.go, instruments.go]
-        BENCH[Synthetic benchmark<br/>bench.go + rms.go]
-        PERS[Persister<br/>persist.go]
-        LIVE[Live load test<br/>live.go]
     end
 
     subgraph ext[External services]
-        PG[(Postgres velexa_sim)]
-        OMSPG[(OMS Postgres<br/>broker DBs)]
-        API[OMS API<br/>ME_API_URL]
-        FIXI[OMS FIX initiator<br/>ME_FIX_WS]
-        AUD[Audit service<br/>ME_AUDIT_URL]
         XM[Exchange security master<br/>EXCHANGE_INSTRUMENT_URL]
     end
 
-    BRK -- "D / F / G" --> FIXA
-    FIXA -- "SubmitAndWait, Cancel, Replace" --> ENG
+    BRK -- "D / F / G / H" --> FIXA
+    FIXA -- "SubmitAndWait, Cancel, Replace, Status" --> ENG
+    ENG -- "reports (Notify)" --> FIXA
     FIXA -- "ExecutionReport" --> BRK
     WEB -- "POST /api/order" --> HTTP
     HTTP -- "SubmitAndWait" --> ENG
-    BOTS -- "Submit" --> ENG
+    CLK -- "phase changes" --> ENG
     ENG --> BOOKS
+    ENG --> JRN
+    JRN --> FEED
+    FEED -- "SoupBinTCP" --> CPP
     ENG -- "trades, snapshots" --> BUS
     BUS -- "SSE /events" --> WEB
     GW -- "RLock + read" --> ENG
     GW -- "/market /marketdepth /index /events(ws)" --> SPA
-    FEED -- "RLock + read" --> ENG
-    FEED -- "SoupBinTCP" --> CPP
     XM --> LOAD
     LOAD -- "ListInstruments" --> ENG
     ADM --> FIXA
     ADM --> LOAD
-    BENCH --> PERS --> PG
-    LIVE -- "POST orders" --> API
-    LIVE -- "logon frames" --> FIXI
-    API --> FIXI -- "FIX" --> FIXA
-    LIVE -- "fixtures, fill counts, cleanup" --> OMSPG
-    LIVE -- "/purge" --> AUD
+    ADM -- "trading session" --> CLK
 ```
 
 `Serve` in `Cmd/serve.go` (called from `main.go`) wires everything together at startup:
 
-1. Builds the bus, loads the instrument universe, creates the `Engine`, and starts its run loop and the bots.
+1. Builds the bus, loads the instrument universe, creates the `Engine` with its permanent orderbook ids, starts its run loop and the session clock.
 2. Starts the FIX acceptor (a failure is logged; HTTP keeps running) and loads the ITCH credentials.
-3. Calls `newServer` (also in `Cmd/serve.go`), which loads the admin audit log and broker metadata, starts the ITCH WebSocket gateway and the SoupBinTCP feed, creates the Postgres pool for the benchmark (connections open lazily) and the benchmark and load-test objects.
+3. Calls `newServer` (also in `Cmd/serve.go`), which loads the admin audit log and broker metadata, starts the ITCH WebSocket gateway and the three SoupBinTCP feeds (market, index, news).
 4. Serves HTTP on `PORT` with the routes registered by `rest/server.go`. Each package under `rest/handlers/` lists its own URLs in `routes.go`, and each URL is a method on that package's `Handler`.
 
 ## Concurrency model
@@ -78,7 +68,7 @@ flowchart LR
   - `submit`: incoming orders, buffered to 4096.
   - `ctrl`: control functions (cancel, replace, phase change, instrument listing), buffered to 256.
   - A 700 ms ticker that expires GTD orders, recomputes the index and publishes a market snapshot to the SSE bus.
-- **The engine lock.** Orders and control functions run while holding `Engine.mu` for writing. HTTP snapshots, the ITCH feed and the WebSocket gateway take the read lock. The market-maker bots also take the write lock briefly to move their fair value and pull their own quotes.
+- **The engine lock.** Orders and control functions run while holding `Engine.mu` for writing. HTTP snapshots and the WebSocket gateway take the read lock; the ITCH feeds read the market-event journal, which has its own lock. 
 - **Copy-on-write instrument tables.** The book, market-data, instrument-list and order-book-ID tables are held behind `atomic.Pointer`s. Listing a new instrument builds fresh tables and swaps them in, publishing the instrument list last. That way a reader that walks the list without the lock always finds the books and market data for each symbol.
 - **Synchronous replies.** `SubmitAndWait` gives each order a reply channel and waits up to 3 s for the first execution report. Later reports, such as a stop order triggering, go through the order's `notify` callback.
 
@@ -87,26 +77,29 @@ flowchart LR
 1. **Arrival.**
    - FIX: `handleNewOrder` parses the tags, `validateNew` screens them, and the order is created with the actor `FIX:<CompID>`.
    - HTTP: `/api/order` creates a DAY order with the actor `API`, or whatever `actor` field the body supplies.
-   - Bots call `Submit` without waiting for a reply.
 2. **Unknown symbols.** If the symbol isn't listed and `ME_AUTO_LIST` is on, `autoList` opens a book for it first (see [Instrument universe](#instrument-universe)).
 3. **`process`, on the matching goroutine:**
    1. Rejects symbols with no book, then gives the order an ID.
-   2. Parks stop and stop-limit orders and replies `PENDING`.
-   3. In Pre-Open, rests limit orders without matching and rejects market orders.
-   4. Runs the [pre-trade checks](#pre-trade-checks-fix-orders-only) on FIX limit orders.
-   5. Calls `match`, adds board and ISIN to the report, and replies.
-   6. Calls `triggerStops` for the symbol.
+   2. Applies the [session rules](#trading-sessions): nothing is accepted in Close and Closed, only the close price in Post-Close.
+   3. Prices a market-at-best order at the best opposite level and treats it as a limit order.
+   4. Parks stop and stop-limit orders and replies `PENDING`.
+   5. In Pre-Open, rests limit orders without matching and rejects market orders.
+   6. Runs the [pre-trade checks](#pre-trade-checks-fix-orders-only) on FIX limit orders.
+   7. Calls `match`, adds board and ISIN to the report, and replies.
+   8. Calls `triggerStops` for the symbol.
+
+   Every report about an order also goes to its `Notify` callback, on the matching goroutine: the reply, each fill while it rests, cancel/replace confirmations, a triggered stop and expiry. The FIX gateway queues them and sends them in that order.
 4. **Market data.** Each trade goes through `recordTrade`, which:
-   - updates the instrument's last, high, low, volume and trade count
+   - updates the instrument's last, high, low, volume and trade count (the day's first trade sets open, high and low)
    - keeps the trade in a 500-entry log of recent trades
    - publishes a `trade` event on the SSE bus
 
    `refreshTop` then updates best bid and ask.
 5. **Distribution.**
-   - The FIX acceptor turns the report into an ExecutionReport.
+   - The FIX acceptor turns each report into DSE-style ExecutionReports (ack, one per trade, …), see [protocols](protocols.md#outbound-executionreport-358).
+   - Every change to the book is appended to the market-event journal (`engine/events.go`); the ITCH market feed streams it as it happens.
    - The SSE bus pushes snapshots every 700 ms.
    - The WebSocket gateway takes a snapshot every 500 ms.
-   - Each ITCH session publishes new trades and depth every 700 ms.
 
 ## Matching rules
 
@@ -119,11 +112,11 @@ All matching code is in `engine/engine.go` (`match`, `consumeFront`, `triggerSto
 
 | Time-in-force | Behaviour |
 |---|---|
-| DAY (default) | Rests until cancelled. There is no end-of-day, so DAY behaves like GTC. |
+| DAY (default) | Rests until the end of the trading day, then expires with a 150=C report. |
 | GTC | Rests until cancelled. |
 | IOC | Fills what it can now; the rest is cancelled. Nothing filled means `CANCELED`. |
 | FOK | `canFill` first checks, without changing the book, whether the whole quantity can fill now. If not, the order is `CANCELED` and nothing trades. |
-| GTD | Rests until its expiry time. Every 700 ms, `sweepExpired` removes expired orders without sending any report. |
+| GTD | Rests until its expiry time. Every 700 ms, `sweepExpired` removes expired orders and reports them (150=C). |
 
 - **Stop and stop-limit orders** wait off the book in a per-symbol list. After each order on that symbol is processed (and after a replace or the market opening), `triggerStops` fires any stop whose trigger has been reached:
   - a buy stop fires when the last price is at or above StopPx
@@ -136,7 +129,7 @@ All matching code is in `engine/engine.go` (`match`, `consumeFront`, `triggerSto
 
 ## Pre-trade checks (FIX orders only)
 
-`process` checks FIX limit orders with a price above 0 (actor starting `FIX:`). Market orders, bot orders and `/api/order` orders skip these checks.
+`process` checks FIX limit orders with a price above 0 (actor starting `FIX:`). Market orders and `/api/order` orders skip these checks.
 
 1. **Tick size.** The price must be a multiple of the instrument's tick, taken from the security master. If the master doesn't give a tick, the default is `0.10` (`defaultTick`).
 2. **Price band.** The DSE daily circuit breaker. It's anchored on the previous close, or the last price if there's no previous close. The band width depends on that anchor (`bandPctFor`):
@@ -154,25 +147,28 @@ The band limits are rounded to 2 decimals. A rejection gives the board, ISIN, ba
 
 ## Trading sessions
 
-The session phase starts as `Continuous Trading`. It can be switched through `/api/session/*` or the admin console.
+The trading day follows the DSE clock (Asia/Dhaka, Sunday to Thursday) by default, from `engine/schedule.go`:
 
-- **Pre-Open (call auction).**
-  - Limit orders rest on the book without matching.
-  - Market orders are rejected.
-  - Stop orders are still parked as usual.
+| Phase | From (default) | Orders | Housekeeping on entry |
+|---|---|---|---|
+| Closed | 15:00 to 09:30, Friday, Saturday | rejected: `(293): Orders are not being accepted at this time` | day orders expire (150=C); `S` codes `E` and `C` |
+| Pre-Open | 09:30 | limit orders rest without matching; market orders rejected | leaving Closed starts a new trading day: yesterday's close becomes the reference price, the day's figures reset, new reference prices on the feed |
+| Continuous Trading | 10:00 | normal matching | coming from Pre-Open: the opening auction (`uncross`) |
+| Close | 14:30 | rejected (293) | closing prices published (`Q`) |
+| Post-Close | 14:40 | only at the close price; market orders trade at it, other prices are rejected `(1116): Order price is not equal to close price` | |
 
-  The bots keep quoting during Pre-Open unless they're paused, so the books keep filling up.
-- **Opening: Pre-Open → Continuous Trading.** `SetPhase` runs `uncross` for every instrument, then `triggerStops`. `uncross` does the following:
-  1. Considers every bid and ask price level as a possible opening price.
-  2. Picks the price where the most volume can trade: the smaller of the total bid quantity at or above the price and the total ask quantity at or below it. Ties go to the price closest to the instrument's reference price.
-  3. Trades crossing orders at that one price until the volume is used up. These auction trades are recorded with the aggressor `BUY`.
-- There is no closing auction or end-of-day processing.
+The times are `ME_SESSION_SCHEDULE` (`09:30,10:00,14:30,14:40,15:00`); public holidays are not known. If the engine starts or wakes up mid-day it steps through the phases it missed, so their housekeeping still runs.
 
-The engine also has a `running` flag that rejects orders with `matching engine is halted` when false. No code path in the current version sets it to false.
+**Manual control.** The admin console (Market Session page) and `/api/session/preopen|open` can force a phase; forcing switches the clock off ("Manual"). "Follow schedule" switches it back on, and `ME_SESSION_AUTO=off` starts the engine with the clock off.
+
+**Opening auction.** On Pre-Open → Continuous Trading, `uncross` runs for every instrument, then `triggerStops`:
+1. Considers every bid and ask price level as a possible opening price.
+2. Picks the price where the most volume can trade: the smaller of the total bid quantity at or above the price and the total ask quantity at or below it. Ties go to the price closest to the instrument's reference price.
+3. Trades crossing orders at that one price until the volume is used up. Both sides get a fill report, and the feed sends `C` for each.
 
 ## Market data and the index
 
-Each instrument has a `MarketData` record: previous close, open, last, high, low, change, change %, best bid and ask with sizes, volume and trade count. While an instrument hasn't traded, its open, last, high and low all equal the previous close.
+Each instrument has a `MarketData` record: previous close, open, last, high, low, change, change %, best bid and ask with sizes, volume and trade count. While an instrument hasn't traded today, its open, last, high and low all equal the previous close; the first trade sets them.
 
 The index is a DSEX-style index on a base of 6000:
 
@@ -180,48 +176,22 @@ The index is a DSEX-style index on a base of 6000:
 index = 6000 × Σ(last price) / Σ(previous close)
 ```
 
-It's recomputed every 700 ms across all instruments. The `/index` WebSocket stream reports its change against 6000.
+It's recomputed every 700 ms across all instruments. The `/index` WebSocket stream reports its change against 6000. The ITCH index feed publishes DSEX and DS30 (the 30 highest-priced equities) as `Z` messages, see [protocols](protocols.md#index-feed).
 
-## Simulated market participants (bots)
+## Order flow
 
-`startBots` in `engine/bots.go` starts two goroutines per instrument at boot. Instruments listed later by auto-listing or an import get them too (`startBotsFor`).
-
-| Bot | Actor | Behaviour |
-|---|---|---|
-| Market maker | `MM` | Every 0.8–1.5 s:<br>1. Moves its fair value toward the previous close (2% mean reversion plus random noise), kept within ±15% of the previous close.<br>2. Cancels all its own orders.<br>3. Quotes 5 bid and 5 ask levels, one tick apart, using its own price-based tick ladder (`tickSize`: Tk 0.50 at or above 200, 0.20 at or above 50, 0.10 at or above 10, otherwise 0.05). |
-| Noise trader | `NOISE` | Every 0.6–2.4 s, sends a market order for 100–699 shares on a random side. This produces trades and moves the price. |
-
-`/api/bots/pause` sets a flag that makes both bots skip their turns; their goroutines keep running. Bot orders skip the FIX pre-trade checks.
-
-The bots' tick ladder is a market-making shortcut and is separate from the exchange tick used for the FIX checks. The comment on `defaultTick` explains why the two must stay separate.
-
-## Risk management (RMS)
-
-`RiskEngine` in `loadtest/rms.go` is used **only by the synthetic benchmark**; live orders never go through it. Its checks, in order:
-
-| Code | Rule |
-|---|---|
-| `TRADING_HALTED` | Per-symbol halt flag (none are set). |
-| `QTY_LIMIT` | Quantity is 0 or less, or more than 1,000,000. |
-| `PRICE_BAND` | Limit price more than ±10% from the reference price. |
-| `VALUE_LIMIT` | Order value over 50,000,000. |
-| `BUYING_POWER` | Buy order value over the account's limit (no limits are set). |
-| `POSITION_LIMIT` | Quantity over 5,000,000. |
+There are no simulated traders: every order comes from a broker over FIX, or from the Trade Terminal / `/api/order`. Books start empty each day and fill only with real orders, so prices move only when real orders trade, as on the DSE.
 
 ## Persistence
 
 The live engine keeps everything in memory. Books, resting orders, trades and market data are lost on restart, and every instrument restarts from its previous close. What does survive a restart:
 
-- configuration files edited from the admin console (credentials, broker metadata, the IP allowlist and imported instrument masters)
+- configuration files edited from the admin console (credentials, broker metadata, the IP allowlist, console users and imported instrument masters)
+- the permanent orderbook ids (`orderbook_ids.json`)
 - the admin audit log
 - the FIX message log
 
-Only the synthetic benchmark writes to Postgres. `Persister` in `loadtest/persist.go` copies rows into the `UNLOGGED` tables `sim_orders` and `sim_execs` in the `velexa_sim` database, in batches of up to 3000 rows or every 40 ms. Columns written:
-
-- `sim_orders`: `id, cl_ord_id, account, symbol, side, qty, price, status, reject_reason, rms_ns, match_ns`. `/api/bench/orders.csv` also reads a `ts` column.
-- `sim_execs`: `exec_id, order_id, symbol, side, last_px, last_qty, cum_qty, status`
-
-The SQL that creates these tables isn't in this repository.
+The engine does not use a database.
 
 ## Instrument universe
 
@@ -242,7 +212,7 @@ The chosen source is shown as `universe.source` in `/api/status` and the admin c
 Missing values are filled in: previous close becomes 100, tick becomes `0.10`, board becomes `MAIN`, and name becomes the symbol. Each instrument's board, ISIN and tick are stored in `instrMeta` and used by the pre-trade checks, the ExecutionReport extras and the board labels on the WebSocket stream.
 
 **Changing the universe at runtime.** `(*Engine).ListInstruments` merges a master into the running engine:
-- New symbols get a book, market data, the next order book ID and their own bots.
+- New symbols get a book, market data and the next order book ID, and appear on the ITCH market feed.
 - Symbols already listed have their name and previous close updated. If they haven't traded yet, their prices are reset to the new previous close.
 
 The admin console starts this with **reload** (read the configured sources again) or **import** (upload a master). See [http-api](http-api.md#admin-console-api).

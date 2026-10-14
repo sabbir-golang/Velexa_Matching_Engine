@@ -509,8 +509,6 @@ func TestConformance(t *testing.T) {
 
 	eng := engine.NewEngine([]engine.Instrument{{Symbol: "SEEDONLY", Name: "seed", Prev: 100}}, engine.NewBus())
 	go eng.Run()
-	atomic.StoreInt32(&engine.BotsPaused, 1) // no market-maker/noise flow while conformance-testing
-	defer atomic.StoreInt32(&engine.BotsPaused, 0)
 
 	port := freePort(t)
 	fa, err := Start(eng, strconv.Itoa(port), "DSEME")
@@ -588,12 +586,14 @@ func (h *harness) runOrderTypes() {
 		}
 		return sent, rs, fail("not filled")
 	})
-	h.c(cat, "OT-04", "Market (40=1) carrying a price (post-close style)", "Accepted; DSE requires the close price in the post-close session", func() (string, []reply, verdict) {
+	h.c(cat, "OT-04", "Market (40=1) carrying a price outside the post-close session", "Rejected: 'Price is not allowed for market order' (a price is only allowed, and must be the close, in post-close)", func() (string, []reply, verdict) {
 		sent, rs, _ := h.order(m, ov{"40": "1", "44": "100.00", "38": "100"})
-		if cumQty(rs) == 100 {
-			return sent, rs, pass("filled at best; price field ignored")
+		for _, r := range apps(rs) {
+			if r.get("150") == "8" && strings.Contains(r.get("58"), "Price is not allowed for market order") {
+				return sent, rs, pass("rejected as the DSE does")
+			}
 		}
-		return sent, rs, fail("not filled")
+		return sent, rs, fail("not rejected with the DSE reason")
 	})
 	e := h.sym(100, "MAIN")
 	h.c(cat, "OT-05", "Market (40=1) on an empty book", "Order not executed (no liquidity); treatment of the remainder not specified by the OMS reference", func() (string, []reply, verdict) {
@@ -1016,8 +1016,8 @@ func (h *harness) runTagsAndReports() {
 		"present", "missing 31/32 on a fill", fail)
 	chk("ER-6", "ER carries average price (6) and cumulative qty (14)", "Both present", last.get("6") != "" && last.get("14") != "",
 		"present", "missing 6/14", fail)
-	chk("ER-7", "ER carries security id (48/22) and board", "Instrument identification present", last.get("48") != "",
-		"present", "no 48/22", gap)
+	chk("ER-7", "ER identifies the instrument by Symbol (55) only, as the DSE does", "No 48/22/207/1300 (the DSE sends none)",
+		last.get("55") != "" && last.get("48") == "" && last.get("1300") == "", "55 only", "extra instrument tags", gap)
 
 	// Reject reason code.
 	_, rrs, _ := h.order(f, ov{"38": "0"})
@@ -1218,7 +1218,7 @@ func (h *harness) runModifyCancel() {
 		}
 		return sent, rs, gap("no reply — 35=H is not handled (fixacceptor.go:403-410); the OMS cannot reconcile order state")
 	})
-	h.c(cat, "CM-12", "Order Status Request (35=H) on an unknown order", "Reject (35=8 150=8 or 35=j)", func() (string, []reply, verdict) {
+	h.c(cat, "CM-12", "Order Status Request (35=H) on an unknown order", "Execution report 150=I, 39=8 (or a reject)", func() (string, []reply, verdict) {
 		sent, rs := h.send("H", ov{"11": "NOSUCH4", "54": "1", "55": s, "790": "ST2", "50": "TRADER1"})
 		if len(rs) > 0 {
 			return sent, rs, pass(summary(rs))

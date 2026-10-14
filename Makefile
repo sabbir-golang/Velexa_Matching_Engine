@@ -1,4 +1,4 @@
-# Common tasks for the Velexa matching-engine simulator.
+# Common tasks for the Velexa matching engine.
 # Run from the repository root: the engine looks for spec/ and data/ relative to it.
 
 BIN := bin/velexa-sim-me

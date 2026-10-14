@@ -101,7 +101,8 @@ func (b *Book) DepthSide(buy bool, n int) []Level {
 
 // cancelActor removes all of an actor's resting orders (used by the market
 // maker on re-quote). Rare relative to matching, so a full sweep is fine.
-func (b *Book) cancelActor(actor string) {
+func (b *Book) cancelActor(actor string) []*Order {
+	var removed []*Order
 	sweep := func(pxs []int64, m map[int64]*PriceLevel) []int64 {
 		kept := pxs[:0]
 		for _, k := range pxs {
@@ -112,6 +113,8 @@ func (b *Book) cancelActor(actor string) {
 				if o.Actor != actor {
 					out = append(out, o)
 					lv.Qty += o.Qty
+				} else {
+					removed = append(removed, o)
 				}
 			}
 			lv.Orders = out
@@ -125,6 +128,7 @@ func (b *Book) cancelActor(actor string) {
 	}
 	b.bidPx = sweep(b.bidPx, b.bids)
 	b.askPx = sweep(b.askPx, b.asks)
+	return removed
 }
 
 // canFill reports how much of wantQty an incoming order could fill immediately
@@ -152,6 +156,37 @@ func (b *Book) canFill(side Side, typ OrdType, price float64, wantQty int64) int
 		}
 	}
 	return avail
+}
+
+// removeWhere removes every resting order for which drop is true and returns them.
+func (b *Book) removeWhere(drop func(*Order) bool) []*Order {
+	var removed []*Order
+	sweep := func(pxs []int64, m map[int64]*PriceLevel) []int64 {
+		kept := pxs[:0]
+		for _, k := range pxs {
+			lv := m[k]
+			out := lv.Orders[:0]
+			lv.Qty = 0
+			for _, o := range lv.Orders {
+				if drop(o) {
+					removed = append(removed, o)
+					continue
+				}
+				out = append(out, o)
+				lv.Qty += o.Qty
+			}
+			lv.Orders = out
+			if len(out) == 0 {
+				delete(m, k)
+			} else {
+				kept = append(kept, k)
+			}
+		}
+		return kept
+	}
+	b.bidPx = sweep(b.bidPx, b.bids)
+	b.askPx = sweep(b.askPx, b.asks)
+	return removed
 }
 
 // cancelExpired removes resting GTD orders whose Expire has passed and returns

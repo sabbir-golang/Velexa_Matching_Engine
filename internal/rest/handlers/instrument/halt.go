@@ -44,6 +44,7 @@ func (h *Handler) Halt(w http.ResponseWriter, r *http.Request) {
 	} else {
 		engine.SetStatus(sym, "active")
 	}
+	eng.PublishTradingState(sym)
 	action := "instrument.resume"
 	if req.Halted {
 		action = "instrument.halt"
@@ -76,6 +77,7 @@ func (h *Handler) Delist(w http.ResponseWriter, r *http.Request) {
 	// The book and ITCH id stay (the engine's maps only grow); the scrip
 	// rejects orders, drops out of the directory and is not saved to the master.
 	engine.SetStatus(sym, "delisted")
+	eng.PublishTradingState(sym)
 	audit.Record(middleware.ActorOf(r), "instrument.delist", sym)
 	log.Printf("[universe] admin delisted %s", sym)
 	out := map[string]any{"ok": true, "symbol": sym, "count": len(instrumentRows(eng))}

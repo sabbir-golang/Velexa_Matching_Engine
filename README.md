@@ -1,6 +1,6 @@
-# Velexa Simulator Matching Engine
+# Velexa Matching Engine
 
-A Go simulator of the Dhaka Stock Exchange (DSE) matching engine, built so an order-management system (OMS) can be developed and load-tested end to end without the real exchange. Brokers' FIX initiators send orders to it; it matches them on in-memory limit order books and publishes market data over DSE-ITCH (SoupBinTCP), WebSockets and Server-Sent Events. Simulated market makers and noise traders keep every instrument quoted and trading.
+A Go simulator of the Dhaka Stock Exchange (DSE) matching engine, built so an order-management system (OMS) can be developed and load-tested end to end without the real exchange. Brokers' FIX initiators send orders to it; it matches them on in-memory limit order books and publishes market data over DSE-ITCH (SoupBinTCP), WebSockets and Server-Sent Events. There are no simulated traders: books hold only real orders, and prices move only when they trade, as on the DSE.
 
 ## Features
 
@@ -13,7 +13,8 @@ A Go simulator of the Dhaka Stock Exchange (DSE) matching engine, built so an or
   - a Pre-Open call auction with a single-price opening uncross
 - **DSE pre-trade rules** for FIX orders: tick size from the security master, and the tiered daily price band.
 - **Market data**:
-  - a SoupBinTCP DSE-ITCH feed for the exchange's C++ `itch` service
+  - the DSE-ITCH market, index and news feeds (SoupBinTCP) for the exchange's C++ `itch` service, streaming the real order book
+  - DSE-style FIX execution reports (ack, one report per trade to both sides) and the DSE trading day on the Dhaka clock
   - WebSocket streams in the trader SPA's JSON format (`/market`, `/marketdepth`, `/index`, `/events`)
   - an SSE stream
   - a DSEX-style index
@@ -25,7 +26,6 @@ A Go simulator of the Dhaka Stock Exchange (DSE) matching engine, built so an or
   - the message log
   - the audit log
   - console users with roles: `admin` (full access) and `user` (read-only: dashboard, Trade Terminal, broker credentials, message log), managed on the Users page
-- **Load testing**: a synthetic pipeline benchmark (generation → RMS → matching → Postgres) and a live test that sends real orders through the full OMS pipeline, both with latency percentiles and CSV export.
 
 ## Quick start
 
@@ -40,7 +40,7 @@ Start it from the repository root: it finds the FIX dictionaries in `spec/` and 
 
 Then:
 
-- open <http://localhost:8010/> for the trade terminal, <http://localhost:8010/bench> for benchmarks and <http://localhost:8010/admin> for the admin console (non-admin accounts use <http://localhost:8010/user>)
+- open <http://localhost:8010/> for the trade terminal, <http://localhost:8010/admin> for the admin console (non-admin accounts use <http://localhost:8010/user>)
 - check it's up with `curl -s localhost:8010/api/status`
 - send an order:
 
@@ -63,6 +63,8 @@ For a real deployment, see [configuration](docs/configuration.md) and [operation
 | 8010 | `PORT` | HTTP: web pages, JSON API, WebSockets, SSE, admin console |
 | 5001 | `FIX_PORT` | FIX acceptor |
 | 5501 | `ITCH_PORT` | SoupBinTCP ITCH market-data feed |
+| 5502 | `ME_ITCH_INDEX_PORT` | SoupBinTCP ITCH index feed |
+| 5503 | `ME_ITCH_NEWS_PORT` | SoupBinTCP ITCH news feed |
 | 5443 | n/a (nginx) | External FIX gateway, IP-allowlisted, forwards to 5001 |
 | 80 / 443 | n/a (nginx) | Reverse proxy to 8010 |
 
@@ -70,11 +72,11 @@ For a real deployment, see [configuration](docs/configuration.md) and [operation
 
 | Doc | Covers |
 |---|---|
-| [Architecture](docs/architecture.md) | Components, order lifecycle, matching rules, sessions, pre-trade checks, bots, persistence, instrument universe |
+| [Architecture](docs/architecture.md) | Components, order lifecycle, matching rules, sessions, pre-trade checks, persistence, instrument universe |
 | [Configuration](docs/configuration.md) | Every environment variable and data file, directory layout, security notes |
 | [HTTP API](docs/http-api.md) | Every route, request and response, WebSocket and SSE streams, admin API |
 | [Protocols](docs/protocols.md) | FIX acceptor (sessions, tags, execution reports) and ITCH feed (framing, message layouts) |
-| [Operations](docs/operations.md) | Running, nginx front ends, broker onboarding, load tests, logs, health checks, troubleshooting |
+| [Operations](docs/operations.md) | Running, nginx front ends, broker onboarding, logs, health checks, troubleshooting |
 | [Development](docs/development.md) | Source layout, build and test, conventions, how to make common changes |
 
 These docs are kept in sync with the code by the `/update-docs` Claude Code skill in `.claude/skills/update-docs/`.
@@ -88,11 +90,10 @@ Cmd/serve.go           wiring: builds the engine, starts the gateways, serves HT
 internal/
   rest/                HTTP layer: server.go (mux), middleware/, handlers/<feature>/ (handler.go, routes.go, one file per endpoint), deps/
   database/            file-backed stores: users/ (console accounts), brokers/ (FIX/ITCH logons, metadata), audit/
-  engine/              matching-engine core: orders, books, matching, instrument universe, bots
+  engine/              matching-engine core: orders, books, matching, sessions, instrument universe
   fixgw/               FIX 5.0 SP2 acceptor and message log
   itchgw/              DSE-ITCH feed and WebSocket gateway
-  loadtest/            benchmark and live OMS load test
-  utils/ latency/ config/ web/ refdata/   JSON helpers, recorder, settings, HTML pages, DSE reference data
+  utils/ config/ web/ refdata/   JSON helpers, settings, HTML pages, DSE reference data
 spec/  docs/  tools/  deploy/      FIX dictionaries, documentation, scripts, server files
 Makefile               make build | run | test | vet | report
 ```

@@ -1,0 +1,37 @@
+package admin
+
+import (
+	"net/http"
+
+	"velexa-sim-me/internal/engine"
+	"velexa-sim-me/internal/rest/middleware"
+	"velexa-sim-me/internal/utils"
+)
+
+// TradingSession serves /admin/api/trading-session: the market's session phase
+// and the DSE clock. Reading it is open to every signed-in user; changing it
+// needs an admin.
+func (h *Handler) TradingSession(w http.ResponseWriter, r *http.Request) {
+	eng := h.Eng
+	if r.URL.Query().Get("action") != "" && !middleware.RequireAdminRole(w, r) {
+		return
+	}
+	switch r.URL.Query().Get("action") {
+	// Forcing a phase switches the clock off; auto_on hands the phases back to it.
+	case "preopen":
+		eng.ForcePhase(engine.PhasePreOpen)
+	case "open":
+		eng.ForcePhase(engine.PhaseOpen)
+	case "close":
+		eng.ForcePhase(engine.PhaseClose)
+	case "postclose":
+		eng.ForcePhase(engine.PhasePostClose)
+	case "endofday":
+		eng.ForcePhase(engine.PhaseClosed)
+	case "auto_on":
+		eng.SetAutoClock(true)
+	case "auto_off":
+		eng.SetAutoClock(false)
+	}
+	utils.WriteJSON(w, map[string]any{"ok": true, "phase": eng.CurrentPhase(), "auto_clock": eng.AutoClock(), "schedule": eng.ScheduleText()})
+}

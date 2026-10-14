@@ -55,11 +55,11 @@ select:focus{border-color:var(--acc)}
 <div class="wrap">
  <section class="board">
   <div class="brand"><span class="logo">M</span><div><b>Matching Engine</b><small>DSEME · VELEXA</small></div></div>
-  <h1>Welcome to the <span>Velexa</span> exchange simulator</h1>
+  <h1>Welcome to the <span>Velexa</span> matching engine</h1>
   <p class="lead">A DSE-style matching engine with FIX order entry, an ITCH market-data feed, and a live order book. Sign in to monitor the market, or to administer brokers and instruments.</p>
   <ul class="feat">
    <li><i>U</i><span><b>User</b> &mdash; read-only access to the dashboard, Trade Terminal, broker credentials and message log.</span></li>
-   <li><i>A</i><span><b>Admin</b> &mdash; full control: broker credentials, IP allowlist, instruments, simulator and console users.</span></li>
+   <li><i>A</i><span><b>Admin</b> &mdash; full control: broker credentials, IP allowlist, instruments, market session and console users.</span></li>
   </ul>
   <a class="term" href="/terminal">Open Trade Terminal &rarr;</a>
  </section>

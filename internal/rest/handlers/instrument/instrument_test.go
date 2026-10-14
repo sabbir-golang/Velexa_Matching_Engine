@@ -248,9 +248,10 @@ func TestInstrumentExport(t *testing.T) {
 		`<?xml version="1.0" encoding="utf-8"?>`, "<EODTickers>", "</EODTickers>",
 		// the index comes first, as in the DSE file
 		`  <Ticker SecurityCode="DSEX" ISIN="DSEX" AssetClass="IN" CompulsorySpot="N" TradeDate="`,
-		// a traded equity: every attribute, Var/VarPercent against the previous close of 50
+		// a traded equity: every attribute, Var/VarPercent against the previous close of 50;
+		// the day's open/high/low come from its trades (one, at 51)
 		`<Ticker SecurityCode="EXPA" ISIN="BD0001EXPA09" Category="B" AssetClass="EQ" Sector="Bank" CompulsorySpot="N" TradeDate="`,
-		`Close="51" Open="50" High="51" Low="50" Var="1.00000" VarPercent="2.00000" />`,
+		`Close="51" Open="51" High="51" Low="51" Var="1.00000" VarPercent="2.00000" />`,
 		// an untraded fund: only its previous close, category defaults to A
 		`<Ticker SecurityCode="EXPF" ISIN="" Category="A" AssetClass="MF" Sector="MutFund" CompulsorySpot="N" TradeDate="`,
 		`Close="8.5" />`,

@@ -3,7 +3,6 @@ package engine
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -95,7 +94,6 @@ func (e *Engine) ListInstruments(u UniverseSet) (added, updated int) {
 		done <- result{a, up, fresh}
 	}
 	r := <-done
-	e.startBotsFor(r.fresh)
 	return r.added, r.updated
 }
 
@@ -171,18 +169,10 @@ func (e *Engine) listInstruments(ins []Instrument) (added, updated int, fresh []
 	e.mdMap.Store(&nm)
 	e.obIDs.Store(&obs)
 	e.instrList.Store(&nl)
-	return added, updated, fresh
-}
-
-// startBotsFor gives newly listed instruments the same market-maker + noise
-// trader every boot-time instrument gets, so a new book is quotable immediately
-// instead of sitting empty (which would reject every market order against it).
-func (e *Engine) startBotsFor(syms []string) {
-	for i, sym := range syms {
-		seed := time.Now().UnixNano() + int64(i)
-		go e.marketMaker(sym, rand.New(rand.NewSource(seed)))
-		go e.noiseTrader(sym, rand.New(rand.NewSource(seed+1000)))
+	for _, sym := range fresh {
+		e.journal.Append(Event{Kind: EvList, OB: int32(obs[sym])})
 	}
+	return added, updated, fresh
 }
 
 // SaveInstrumentFile persists an imported master so it survives a restart. The

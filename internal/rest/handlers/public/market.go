@@ -27,13 +27,3 @@ func (h *Handler) Book(w http.ResponseWriter, r *http.Request) {
 	eng := h.Eng
 	utils.WriteJSON(w, eng.SnapshotBook(r.URL.Query().Get("symbol")))
 }
-
-// LoadTest serves /api/loadtest.
-func (h *Handler) LoadTest(w http.ResponseWriter, r *http.Request) {
-	eng := h.Eng
-	n := utils.AtoiDefault(r.URL.Query().Get("n"), 100000)
-	if n > 2000000 {
-		n = 2000000
-	}
-	utils.WriteJSON(w, eng.LoadTest(n, r.URL.Query().Get("symbol")))
-}

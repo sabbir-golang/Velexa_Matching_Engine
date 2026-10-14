@@ -9,11 +9,9 @@ import (
 	"velexa-sim-me/internal/rest/deps"
 	"velexa-sim-me/internal/rest/handlers/account"
 	"velexa-sim-me/internal/rest/handlers/admin"
-	"velexa-sim-me/internal/rest/handlers/bench"
 	"velexa-sim-me/internal/rest/handlers/broker"
 	"velexa-sim-me/internal/rest/handlers/control"
 	"velexa-sim-me/internal/rest/handlers/instrument"
-	"velexa-sim-me/internal/rest/handlers/live"
 	"velexa-sim-me/internal/rest/handlers/public"
 	"velexa-sim-me/internal/rest/handlers/register"
 	"velexa-sim-me/internal/rest/middleware"
@@ -24,8 +22,6 @@ type Server struct {
 	*deps.Deps
 	publicHandler     *public.Handler
 	controlHandler    *control.Handler
-	benchHandler      *bench.Handler
-	liveHandler       *live.Handler
 	registerHandler   *register.Handler
 	accountHandler    *account.Handler
 	instrumentHandler *instrument.Handler
@@ -40,8 +36,6 @@ func NewServer(d *deps.Deps) *Server {
 		Deps:              d,
 		publicHandler:     public.NewHandler(d, mid),
 		controlHandler:    control.NewHandler(d, mid),
-		benchHandler:      bench.NewHandler(d, mid),
-		liveHandler:       live.NewHandler(d, mid),
 		registerHandler:   register.NewHandler(d, mid),
 		accountHandler:    account.NewHandler(d, mid),
 		instrumentHandler: instrument.NewHandler(d, mid),
@@ -62,8 +56,6 @@ func (server *Server) newMux(manager *middleware.Manager) *http.ServeMux {
 	server.publicHandler.RegRoutes(mux, manager)
 	server.registerHandler.RegRoutes(mux, manager)
 	server.controlHandler.RegRoutes(mux, manager)
-	server.benchHandler.RegRoutes(mux, manager)
-	server.liveHandler.RegRoutes(mux, manager)
 	server.adminHandler.RegRoutes(mux, manager)
 	server.brokerHandler.RegRoutes(mux, manager)
 	server.accountHandler.RegRoutes(mux, manager)

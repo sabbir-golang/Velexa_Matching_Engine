@@ -40,7 +40,7 @@ var wantRoutes = []string{
 	"/admin/api/instruments/reload",
 	"/admin/api/instrument/update",
 	"/admin/api/session",
-	"/admin/api/sim",
+	"/admin/api/trading-session",
 	"/admin/api/status",
 	"/admin/api/me",
 	"/admin/api/me/password",
@@ -51,28 +51,13 @@ var wantRoutes = []string{
 	"/admin/api/user/delete",
 	"/admin/login",
 	"/admin/logout",
-	"/api/bench/orders.csv",
-	"/api/bench/start",
-	"/api/bench/stats",
-	"/api/bench/stop",
-	"/api/bench/summary.csv",
 	"/api/book",
-	"/api/bots",
-	"/api/bots/pause",
-	"/api/bots/resume",
-	"/api/live/cleanup",
-	"/api/live/latency",
-	"/api/live/start",
-	"/api/live/stats",
-	"/api/live/stop",
-	"/api/loadtest",
 	"/api/market",
 	"/api/order",
 	"/api/session",
 	"/api/session/open",
 	"/api/session/preopen",
 	"/api/status",
-	"/bench",
 	"/events",
 	"/health",
 	"/healthz",
@@ -129,7 +114,7 @@ func TestAdminRoutesRequireLogin(t *testing.T) {
 func TestPublicRoutesRespond(t *testing.T) {
 	h := testServer(t).Routes()
 	for path, want := range map[string]int{"/healthz": 200, "/health": 200, "/api/status": 200, "/api/market": 200,
-		"/api/book?symbol=GP": 200, "/api/bots": 200, "/nope": 404} {
+		"/api/book?symbol=GP": 200, "/api/session": 200, "/nope": 404} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != want {

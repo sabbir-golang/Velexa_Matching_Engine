@@ -1,4 +1,4 @@
-// Package control serves bot pause/resume and the trading-session phase.
+// Package control serves the trading-session phase.
 package control
 
 import (

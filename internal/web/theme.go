@@ -1,8 +1,7 @@
 package web
 
 // Dark / light theme shared by every page. The choice is kept in localStorage
-// ("me-theme") so the console, the Trade Terminal and the benchmark page, which
-// are framed inside the console, change together.
+// ("me-theme") so the console and the Trade Terminal framed inside it change together.
 
 // ThemeHead goes first in <head>: it sets data-theme before the page paints (no flash),
 // handles clicks on any #themeBtn, and follows changes made in another tab or frame.
@@ -28,7 +27,7 @@ const adminLightCSS = `:root[data-theme="light"]{--bg:#f3f5f9;--side:#fff;--pane
 [data-theme="light"] .exp-menu button:hover{background:#eef2f7}
 [data-theme="light"] .exp-menu{box-shadow:0 14px 40px rgba(20,30,50,.15)}
 [data-theme="light"] .reveal{background:#e9f8f1;border-color:#bfe5d3}
-[data-theme="light"] .benchframe{background:#fff;box-shadow:0 6px 20px rgba(20,30,50,.1)}
+[data-theme="light"] .viewframe{background:#fff;box-shadow:0 6px 20px rgba(20,30,50,.1)}
 [data-theme="light"] .guide{color:#3d4a5c}[data-theme="light"] .guide .st .n{background:#e3ebfb;color:#2c4a8a}
 [data-theme="light"] .modal{background:rgba(20,28,40,.45)}[data-theme="light"] .mcard{box-shadow:0 30px 80px rgba(20,30,50,.25)}
 [data-theme="light"] aside.open{box-shadow:0 0 50px rgba(20,30,50,.25)}
@@ -51,23 +50,6 @@ html.embed[data-theme="light"]{--bg:#f3f5f9;--surf:#fff;--surf2:#f6f8fb;--line:#
 html.embed .theme-btn{display:none}
 `
 
-const benchLightCSS = `:root[data-theme="light"]{--bg:#f3f5f9;--panel:#fff;--panel2:#f6f8fb;--bd:#e2e7ef;--tx:#1a2330;--mut:#566376;--grn:#0f9d58;--blu:#2563eb;--amb:#b7791f;--red:#dc2626;--vio:#6d4fd6;color-scheme:light}
-[data-theme="light"] .req,[data-theme="light"] .mult{background:#e9f8f1;border-color:#bfe5d3}
-[data-theme="light"] .mult.miss{background:#fdeeee;border-color:#f3c6c6}
-[data-theme="light"] button,[data-theme="light"] .sel,[data-theme="light"] .hw .hn{background:#f1f4f8}
-[data-theme="light"] button:hover{border-color:#8aa6cf}
-[data-theme="light"] button.on,[data-theme="light"] button.start{background:var(--grn);border-color:var(--grn);color:#fff}
-[data-theme="light"] button.stop{background:var(--red);border-color:var(--red);color:#fff}
-[data-theme="light"] button.clean{background:#fff4de;color:var(--amb)}
-[data-theme="light"] button.rate.sel{background:#e3ecfd;color:#1d3f87}
-[data-theme="light"] .clean{background:#fff4de;border-color:#e8cf9a}
-[data-theme="light"] .bar{background:#e8edf4}[data-theme="light"] td{border-bottom-color:#edf0f5}
-[data-theme="light"] .f{background:#e4f6ec}[data-theme="light"] .n{background:#e6edf8;color:#34507d}[data-theme="light"] .r{background:#fdeaea}
-[data-theme="light"] .lpstage{background:#f6f8fb;border-color:#dfe5ee}[data-theme="light"] .lpp95{color:#1a2330}
-[data-theme="light"] .stage .arrow,[data-theme="light"] .lparrow{color:#9aa7b8}
-header .theme-btn{margin-left:auto}
-`
-
 // ThemeButtonFixed is the button pinned to the top-right corner (welcome page).
 const ThemeButtonFixed = `<div class="theme-btn-wrap" style="position:fixed;top:18px;right:18px;z-index:10">` + ThemeButton + `</div>`
 
@@ -75,4 +57,3 @@ const ThemeButtonFixed = `<div class="theme-btn-wrap" style="position:fixed;top:
 const adminThemeBtnCSS = `.theme-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--mut);cursor:pointer;padding:0;transition:.15s}.theme-btn:hover{color:var(--ink);background:var(--panel2)}.theme-btn .moon{display:none}[data-theme="light"] .theme-btn .sun{display:none}[data-theme="light"] .theme-btn .moon{display:block}`
 const welcomeThemeBtnCSS = `.theme-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--mut);cursor:pointer;padding:0;transition:.15s}.theme-btn:hover{color:var(--ink);background:var(--panel)}.theme-btn .moon{display:none}[data-theme="light"] .theme-btn .sun{display:none}[data-theme="light"] .theme-btn .moon{display:block}`
 const terminalThemeBtnCSS = `.theme-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink2);cursor:pointer;padding:0;transition:.15s}.theme-btn:hover{color:var(--ink);background:var(--surf)}.theme-btn .moon{display:none}[data-theme="light"] .theme-btn .sun{display:none}[data-theme="light"] .theme-btn .moon{display:block}`
-const benchThemeBtnCSS = `.theme-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--bd);background:transparent;color:var(--mut);cursor:pointer;padding:0;transition:.15s}.theme-btn:hover{color:var(--tx);background:var(--panel2)}.theme-btn .moon{display:none}[data-theme="light"] .theme-btn .sun{display:none}[data-theme="light"] .theme-btn .moon{display:block}`

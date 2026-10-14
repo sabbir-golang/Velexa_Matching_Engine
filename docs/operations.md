@@ -26,7 +26,7 @@ A healthy start logs lines like these:
 [FIX] acceptor listening on :5001  FIXT.1.1 SenderCompID=DSEME (DynamicSessions)
 [ITCH] feed auth enabled=true registered_users=12
 [ITCH] SoupBinTCP market feed listening on :5501 (350 instruments)
-Velexa Simulator Matching Engine on :8010  (350 instruments from file:…, auto-list=true, phase=Continuous Trading)
+Velexa Matching Engine on :8010  (350 instruments from file:…, auto-list=true, phase=Continuous Trading)
 ```
 
 Restarting clears all books, orders and trades (see [Persistence](architecture.md#persistence)). FIX sequence numbers reset on every logon, so brokers can reconnect straight away.
@@ -99,9 +99,9 @@ Open `http://<host>:8010/admin` (or the proxied URL) and sign in with `ME_ADMIN_
 | View | What you can do |
 |---|---|
 | Dashboard | Engine phase, counters, uptime, whether FIX/ITCH auth is on, listener checks, instrument universe source. Refreshes every 3 s. |
-| Trade Terminal | The `/` trade page embedded: market watch, order book, tape and manual order entry. |
+| Trade Terminal | The `/terminal` trade page embedded: market watch, order book, tape and manual order entry. |
 | FIX Sessions | Connected brokers with logon time and sequence numbers. Force a disconnect or reset sequence numbers. |
-| Simulator | The `/bench` page embedded. Also pause or resume the bots and switch between Pre-Open and open. |
+| Market Session | The session phase and the DSE clock. Force Pre-Open, Open, Close, Post-Close or End of day (switches the clock to manual), or switch back to the schedule. |
 | Broker Credentials | Issue, view and revoke broker FIX and ITCH credentials, and print onboarding sheets. |
 | External OMS Access | Edit the port 5443 IP allowlist. |
 | Message Log | Search FIX messages by broker and ClOrdID. |
@@ -132,44 +132,11 @@ curl -s -b jar -X POST localhost:8010/admin/api/instruments/reload
 
 See [http-api](http-api.md#logging-in) for creating the cookie jar.
 
-## Load testing
-
-### Synthetic pipeline benchmark
-
-The synthetic benchmark measures the engine's own pipeline without the live market: order generation, then RMS checks (`loadtest/rms.go`) on a worker pool, then a single matching goroutine on books seeded with 300 levels per side, then optionally Postgres persistence. Its books are separate from the live ones, so trading isn't affected. The reported target is 8000 trades/sec.
-
-**Prerequisites for persistence:** Postgres at `ME_DB_HOST:ME_DB_PORT` with a `velexa_sim` database containing the `sim_orders` and `sim_execs` tables. The columns are listed in [architecture](architecture.md#persistence). This repo doesn't create them. Without Postgres, run with `"persist": false`.
-
-**Running it:** on `/bench`, choose the **Benchmark (synthetic)** mode, or run:
-
-```bash
-curl -s -X POST localhost:8010/api/bench/start -d '{"rate":8000,"total":200000,"rms":true,"persist":false}'
-curl -s localhost:8010/api/bench/stats
-curl -s -OJ localhost:8010/api/bench/summary.csv
-```
-
-With `persist: true`, each start truncates `sim_orders` and `sim_execs`. `/api/bench/orders.csv` exports the stored rows.
-
-### Live load test
-
-The live test sends real orders through the full external pipeline: OMS API (with its RMS) → Kafka/FIX initiator → this engine → broker blotter. It needs the whole OMS stack:
-
-- **OMS API.** `ME_API_URL` accepts `POST` with the header `X-Internal-Token`. The token is compiled into `loadtest/live.go`.
-- **FIX initiator.** Its control WebSocket is at `ME_FIX_WS`.
-- **Session registration.** At start, the test sends a `logon` frame per broker to the FIX initiator. The frame contains the SenderCompID, the target `DSEME`, `FIXT.1.1`, host `ME_ADVERTISE_HOST`, port `5001` and the broker's FIX password if one is registered. The target and port are fixed in code; they don't follow `FIX_SENDER` or `FIX_PORT`.
-- **Broker databases.** The OMS Postgres (`ME_OMS_*`) holds each broker's database. The test reads active traders (`broker_house_trader`, `broker_house_tradermarketsegmentauthorization`) and investors (`broker_house_investor`) from it. If there are none, it uses made-up IDs (`T01`–`T20`, `INV00001`…).
-- **Broker list.** Comes from `brokers.tsv` (`LIVE_BROKERS_FILE`). If that file is missing or empty, three built-in brokers are used.
-- **Sell orders.** Sells only use `GP`, `SQURPHARMA`, `BEXIMCO`, `ROBI` and `BATBC`, so investors must hold positions in those.
-
-Orders are limit orders 2% through the last price, rounded to the instrument's tick, with client order IDs `LIVE-<subdomain>-<runID>-<seq>`. Start and watch the test from the **Live — real OMS orders** mode on `/bench` (the default), or through `/api/live/*` (see [http-api](http-api.md#live-load-test)).
-
-> **Cleanup wipes data.** The **Clean test data** button on `/bench` and `/api/live/cleanup` truncate the order tables and reset intraday cash and positions in **every** `terminal_*` / `tenant_*` database on the OMS Postgres. They also truncate `client_order_routes` and the benchmark tables, and purge the audit service. They don't limit themselves to `LIVE-*` rows, and the endpoint needs no login. Never point the engine at an OMS Postgres that holds real data.
-
 ## Logs and files
 
 | What | Where | Notes |
 |---|---|---|
-| Process log | stderr | Go `log` lines prefixed `[FIX]`, `[ITCH]`, `[universe]`, `[bench]`. Redirect it yourself. `*.log` files are git-ignored. |
+| Process log | stderr | Go `log` lines prefixed `[FIX]`, `[ITCH]`, `[universe]`, `[session]`. Redirect it yourself. `*.log` files are git-ignored. |
 | FIX message log | `ME_FIX_MSGLOG_FILE` | Every message except heartbeats. Never rotated or trimmed by the engine; `.gitignore` notes it once grew to 9.6 GB. The engine keeps the file open in append mode, so if you rotate it externally, use copy-and-truncate. |
 | Admin audit log | `ME_AUDIT_FILE` | One JSON object per line. |
 | nginx | `/var/log/nginx/matching-engine.*.log`, `/var/log/nginx/fixs-gateway.*.log` | From the nginx configs above. |
@@ -195,8 +162,7 @@ The dashboard checks fixed ports on `127.0.0.1`: 5001, 5443, 5501 and 8010. If y
 | Broker logon refused | Look in Diagnostics or the log for `logon REJECTED`. The reason says whether the broker isn't registered, the password is wrong, or 553 doesn't match the CompID. |
 | FIX orders rejected `off-tick` or `price band` | The price isn't on the instrument's tick, or is outside the daily band (see [Pre-trade checks](architecture.md#pre-trade-checks-fix-orders-only)). An import with the real tick and previous close fixes auto-listed symbols. |
 | Market orders rejected during the auction | Pre-Open accepts only limit orders. Open the market first. |
+| Every order rejected `(293): Orders are not being accepted at this time` | The market is closed: outside the DSE schedule (`ME_SESSION_SCHEDULE`, Dhaka time, Sunday–Thursday) or after End of day. Open it from the admin **Market Session** page, or start with `ME_SESSION_AUTO=off`. |
+| Books are empty and prices don't move | Expected: there are no simulated traders. Prices move only when real orders trade. |
 | External broker can't connect on 5443 | Its IP isn't allowed, or `deploy/regen-fixs-gateway.sh` wasn't run after editing the allowlist. |
-| Live test sends orders but none reach the engine | The FIX initiator dials `ME_ADVERTISE_HOST:5001` with target `DSEME`. Check `ME_ADVERTISE_HOST`, and note that a changed `FIX_PORT` or `FIX_SENDER` isn't used here. |
-| Benchmark `persisted` count goes up but the tables stay empty | Postgres write errors are ignored, and the counter goes up anyway. Check the `ME_DB_*` settings and that the tables exist. |
-| `/api/bench/orders.csv` returns 500 | The Postgres pool couldn't be created, or the query failed; the error text is in the body. |
 | Browser shows no live updates through nginx | Proxy buffering is on. The snippet in `deploy/nginx-443.patch` turns it off. |
