@@ -141,7 +141,7 @@ func (e *Engine) listInstruments(ins []Instrument) (added, updated int, fresh []
 		if cur == nil { // newly listed scrip
 			nb[in.Symbol] = NewBook(in.Symbol)
 			nm[in.Symbol] = newMarketData(in)
-			obs[in.Symbol] = obIDBase + len(nl)
+			obs[in.Symbol] = e.newOrderBookID(in.Symbol, len(nl))
 			pos[in.Symbol] = len(nl)
 			nl = append(nl, in)
 			fresh = append(fresh, in.Symbol)

@@ -108,6 +108,7 @@ Setting `EXCHANGE_INSTRUMENT_URL` to a closed local port makes the engine fall b
 | `engine/loader.go` | Instrument universe loading: source priority, JSON/CSV/TSV master parsing, per-symbol metadata (`InstrMeta`, `MetaFor`), symbol validation, default tick. |
 | `engine/instruments.go` | Changing the universe at runtime: `ListInstruments`, auto-listing, the universe status shown in the console. |
 | `engine/instref.go` | Fills in asset class, category, sector and board from `internal/refdata` and a deterministic classifier for synthetic tickers. |
+| `engine/obids.go` | Permanent orderbook ids (`orderbook_ids.json`): a symbol keeps its ITCH id across restarts and new listings get the next free id. |
 | `engine/universe_data.go` | The built-in list of 430 DSE instruments, used when no master is available. |
 | `fixgw/fixacceptor.go` | FIX acceptor: session config, NewOrderSingle/Cancel/Replace handlers, ExecutionReport and OrderCancelReject building, session controls. |
 | `fixgw/msglog.go` | quickfix log that captures FIX messages to an in-memory log and an append-only file. |

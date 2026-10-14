@@ -19,6 +19,7 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `LIVE_BROKERS_FILE` | unset; falls back to `/opt/velexa-sim-me/brokers.tsv` | Broker list used by the live load test. If the file is missing or empty, three built-in brokers are used. | `loadtest/live.go` (`loadBrokersFile`) |
 | `ME_USERS_FILE` | `<state dir>/users.json` | Console accounts and roles (PBKDF2 password hashes, mode 0600). | `database/users/users.go` (`Path`) |
 | `ME_REGISTRATION` | `on` | Set `off` to close self-registration on the welcome page. | `config/admin.go` (`RegistrationOpen`) |
+| `ME_OBID_FILE` | `<state dir>/orderbook_ids.json` | Permanent symbol → ITCH orderbook id map. Ids never change once handed out, so adding or sorting instruments cannot shift other symbols' ids. | `Cmd/serve.go`, `engine/obids.go` |
 | `ME_ADMIN_PASS` | built-in default (see [Security notes](#security-notes)) | Admin console password. | `config/admin.go` (`AdminPass`) |
 | `ME_ADMIN_SECRET` | built-in default derived from the admin password | HMAC key that signs the `me_admin` session cookie. | `rest/handlers/broker/broker_helpers.go` (`adminSecret`) |
 | `ME_ADMIN_USER` | `admin` | Admin console username. | `config/admin.go` (`AdminUser`) |

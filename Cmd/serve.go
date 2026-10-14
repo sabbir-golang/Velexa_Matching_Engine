@@ -28,6 +28,7 @@ func Serve() {
 	}
 	bus := engine.NewBus()
 	eng := engine.NewEngine(engine.LoadUniverse(), bus)
+	eng.LoadOrderBookIDs(config.EnvOr("ME_OBID_FILE", config.StateFile("orderbook_ids.json")))
 	go eng.Run()
 	eng.StartBots(time.Now().UnixNano())
 

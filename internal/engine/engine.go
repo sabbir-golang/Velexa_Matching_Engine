@@ -137,6 +137,7 @@ type Engine struct {
 	mdMap      atomic.Pointer[map[string]*MarketData]
 	instrList  atomic.Pointer[[]Instrument]
 	obIDs      atomic.Pointer[map[string]int] // symbol -> ITCH orderbook id
+	obStore    *obIDStore                     // keeps the ids permanent; nil = position based (tests)
 	Trades     []Trade                        // recent ring (newest last)
 	Seq        uint64
 	TradeSeq   uint64
