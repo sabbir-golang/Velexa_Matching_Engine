@@ -1,6 +1,6 @@
 # Operations
 
-This page is for whoever deploys and runs the engine. It covers building and starting it, the ports it uses, the nginx front ends (the HTTPS reverse proxy and the external FIX gateway), onboarding brokers from the admin console, the two load tests, logs and health checks, and troubleshooting. For individual settings, see [configuration](configuration.md).
+This page is for whoever deploys and runs the engine. It covers building and starting it, the ports it uses, the nginx front ends (the HTTPS reverse proxy and the external FIX gateway), onboarding brokers from the admin console, logs and health checks, and troubleshooting. Testing is described in [testing](testing.md). For individual settings, see [configuration](configuration.md).
 
 ## Build and run
 
@@ -12,7 +12,7 @@ make build               # produces bin/velexa-sim-me (go build -o bin/velexa-si
 The engine reads environment variables (see [configuration](configuration.md#environment-variables)) and, at start-up, the env file `me.env` in the working directory (or `ME_ENV_FILE`). So `go run .` or `make run` in the repo picks up `me.env` directly; variables exported in the shell still win over the file:
 
 ```bash
-./bin/velexa-sim-me 2>&1 | tee -a logs/me.log      # uses ./me.env
+mkdir -p logs && ./bin/velexa-sim-me 2>&1 | tee -a logs/me.log      # uses ./me.env (written on the first run)
 PORT=18010 ./bin/velexa-sim-me                      # one-off override of a me.env value
 ```
 
@@ -74,7 +74,7 @@ Tell the engine about the proxy, or sign-in lockouts and the audit log see nginx
 
 ### External FIX gateway (port 5443)
 
-Outside brokers connect to port 5443, where an nginx `stream` server forwards raw TCP to the acceptor on `127.0.0.1:5001`. `deploy/regen-fixs-gateway.sh` generates `/etc/nginx/stream-enabled/fixs-gateway.conf` from the IP allowlist:
+Set `ME_FIXS_PORT=5443` in the engine's `me.env` when this gateway runs, so broker sheets point brokers at it (with TLS instructions) and the dashboard checks it. `deploy/regen-fixs-gateway.sh` always allows loopback and this host (`FIXS_HOST_IP`, default the first address from `hostname -I`). Outside brokers connect to port 5443, where an nginx `stream` server forwards raw TCP to the acceptor on `127.0.0.1:5001`. `deploy/regen-fixs-gateway.sh` generates `/etc/nginx/stream-enabled/fixs-gateway.conf` from the IP allowlist:
 
 - Each IP in `fix_allow.json` (`FIXS_ALLOW_FILE`) gets an `allow` line, followed by `deny all`. Loopback and one host address written into the script are always allowed.
 - An **empty allowlist means `allow all`**, matching what the admin console says.
@@ -117,9 +117,9 @@ Every credential change, allowlist change, session control and instrument reload
 
 1. Under **Broker Credentials**, enter the broker's SenderCompID. Company, contact, FIX password, ITCH username and ITCH password are optional; blank passwords are generated, and the ITCH username defaults to the first 6 characters of the SenderCompID.
 2. The engine writes `fix_brokers.json`, `itch_brokers.json` and `broker_meta.json` straight away. No restart is needed.
-3. Print or download the onboarding sheet. It fills in `FIX_SENDER` as the TargetCompID, `FIXT.1.1` / ApplVerID 9, and the external, internal and ITCH endpoints from the `ME_PUB_*`, `ME_INT_*` and `ME_ITCH_*` variables. Set those variables to the real addresses before issuing any sheets.
+3. Print or download the onboarding sheet. It fills in `FIX_SENDER` as the TargetCompID, the FIX version (`ME_FIX_BEGIN` / `ME_FIX_APPLVER`), and the endpoints: this PC's LAN IP and the real FIX/ITCH ports, unless the `ME_PUB_*`, `ME_INT_*`, `ME_ITCH_*` or `ME_FIXS_PORT` variables say otherwise. Set those when brokers connect through a public IP, NAT or the TLS gateway.
 4. If the broker connects from outside, add its OMS IP under **External OMS Access** and run `deploy/regen-fixs-gateway.sh`.
-5. FIX logons are checked against `fix_brokers.json` by default (`ME_FIX_AUTH=off` turns that off). ITCH logins are checked only with `ME_ITCH_AUTH=on`.
+5. Once the first broker exists, FIX logons are checked against `fix_brokers.json` (`ME_FIX_AUTH=on` checks even with no brokers, `off` never checks). ITCH logins are checked only with `ME_ITCH_AUTH=on`.
 
 Revoking a broker removes its credentials and metadata. It doesn't disconnect a live session; use **FIX Sessions → disconnect** for that.
 
@@ -152,9 +152,9 @@ See [http-api](http-api.md#logging-in) for creating the cookie jar.
 | `curl -s localhost:8010/healthz` | `ok` |
 | `curl -s localhost:8010/health` | `"ok":true`, with the current `phase` |
 | `curl -s localhost:8010/api/status` | `universe.source` is your master file or the exchange, not `built-in DSE reference list` |
-| Admin dashboard → listeners | FIX :5001, FIXS :5443, ITCH :5501 and Gateway :8010 all open |
+| Admin dashboard → listeners | FIX, ITCH and Gateway open (and FIXS when `ME_FIXS_PORT` is set) |
 
-The dashboard checks fixed ports on `127.0.0.1`: 5001, 5443, 5501 and 8010. If you change `PORT`, `FIX_PORT` or `ITCH_PORT`, those checks show the wrong result.
+The dashboard checks the ports the engine actually uses on `127.0.0.1` (`FIX_PORT`, `ITCH_PORT`, `PORT`), plus `ME_FIXS_PORT` when a TLS FIX gateway is configured.
 
 ## Troubleshooting
 

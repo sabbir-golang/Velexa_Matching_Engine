@@ -169,7 +169,7 @@ type Engine struct {
 	orderCount   uint64
 	submit       chan *Order
 	ctrl         chan func()         // serialized control ops (cancel/replace/session)
-	Open         map[string]*Order   // resting orders by ClOrdID (cancel/replace)
+	Open         map[string]*Order   // resting orders by openKey(actor, ClOrdID), for cancel/replace
 	stops        map[string][]*Order // parked stop orders by symbol
 	bus          *Bus
 	Phase        string
@@ -278,6 +278,70 @@ func bandPctFor(prev float64) float64 {
 	}
 }
 
+// priceReason applies the DSE pre-trade price checks to a limit price on an
+// order from an external broker (FIX): the instrument's tick size, and the
+// circuit-breaker band — a tiered +/- limit around the previous close (10% up
+// to Tk200, tapering to 3.75% for high-priced scrips). It returns the reject
+// reason, or "" when the price is acceptable. Console orders are not checked.
+func (e *Engine) priceReason(sym, actor string, price float64) string {
+	if price <= 0 || !strings.HasPrefix(actor, "FIX:") {
+		return ""
+	}
+	m := MetaFor(sym)
+	tick := m.Tick
+	if tick <= 0 {
+		tick = 0.10
+	}
+	if n := price / tick; math.Abs(n-math.Round(n)) > 1e-6 {
+		return fmt.Sprintf("off-tick: %.4f is not a multiple of tick %.2f", price, tick)
+	}
+	anchor := 0.0
+	if md := e.MdOf(sym); md != nil {
+		anchor = md.Prev
+		if anchor <= 0 {
+			anchor = md.Last
+		}
+	}
+	if anchor > 0 {
+		pct := bandPctFor(anchor)
+		up, lo := Round2(anchor*(1+pct)), Round2(anchor*(1-pct))
+		if price > up+1e-9 || price < lo-1e-9 {
+			return fmt.Sprintf("price band: %.2f outside +/-%.2f%% limit [%.2f-%.2f] of prev %.2f", price, pct*100, lo, up, anchor)
+		}
+	}
+	return ""
+}
+
+// replaceReason checks an amend (35=G) the way a new order is checked: the
+// market must be accepting orders, the new ClOrdID must be free, and the new
+// quantity and price must pass the lot, tick and band rules. "" = acceptable.
+func (e *Engine) replaceReason(o *Order, orig, newCl string, newQty int64, newPx float64) string {
+	switch e.Phase {
+	case PhaseClose, PhaseClosed:
+		return ReasonNotAccepting
+	}
+	if newCl != "" && newCl != orig && e.working(o.Actor, newCl) {
+		return ReasonDuplicateClOrdID + ": " + newCl
+	}
+	if newQty <= 0 {
+		newQty = o.OrigQty
+	}
+	if m := MetaFor(o.Symbol); m.Lot > 1 && newQty%int64(m.Lot) != 0 && strings.HasPrefix(o.Actor, "FIX:") {
+		return fmt.Sprintf("Minimum quantity step: %d", m.Lot)
+	}
+	if newPx > 0 && (o.Type == Limit || o.Type == StopLim) {
+		return e.priceReason(o.Symbol, o.Actor, newPx)
+	}
+	return ""
+}
+
+func boardOr(b string) string {
+	if b == "" {
+		return "MAIN"
+	}
+	return b
+}
+
 func (e *Engine) process(o *Order) {
 	if e.Book(o.Symbol) == nil {
 		e.replyTo(o, &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
@@ -301,6 +365,22 @@ func (e *Engine) process(o *Order) {
 			Status: "REJECTED", Board: m.Board, ISIN: m.ISIN,
 			Reason: fmt.Sprintf("Minimum quantity step: %d", m.Lot)})
 		return
+	}
+	// A broker may not reuse the ClOrdID of one of its working orders: the
+	// second order could never be cancelled or amended on its own.
+	if e.working(o.Actor, o.ClOrdID) {
+		e.replyTo(o, &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+			Status: "REJECTED", Reason: ReasonDuplicateClOrdID + ": " + o.ClOrdID})
+		return
+	}
+	// Tick size and price band apply in every session, the Pre-Open auction too.
+	if o.Type == Limit || o.Type == StopLim {
+		if reason := e.priceReason(o.Symbol, o.Actor, o.Price); reason != "" {
+			m := MetaFor(o.Symbol)
+			e.replyTo(o, &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+				Status: "REJECTED", Board: boardOr(m.Board), ISIN: m.ISIN, Reason: reason})
+			return
+		}
 	}
 	if o.ID == 0 {
 		e.Seq++
@@ -374,47 +454,6 @@ func (e *Engine) process(o *Order) {
 				Reason: "market orders are not accepted during the Pre-Open call auction — send a limit order"})
 		}
 		return
-	}
-
-	// DSE-style pre-trade validation for orders arriving over FIX (external OMS
-	// flow). Internal market-maker/noise bots (MM/NOISE) are exempt so they can
-	// always maintain a two-sided book. Two board/instrument-aware checks:
-	//   1. Tick size  — price must be a multiple of the instrument tick.
-	//   2. Price band — DSE circuit-breaker: a tiered +/- limit around the prev
-	//      close (10%% <= Tk200, tapering to 3.75%% for high-priced scrips).
-	if o.Type == Limit && o.Price > 0 && strings.HasPrefix(o.Actor, "FIX:") {
-		m := MetaFor(o.Symbol)
-		board := m.Board
-		if board == "" {
-			board = "MAIN"
-		}
-		tick := m.Tick
-		if tick <= 0 {
-			tick = 0.10
-		}
-		if n := o.Price / tick; math.Abs(n-math.Round(n)) > 1e-6 {
-			e.replyTo(o, &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
-				Status: "REJECTED", Board: board, ISIN: m.ISIN,
-				Reason: fmt.Sprintf("off-tick: %.4f is not a multiple of tick %.2f", o.Price, tick)})
-			return
-		}
-		anchor := 0.0
-		if md := e.MdOf(o.Symbol); md != nil {
-			anchor = md.Prev
-			if anchor <= 0 {
-				anchor = md.Last
-			}
-		}
-		if anchor > 0 {
-			pct := bandPctFor(anchor)
-			up, lo := Round2(anchor*(1+pct)), Round2(anchor*(1-pct))
-			if o.Price > up+1e-9 || o.Price < lo-1e-9 {
-				e.replyTo(o, &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
-					Status: "REJECTED", Board: board, ISIN: m.ISIN,
-					Reason: fmt.Sprintf("price band: %.2f outside +/-%.2f%% limit [%.2f-%.2f] of prev %.2f", o.Price, pct*100, lo, up, anchor)})
-				return
-			}
-		}
 	}
 
 	rep := e.match(o)
@@ -617,9 +656,7 @@ func (e *Engine) consumeFront(lv *PriceLevel, q int64, kind EvKind, tr Trade) {
 		e.emitAdd(front) // the exhausted slice left the feed's book; the next one is a new add
 		return
 	}
-	if front.ClOrdID != "" {
-		delete(e.Open, front.ClOrdID)
-	}
+	e.forget(front)
 	lv.PopFront()
 }
 
@@ -649,9 +686,40 @@ func (e *Engine) restTracked(o *Order) {
 	}
 	e.Book(o.Symbol).Rest(o)
 	if o.ClOrdID != "" {
-		e.Open[o.ClOrdID] = o
+		e.Open[openKey(o.Actor, o.ClOrdID)] = o
 	}
 	e.emitAdd(o)
+}
+
+// openKey indexes a working order by its owner and ClOrdID. A ClOrdID is only
+// unique within one broker's flow, so two brokers may use the same one.
+func openKey(actor, clOrdID string) string { return actor + "\x1f" + clOrdID }
+
+// forget drops a finished order from the ClOrdID index.
+func (e *Engine) forget(o *Order) {
+	if o.ClOrdID != "" {
+		delete(e.Open, openKey(o.Actor, o.ClOrdID))
+	}
+}
+
+// FindOpen returns the resting order with this ClOrdID: the given actor's, or —
+// with actor "" — anyone's (admin tools and tests). The caller holds e.Mu.
+func (e *Engine) FindOpen(clOrdID, actor string) *Order {
+	if actor != "" {
+		return e.Open[openKey(actor, clOrdID)]
+	}
+	for _, o := range e.Open {
+		if o.ClOrdID == clOrdID {
+			return o
+		}
+	}
+	return nil
+}
+
+// working reports whether the actor already has a live order (resting or a
+// parked stop) with this ClOrdID.
+func (e *Engine) working(actor, clOrdID string) bool {
+	return clOrdID != "" && (e.Open[openKey(actor, clOrdID)] != nil || e.findStop(clOrdID, actor) != nil)
 }
 
 // triggerStops activates parked stops whose trigger the last price has crossed:
@@ -692,11 +760,11 @@ func (e *Engine) triggerStops(sym string) {
 	e.triggerStops(sym) // cascade
 }
 
-// removeStop pulls a parked stop out by ClOrdID (used by cancel).
-func (e *Engine) removeStop(clOrdID string) *Order {
+// removeStop pulls a parked stop out of its symbol's list (used by cancel).
+func (e *Engine) removeStop(stop *Order) *Order {
 	for sym, pend := range e.stops {
 		for i, s := range pend {
-			if s.ClOrdID == clOrdID {
+			if s == stop {
 				e.stops[sym] = append(pend[:i], pend[i+1:]...)
 				return s
 			}
@@ -720,9 +788,9 @@ func (e *Engine) CancelAs(orig, cl, actor string) *ExecReport {
 }
 
 func (e *Engine) doCancel(orig, cl, actor string) *ExecReport {
-	if o := e.Open[orig]; o != nil && (actor == "" || o.Actor == actor) {
+	if o := e.FindOpen(orig, actor); o != nil {
 		e.Book(o.Symbol).remove(o)
-		delete(e.Open, orig)
+		e.forget(o)
 		e.emitDelete(o)
 		e.refreshTop(o.Symbol)
 		rep := &ExecReport{OrderID: o.ID, ClOrdID: cl, OrigClOrdID: orig, Symbol: o.Symbol, Side: o.Side,
@@ -731,8 +799,8 @@ func (e *Engine) doCancel(orig, cl, actor string) *ExecReport {
 		e.notify(o, rep)
 		return rep
 	}
-	if s := e.findStop(orig); s != nil && (actor == "" || s.Actor == actor) {
-		e.removeStop(orig)
+	if s := e.findStop(orig, actor); s != nil {
+		e.removeStop(s)
 		rep := &ExecReport{OrderID: s.ID, ClOrdID: cl, OrigClOrdID: orig, Symbol: s.Symbol, Side: s.Side,
 			Status: "CANCELED", OrderQty: s.OrigQty, Price: s.Price, Event: "CANCEL", Ctx: s.Ctx}
 		e.notify(s, rep)
@@ -741,11 +809,12 @@ func (e *Engine) doCancel(orig, cl, actor string) *ExecReport {
 	return &ExecReport{ClOrdID: cl, OrigClOrdID: orig, Status: "REJECT_CXL"}
 }
 
-// findStop returns the parked stop with this ClOrdID, or nil.
-func (e *Engine) findStop(clOrdID string) *Order {
+// findStop returns the actor's parked stop with this ClOrdID (anyone's with
+// actor ""), or nil.
+func (e *Engine) findStop(clOrdID, actor string) *Order {
 	for _, pend := range e.stops {
 		for _, s := range pend {
-			if s.ClOrdID == clOrdID {
+			if s.ClOrdID == clOrdID && (actor == "" || s.Actor == actor) {
 				return s
 			}
 		}
@@ -758,11 +827,11 @@ func (e *Engine) findStop(clOrdID string) *Order {
 func (e *Engine) Status(clOrdID, actor string) *ExecReport {
 	res := make(chan *ExecReport, 1)
 	e.ctrl <- func() {
-		o := e.Open[clOrdID]
+		o := e.FindOpen(clOrdID, actor)
 		if o == nil {
-			o = e.findStop(clOrdID)
+			o = e.findStop(clOrdID, actor)
 		}
-		if o == nil || (actor != "" && o.Actor != actor) {
+		if o == nil {
 			res <- &ExecReport{ClOrdID: clOrdID, Status: "REJECT_CXL", Event: "STATUS"}
 			return
 		}
@@ -801,14 +870,21 @@ func (e *Engine) ReplaceAs(orig, newCl, actor string, newQty int64, newPx float6
 }
 
 func (e *Engine) doReplace(orig, newCl, actor string, newQty int64, newPx float64) *ExecReport {
-	o := e.Open[orig]
-	if o == nil || (actor != "" && o.Actor != actor) {
+	o := e.FindOpen(orig, actor)
+	if o == nil {
 		return &ExecReport{ClOrdID: newCl, OrigClOrdID: orig, Status: "REJECT_CXL"}
+	}
+	if newQty <= 0 { // no OrderQty (38) on the amend: keep the order's quantity
+		newQty = o.OrigQty
+	}
+	if reason := e.replaceReason(o, orig, newCl, newQty, newPx); reason != "" {
+		return &ExecReport{OrderID: o.ID, ClOrdID: newCl, OrigClOrdID: orig, Symbol: o.Symbol, Side: o.Side,
+			Status: "REJECT_CXL", Reason: reason, Ctx: o.Ctx}
 	}
 	e.lastReplaced = o
 	filled := o.CumQty
 	e.Book(o.Symbol).remove(o)
-	delete(e.Open, orig)
+	e.forget(o)
 	e.emitDelete(o) // the re-rest below publishes the order again as a new add
 	remaining := newQty - filled
 	if remaining <= 0 { // amended down to/below what's already filled → done
@@ -985,9 +1061,7 @@ func (e *Engine) sweepExpired() {
 		}
 		if removed := b.cancelExpired(now); len(removed) > 0 {
 			for _, o := range removed {
-				if o.ClOrdID != "" {
-					delete(e.Open, o.ClOrdID)
-				}
+				e.forget(o)
 				e.emitDelete(o)
 				e.expired(o)
 			}

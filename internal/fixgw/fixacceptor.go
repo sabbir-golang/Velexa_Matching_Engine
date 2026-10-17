@@ -412,6 +412,12 @@ func (fa *Acceptor) handleNewOrder(m *quickfix.Message, sid quickfix.SessionID) 
 	o.TIF = mapTIF(fa.getStr(m, tTimeInForce))
 	if o.TIF == engine.GTD {
 		o.Expire = parseExpire(fa.getStr(m, tExpireTime), fa.getStr(m, tExpireDate))
+		// A GTD order needs an expiry in the future; without one it would never expire.
+		if reason := gtdReason(o.Expire); reason != "" {
+			fa.deliver(&engine.ExecReport{ClOrdID: clOrdID, Symbol: symbol, Side: side,
+				Status: "REJECTED", Reason: reason, OrderQty: int64(qty), Price: px, Ctx: ctx})
+			return
+		}
 	}
 	// Every report about this order — the reply, later fills while it rests,
 	// cancel/replace confirmations, a triggered stop, expiry — reaches the broker
@@ -458,7 +464,7 @@ func (fa *Acceptor) handleReplace(m *quickfix.Message, sid quickfix.SessionID) {
 	newPx, _ := strconv.ParseFloat(fa.getStr(m, tPrice), 64)
 	rep := fa.eng.ReplaceAs(orig, cl, "FIX:"+sid.TargetCompID, int64(newQty), newPx)
 	if rep.Status == "REJECT_CXL" {
-		fa.queueMsg(cxlReject(cl, orig, "2"), sid)
+		fa.queueMsg(cxlRejectFor(rep, cl, orig, "2"), sid)
 	}
 }
 
@@ -489,6 +495,17 @@ func mapTIF(v string) engine.TIF {
 	default: // "0" or empty
 		return engine.Day
 	}
+}
+
+// gtdReason checks a GTD order's expiry: it must be given and in the future.
+func gtdReason(expire time.Time) string {
+	switch {
+	case expire.IsZero():
+		return "GTD order without an expiry: send ExpireDate (432) or ExpireTime (126)"
+	case !expire.After(time.Now()):
+		return "GTD expiry is in the past"
+	}
+	return ""
 }
 
 // parseExpire reads GTD expiry from ExpireTime (tag 126, a UTC timestamp) or,

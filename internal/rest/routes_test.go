@@ -61,6 +61,7 @@ var wantRoutes = []string{
 	"/events",
 	"/health",
 	"/healthz",
+	"/favicon.ico",
 	"/index",
 	"/market",
 	"/marketdepth",

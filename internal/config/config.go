@@ -3,6 +3,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -23,17 +24,24 @@ func OnServer() bool {
 	return err == nil && st.IsDir()
 }
 
-// StateFile is the default location of one of the engine's data files (broker
-// credentials, allowlist, audit trail, message log…). A deployed engine keeps
-// them under /opt/velexa-sim-me; on a machine without that directory (a
-// developer's laptop) they go in ./data instead, so saving a broker's
-// credentials works instead of failing with "no such directory".
-func StateFile(name string) string {
-	if OnServer() {
-		return serverStateDir + "/" + name
+// StateDir is where the engine keeps its data files (accounts, broker
+// credentials, allowlist, audit trail, message log…): ME_STATE_DIR if set,
+// else /opt/velexa-sim-me on a deployed server, else ./data. It is created if
+// missing.
+func StateDir() string {
+	dir := "data"
+	if v := EnvOr("ME_STATE_DIR", ""); v != "" {
+		dir = strings.TrimRight(v, "/")
+	} else if OnServer() {
+		return serverStateDir
 	}
-	_ = os.MkdirAll("data", 0o750)
-	return "data/" + name
+	_ = os.MkdirAll(dir, 0o750)
+	return dir
+}
+
+// StateFile is the default location of one of the engine's data files.
+func StateFile(name string) string {
+	return filepath.Join(StateDir(), name)
 }
 
 // SpecDir is where the FIX data dictionaries (FIXT11.xml, FIX50SP2.xml) live:

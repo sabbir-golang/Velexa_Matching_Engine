@@ -349,15 +349,30 @@ func (fa *Acceptor) reports(rep *engine.ExecReport, ctx *orderCtx) []*quickfix.M
 
 // cxlReject builds an OrderCancelReject (35=9) the way the DSE sends it.
 func cxlReject(cl, orig, respTo string) *quickfix.Message {
+	return cxlRejectFor(&engine.ExecReport{}, cl, orig, respTo)
+}
+
+// cxlRejectFor is the OrderCancelReject for a cancel/amend the engine refused.
+// An unknown order gets the DSE's "(226): Invalid order number"; a known order
+// whose amend broke a rule (band, tick, lot, session, duplicate ClOrdID) gets
+// that reason, its OrderID and its current status.
+func cxlRejectFor(rep *engine.ExecReport, cl, orig, respTo string) *quickfix.Message {
 	m := quickfix.NewMessage()
 	m.Header.SetString(tMsgType, "9")
-	m.Body.SetString(tOrderID, "NONE")
+	oid, status, text := "NONE", "8", "(226): Invalid order number"
+	if rep.Reason != "" {
+		text = dseText(rep.Reason)
+		if ctx, ok := rep.Ctx.(*orderCtx); ok && ctx.orderID != "" {
+			oid, status = ctx.orderID, "0"
+		}
+	}
+	m.Body.SetString(tOrderID, oid)
 	m.Body.SetString(tClOrdID, cl)
 	m.Body.SetString(tOrigClOrdID, orig)
-	m.Body.SetString(tOrdStatus, "8")
+	m.Body.SetString(tOrdStatus, status)
 	m.Body.SetString(tCxlRejRespTo, respTo)
 	m.Body.SetString(tCxlRejReason, "99")
-	m.Body.SetString(tText, "(226): Invalid order number")
+	m.Body.SetString(tText, text)
 	return m
 }
 

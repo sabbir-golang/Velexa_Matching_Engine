@@ -41,14 +41,32 @@ func brokerSheetHTML(company, sender, fixPass, itchUser, itchPass string) string
 		}
 		return k
 	}
+	extLabel, tlsNote := "FIX (plain TCP)", ""
+	if ep["ext_tls"] != "" {
+		extLabel, tlsNote = "FIXS external (TLS)", " (set <code>SocketUseSSL=Y</code>). Use the <b>origin IP</b> — <code>"+e(ep["pub_host"])+"</code> may sit behind a proxy that does not pass this port"
+	}
+	versionText := "BeginString: " + ep["begin"]
+	if ep["applver"] != "" {
+		versionText += "   ApplVerID: " + ep["applver"] + " (" + ep["applver_name"] + ")"
+	}
+	intText, intRow, intStep := "", "", ""
+	if ep["show_int"] != "" {
+		intText = "  " + pad("Internal (on-platform):") + ep["int_ip"] + ":" + ep["int_port"] + "\n"
+		intRow = crow("Internal — on-platform", ep["int_ip"]+" : "+ep["int_port"], false)
+		intStep = ` On-platform brokers use the internal endpoint <code>` + e(ep["int_ip"]+":"+ep["int_port"]) + `</code> instead.`
+	}
+	applRow := ""
+	if ep["applver"] != "" {
+		applRow = crow("ApplVerID (1128)", ep["applver"]+"  ("+ep["applver_name"]+")", false)
+	}
 	txt := "VELEXA MATCHING ENGINE — FIX / FIXS + ITCH CONNECTIVITY\n" +
 		"Broker: " + title + "  (SenderCompID " + sender + ")\n" +
 		"Issued: " + issued + "   ·   Confidential to the receiving broker\n" +
-		"TargetCompID: " + ep["target"] + "   BeginString: FIXT.1.1   ApplVerID: 9 (FIX.5.0 SP2)\n\n" +
+		"TargetCompID: " + ep["target"] + "   " + versionText + "\n\n" +
 		"SESSION ENDPOINT\n" +
-		"  " + pad("FIXS external (TLS):") + ep["pub_ip"] + ":" + ep["fixs_port"] + "\n" +
+		"  " + pad(extLabel+":") + ep["ext_addr"] + "\n" +
 		"  " + pad("Host / SNI:") + ep["pub_host"] + "\n" +
-		"  " + pad("Internal (on-platform):") + ep["int_ip"] + ":" + ep["int_port"] + "\n\n" +
+		intText + "\n" +
 		"ORDER ENTRY — FIX\n" +
 		"  " + pad("SenderCompID (49):") + sender + "\n" +
 		"  " + pad("Username (553):") + sender + "\n" +
@@ -174,18 +192,18 @@ code{background:#f1f4f9;border:1px solid var(--line);border-radius:5px;padding:1
       <span>SenderCompID <b class="mono">` + e(sender) + `</b></span>
       <span>Target <b class="mono">` + e(ep["target"]) + `</b></span>
       <span>Issued <b class="mono">` + e(issued) + `</b></span>
-      <span class="pill">FIXT.1.1 · FIX 5.0 SP2</span>
+      <span class="pill">` + e(fixVersion(ep)) + `</span>
     </div>
   </div>
 
   <div class="body">
     <h2>Session endpoint</h2>
     <div class="card">` +
-		crow("FIXS — external (TLS)", ep["pub_ip"]+" : "+ep["fixs_port"], false) +
+		crow(extLabel, ep["ext_addr"], false) +
 		crow("Host / SNI", ep["pub_host"], false) +
-		crow("Internal — on-platform", ep["int_ip"]+" : "+ep["int_port"], false) +
-		crow("BeginString (8)", "FIXT.1.1", false) +
-		crow("ApplVerID (1128)", "9  (FIX.5.0 SP2)", false) +
+		intRow +
+		crow("BeginString (8)", ep["begin"], false) +
+		applRow +
 		crow("TargetCompID (56)", ep["target"], false) + `</div>
 
     <h2>Order entry — FIX credentials</h2>
@@ -202,7 +220,7 @@ code{background:#f1f4f9;border:1px solid var(--line);border-radius:5px;padding:1
 
     <h2>How to connect</h2>
     <div class="steps">` +
-		step("1", `Open a <b>TLS</b> connection to <code>`+e(ep["pub_ip"]+":"+ep["fixs_port"])+`</code> (set <code>SocketUseSSL=Y</code>). Use the <b>origin IP</b> — <code>`+e(ep["pub_host"])+`</code> is Cloudflare-proxied and will not pass this port. On-platform brokers use the internal endpoint <code>`+e(ep["int_ip"]+":"+ep["int_port"])+`</code> instead.`) +
+		step("1", `Open a `+map[bool]string{true: "<b>TLS</b>", false: "TCP"}[ep["ext_tls"] != ""]+` connection to <code>`+e(ep["ext_addr"])+`</code>`+tlsNote+`.`+intStep) +
 		step("2", `Send a <b>Logon (35=A)</b> with your SenderCompID, <code>TargetCompID=`+e(ep["target"])+`</code>, and Username (553) + Password (554).`) +
 		step("3", `On accept, submit orders with <b>NewOrderSingle (35=D)</b>; receive an <b>ExecutionReport (35=8)</b> for each state change.`) +
 		step("4", `Subscribe to market data on the <b>ITCH</b> feed with the username / password above.`) + `</div>

@@ -40,28 +40,83 @@ for cat, rows in by_cat.items():
                  f'<td class="n r">{c["FAIL"]}</td><td class="n a">{c["GAP"]}</td>'
                  f'<td class="n">{c["PARTIAL"] + c["INFO"]}</td></tr>')
 
-# Headline findings (hand-written, each backed by case IDs) ------------------------
-HEAD = [
-    ("Orders that DSE would refuse are accepted", "Blocker", "OT-02, OT-095/099, SD-4",
-     "A limit order with no price executes as a market order; unknown OrdTypes (5, 9) become limit orders; a Sell-Short (54=5) executes as a <b>buy</b>."),
-    ("Fill reports are not valid FIX", "Blocker", "ER-2, CM-3",
-     "Every fill carries ExecType 150=TRADE (FIX requires F). The Order Cancel Reject (35=9) omits the required OrderID (37)."),
-    ("OMS features are not understood by the engine", "Gap", "OT-06, TIF-S, EI-2…6, QO-1, QO-3, QO-4",
-     "Market-At-Best (Z), Validity S, ExecInst n/S/q/w (Park / Unpark / Block) are refused by the dictionary or ignored. DisplayQty (1138) and MinQty (110) have no effect — the engine only reads MaxFloor (111)."),
-    ("Board groups (762) are never validated", "Gap", "BG-02 … BG-17",
-     "All 16 non-PUBLIC groups are accepted on a MAIN-board equity (including INDEX, ATBX, SCPX, debt and block groups). Tag 762 is never read."),
-    ("Order Status Request (35=H) is ignored", "Gap", "CM-11, CM-12",
-     "No reply of any kind, so the OMS cannot reconcile order state against the exchange."),
-    ("Amend (35=G) skips pre-trade checks", "Gap", "CM-7, CM-8",
-     "Amending a resting order to an off-tick price or a price far outside the circuit band is accepted."),
-    ("GTD / time-in-force semantics", "Gap", "TIF-6a, TIF-6b, TIF-2/5/7, ST-1",
-     "GTD without an expiry never expires; an expiring order is removed silently with no Execution Report; At-Open / GTX / At-Close are treated as Day; Day orders never expire at close."),
-    ("Auction fills are not reported", "Gap", "PH-3, PH-4",
-     "The Pre-Open uncross trades orders but sends no Execution Report to the broker; Pre-Open also skips the tick and price-band checks."),
+# Findings -----------------------------------------------------------------------------
+# Each finding names the cases that prove it. It is listed as open while any of
+# them is not PASS (or INFO), and moves to "Resolved" once they all pass — so
+# the report never claims a problem the latest run no longer shows.
+VERDICT = {r["id"]: r["verdict"] for r in res}
+
+
+def ids(spec):
+    """'BG-02..BG-17' -> BG-02, BG-03, ...; plain IDs pass through."""
+    out = []
+    for part in spec.split(","):
+        part = part.strip()
+        if ".." in part:
+            a, b = part.split("..")
+            pre = a.rstrip("0123456789")
+            width = len(a) - len(pre)
+            out += [f"{pre}{i:0{width}d}" for i in range(int(a[len(pre):]), int(b[len(pre):]) + 1)]
+        elif part:
+            out.append(part)
+    return out
+
+
+def state(spec):
+    """Worst current verdict of the cases ("PASS" when all pass or are info)."""
+    vs = [VERDICT.get(i, "MISSING") for i in ids(spec)]
+    for v in ("FAIL", "MISSING", "GAP", "PARTIAL"):
+        if v in vs:
+            return "FAIL" if v == "MISSING" else v
+    return "PASS"
+
+
+FINDINGS = [  # title, cases, the problem (while open), what now happens (once resolved)
+    ("Orders that DSE would refuse are accepted", "OT-02, OT-095, OT-099, SD-4",
+     "A limit order with no price executes as a market order; unknown OrdTypes (5, 9) become limit orders; a Sell-Short (54=5) executes as a buy.",
+     "Limit orders need a price; unsupported OrdTypes and Sides are rejected with a reason."),
+    ("Fill reports and cancel rejects are valid FIX", "ER-2, CM-3",
+     "Fills carry ExecType 150=TRADE (FIX requires F); the Order Cancel Reject (35=9) omits OrderID (37).",
+     "Fills carry 150=F; 35=9 carries OrderID (the real one when the order exists)."),
+    ("Order Status Request (35=H)", "CM-11, CM-12",
+     "No reply of any kind, so the OMS cannot reconcile order state.",
+     "Answered with 150=I and the current status; unknown orders get 39=8."),
+    ("Amend (35=G) pre-trade checks", "CM-7, CM-8",
+     "Amending a resting order to an off-tick price or a price outside the circuit band is accepted.",
+     "Amends are checked like new orders (tick, band, lot, session, ClOrdID) and refused with 35=9 and the reason."),
+    ("Duplicate ClOrdID", "QT-6",
+     "A repeated ClOrdID creates a second order that shadows the first for cancel/replace.",
+     "Rejected while the first order is working; ClOrdIDs are tracked per broker."),
+    ("Pre-Open auction", "PH-3, PH-4",
+     "Pre-Open skips the tick and band checks, and the uncross sends no Execution Report.",
+     "Price checks apply in Pre-Open; auction fills are reported to both brokers."),
+    ("GTD and Day expiry; post-close session", "TIF-6a, TIF-6b, ST-1, ST-2",
+     "GTD without an expiry never expires; expiry sends no report; Day orders never expire; no post-close session.",
+     "GTD needs a future expiry; expiry sends 150=C; Day orders expire at the end of the day; post-close trades at the close price only."),
+    ("Market-At-Best, Validity S, DisplayQty", "OT-06, TIF-S, QO-1",
+     "Market-At-Best (Z) and Validity S are refused or ignored; DisplayQty (1138) has no effect.",
+     "Z trades at the best opposite price; S is treated as Day; DisplayQty sets the iceberg peak."),
+    ("Validity At-Open / Good-till-Crossing / At-Close", "TIF-2, TIF-5, TIF-7",
+     "59=2, 5 and 7 are accepted but treated as Day.", ""),
+    ("ExecInst (18): Park / Unpark / Block", "EI-1..EI-6",
+     "Tag 18 is not interpreted, and the DSE combinations 'w S' and 'w q' are not in the data dictionary.", ""),
+    ("MinQty (110)", "QO-3, QO-4",
+     "MinQty is ignored: an order can fill below it, and MinQty > OrderQty is accepted.", ""),
+    ("Board groups (762)", "BG-02..BG-17",
+     "The 16 non-PUBLIC groups are accepted on a MAIN-board equity (including INDEX, ATBX, SCPX, debt and block groups); tag 762 is not validated.", ""),
+    ("Automatic circuit breaker; category and board rules", "ST-3, ST-4",
+     "No automatic volatility halt; no category- or board-specific lot, band or session rules.", ""),
 ]
-head_rows = "".join(
-    f'<tr><td><b>{t}</b><br><span class="mut">{ids}</span></td><td>{badge("FAIL" if s == "Blocker" else "GAP")}</td><td>{d}</td></tr>'
-    for t, s, ids, d in HEAD)
+open_rows, resolved_rows = "", ""
+for title, spec, problem, fixed in FINDINGS:
+    v = state(spec)
+    cases = e(spec.replace("..", " … "))
+    if v == "PASS":
+        resolved_rows += f'<tr><td><b>{e(title)}</b><br><span class="mut">{cases}</span></td><td>{badge("PASS")}</td><td>{e(fixed)}</td></tr>'
+    else:
+        open_rows += f'<tr><td><b>{e(title)}</b><br><span class="mut">{cases}</span></td><td>{badge(v)}</td><td>{e(problem)}</td></tr>'
+if not open_rows:
+    open_rows = '<tr><td colspan="3">No open findings.</td></tr>'
 
 # Per-section comparison tables ---------------------------------------------------------
 def comp_table(rows):
@@ -140,30 +195,29 @@ for r in res:
                f'<div class="evl">Received</div><div class="mono sm">{rep}</div>'
                f'<div class="note">{e(r["note"])}</div></div>')
 
-# Recommended fixes -----------------------------------------------------------------------------------
-FIX = [
-    ("1", "Blocker", "Reject unsupported OrdType and Side; require a price on 40=2", "fixacceptor.go:461-479",
-     "Map only 1/2/3/4 (+Z once supported); reject everything else and any 40=2 without a price; accept only Side 1/2."),
-    ("2", "Blocker", "Send ExecType F for fills; add OrderID to 35=9; set OrdRejReason (103)", "fixacceptor.go:531-543, 587-648",
-     "Change the literal 'TRADE' to 'F'. Echo tags 1, 41, 40, 59 on reports."),
-    ("3", "High", "Handle Order Status Request (35=H)", "fixacceptor.go:403-411",
-     "Return an Execution Report with ExecType I and the current OrdStatus; reject unknown orders."),
-    ("4", "High", "Re-run tick and price-band checks on replace; apply them in Pre-Open", "engine.go:278-329, 595-625",
-     "Move the pre-trade block ahead of the Pre-Open branch and call it from doReplace."),
-    ("6", "High", "Support Market-At-Best (Z), Validity S, ExecInst n/S/q/w/'w S'/'w q'", "spec/FIX50SP2.xml, fixacceptor.go",
-     "Extend the data dictionary enums and implement Park/Unpark/Block semantics on the book."),
-    ("7", "Medium", "DisplayQty (1138) and MinQty (110)", "fixacceptor.go:458, engine.go:502",
-     "Read 1138 as the iceberg peak (keep 111 as an alias); enforce MinQty on matching and reject MinQty > OrderQty."),
-    ("8", "Medium", "Validate tag 762 against the instrument's board/category", "fixacceptor.go validateNew",
-     "Add board-group ↔ board mapping; reject Index groups for orders."),
-    ("9", "Medium", "GTD: require expiry, send an Execution Report on expiry; implement Day expiry at close", "fixacceptor.go:564-578, engine.go:765-781",
-     "Reject GTD without 126/432; emit ExecType C when the sweeper removes an order; add an end-of-day purge."),
-    ("10", "Medium", "Send Execution Reports for auction (uncross) fills; add post-close session and automatic circuit halts", "engine.go:627-725",
-     "Route uncross trades through the order's notify callback; add a post-close phase with close-price market orders."),
-    ("11", "Low", "Reject duplicate ClOrdID", "engine.go (process)", "A repeated 11 currently creates a second order and shadows the first for cancel/replace."),
+# Recommended work: only the items whose cases are still open -------------------------
+WORK = [  # priority, change, where, how, cases
+    ("High", "Validity At-Open / GTX / At-Close (59=2/5/7)", "fixacceptor.go mapTIF, engine.go",
+     "Rest 59=2 for the opening auction only, 59=7 for the close; 59=5 expires at the next uncross.", "TIF-2, TIF-5, TIF-7"),
+    ("High", "ExecInst Park / Unpark / Block (18)", "spec/FIX50SP2.xml, fixacceptor.go, engine.go",
+     "Add 'w S' and 'w q' to the dictionary; hold parked orders off the book until unparked.", "EI-1..EI-6"),
+    ("Medium", "MinQty (110)", "fixacceptor.go, engine.go match",
+     "Reject MinQty > OrderQty; only trade when at least MinQty can fill at once.", "QO-3, QO-4"),
+    ("Medium", "Validate tag 762 against the instrument's board", "fixacceptor.go validateNew",
+     "Map board groups to boards; reject index groups for orders.", "BG-02..BG-17"),
+    ("Low", "Automatic circuit breaker; category and board rules", "engine.go, instruments",
+     "Halt on band breaches per DSE rules; per-category lots, bands and sessions.", "ST-3, ST-4"),
 ]
-fix_rows = "".join(f'<tr><td>{a}</td><td>{badge("FAIL" if b == "Blocker" else "GAP")}</td><td><b>{c}</b><br><span class="mut">{e(d)}</span></td><td>{f}</td></tr>'
-                   for a, b, c, d, f in FIX)
+fix_rows = ""
+n = 0
+for prio, change, where, how, spec in WORK:
+    if state(spec) == "PASS":
+        continue
+    n += 1
+    fix_rows += (f'<tr><td>{n}</td><td>{badge("GAP")} <span class="mut">{prio}</span></td>'
+                 f'<td><b>{e(change)}</b><br><span class="mut">{e(how)} — {e(spec.replace("..", " … "))}</span></td><td>{e(where)}</td></tr>')
+if not fix_rows:
+    fix_rows = '<tr><td colspan="4">Nothing open.</td></tr>'
 
 today = datetime.date.today().strftime("%d %B %Y")
 doc = f"""<!doctype html><html><head><meta charset="utf-8"><style>
@@ -195,7 +249,7 @@ ul.ck {{ list-style:none; padding:0; margin:0; columns:1 }} ul.ck li {{ padding:
 <h1>DSE Conformance Report</h1>
 <div class="sub">Velexa matching engine vs the order types the OMS sends to DSE · generated {today}</div>
 
-<div class="scope"><b>Scope.</b> {total} cases were driven through the engine's real FIX acceptor (FIXT.1.1 / FIX 5.0 SP2, strict data dictionary on) using the exact tag set listed in <i>DSE FIX Order Types · Velexa OMS</i> (11 Oct 2026). Expected DSE behaviour comes from that document, its observed DSE rejects (price band ±7.5% / ±8.75%, minimum quantity step 1000) and the FIX specification. Where DSE behaviour is not specified the case is marked <i>Info</i> and not judged. No engine code was changed. Reproduce with <span class="mono">go test -run TestConformance</span> then <span class="mono">python3 tools/conformance_report.py</span>.</div>
+<div class="scope"><b>Scope.</b> {total} cases were driven through the engine's real FIX acceptor (FIXT.1.1 / FIX 5.0 SP2, strict data dictionary on) using the exact tag set listed in <i>DSE FIX Order Types · Velexa OMS</i> (11 Oct 2026). Expected DSE behaviour comes from that document, its observed DSE rejects (price band ±7.5% / ±8.75%, minimum quantity step 1000) and the FIX specification. Where DSE behaviour is not specified the case is marked <i>Info</i> and not judged. Findings are classified from this run's results, so a fixed problem appears under <i>Resolved</i>. Reproduce with <span class="mono">go test -run TestConformance</span> then <span class="mono">python3 tools/conformance_report.py</span>.</div>
 
 <div class="kpis">
  <div class="kpi"><b>{total}</b>cases run</div>
@@ -205,9 +259,12 @@ ul.ck {{ list-style:none; padding:0; margin:0; columns:1 }} ul.ck li {{ padding:
  <div class="kpi"><b>{cnt["PARTIAL"] + cnt["INFO"]}</b>partial / info</div>
 </div>
 
-<h2>Headline findings</h2>
-<table><thead><tr><th style="width:28%">Finding</th><th style="width:9%">Severity</th><th>Detail</th></tr></thead><tbody>{head_rows}</tbody></table>
-<p><b>What works:</b> limit and market matching with price-time priority, partial fills, IOC and FOK, cancel and amend of resting orders, the full DSE price-band ladder (all 64 boundary probes correct), tick-size enforcement, halted and unknown symbols, whole-share quantities, the per-instrument market lot (minimum quantity step, set from the Instruments page), required-field validation, Pre-Open handling of market orders, and the session messages Logon / Logout / TestRequest / ResendRequest / SequenceReset.</p>
+<h2>Open findings</h2>
+<table><thead><tr><th style="width:28%">Finding</th><th style="width:9%">Status</th><th>Detail</th></tr></thead><tbody>{open_rows}</tbody></table>
+
+<h2>Resolved</h2>
+<table><thead><tr><th style="width:28%">Finding</th><th style="width:9%">Status</th><th>Now</th></tr></thead><tbody>{resolved_rows}</tbody></table>
+<p><b>What works:</b> limit, market and market-at-best matching with price-time priority, partial fills, IOC, FOK and GTD, cancel, amend and status of working orders, the full DSE price-band ladder in every session and on amends, tick-size enforcement, halted and unknown symbols, whole-share quantities, the per-instrument market lot, duplicate-ClOrdID protection, required-field validation, the Pre-Open auction, day-order expiry and the post-close session, and the session messages Logon / Logout / TestRequest / ResendRequest / SequenceReset.</p>
 
 <h2>Results by section</h2>
 <table><thead><tr><th>Section</th><th class="n">Cases</th><th class="n">Match</th><th class="n">Deviate</th><th class="n">Gap</th><th class="n">Partial / info</th></tr></thead><tbody>{sec_rows}</tbody></table>
@@ -226,7 +283,7 @@ ul.ck {{ list-style:none; padding:0; margin:0; columns:1 }} ul.ck li {{ padding:
 <p class="mut">SOH delimiters shown as “|”. The sent string is the OMS-style message as it left the test initiator; session header fields are added by QuickFIX.</p>
 {ev}
 
-<h2>Recommended fixes (not applied)</h2>
+<h2>Recommended next work</h2>
 <table><thead><tr><th>#</th><th>Priority</th><th>Change</th><th>Where</th></tr></thead><tbody>{fix_rows}</tbody></table>
 <p class="mut">Out of scope for this report: OMS-side defects listed in the OMS reference (GTD sent without expiry, modify without Symbol/762, Market-At-Best blocked by the OMS permission check) — they are on the sending side. Items DSE has never been observed to accept or reject (block, buy-in, iceberg, GTD, cancel, modify, status) are judged against the FIX standard and the OMS reference only and should be re-confirmed against DSE.</p>
 </body></html>"""

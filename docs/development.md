@@ -11,7 +11,10 @@ make build            # builds bin/velexa-sim-me (git-ignored)
 make run              # go run .
 make vet
 make test             # unit tests plus the FIX conformance suite (about 40 s)
+make check            # vet + race detector + the end-to-end system/UI test: run before committing
 ```
+
+Every suite, test case and the manual OMS checklist are in [testing](testing.md).
 
 ## Project layout
 
@@ -63,15 +66,12 @@ Direct dependencies:
 To run a test copy next to a real deployment, move all three ports and point every data file at a scratch directory, so nothing under `/opt/velexa-sim-me` gets written:
 
 ```bash
-PORT=18010 FIX_PORT=15001 ITCH_PORT=15501 ME_FIX_SPEC_DIR=$PWD/spec \
-ME_INSTRUMENT_FILE=/tmp/me/instruments.json ME_FIX_MSGLOG_FILE=/tmp/me/fix.log \
-ME_AUDIT_FILE=/tmp/me/audit.jsonl ME_FIX_AUTH_FILE=/tmp/me/fix_brokers.json \
-ME_ITCH_AUTH_FILE=/tmp/me/itch_brokers.json ME_BROKER_META_FILE=/tmp/me/broker_meta.json \
-FIXS_ALLOW_FILE=/tmp/me/fix_allow.json EXCHANGE_INSTRUMENT_URL=http://127.0.0.1:1/ \
+PORT=18010 FIX_PORT=15001 ITCH_PORT=15501 ME_ITCH_INDEX_PORT=15502 ME_ITCH_NEWS_PORT=15503 \
+ME_STATE_DIR=/tmp/me ME_INSTRUMENT_FILE=/tmp/me/instruments.json ME_ENV_FILE=/tmp/me/me.env \
 go run .
 ```
 
-Setting `EXCHANGE_INSTRUMENT_URL` to a closed local port makes the engine fall back to the built-in instruments at once, instead of waiting for the 12-second timeout on the default address.
+`ME_STATE_DIR` moves every data file (accounts, broker credentials, logs, `session.key`) to `/tmp/me`, and `ME_ENV_FILE` keeps your real `me.env` out of it (a fresh one with a random admin password is written to `/tmp/me/me.env`). With no instruments file and no `EXCHANGE_INSTRUMENT_URL`, the engine starts on the built-in instruments at once.
 
 ## Source files
 

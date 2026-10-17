@@ -79,14 +79,15 @@ flowchart LR
    - HTTP: `/api/order` creates a DAY order with the actor `API`, or whatever `actor` field the body supplies.
 2. **Unknown symbols.** If the symbol isn't listed and `ME_AUTO_LIST` is on, `autoList` opens a book for it first (see [Instrument universe](#instrument-universe)).
 3. **`process`, on the matching goroutine:**
-   1. Rejects symbols with no book, then gives the order an ID.
-   2. Applies the [session rules](#trading-sessions): nothing is accepted in Close and Closed, only the close price in Post-Close.
-   3. Prices a market-at-best order at the best opposite level and treats it as a limit order.
-   4. Parks stop and stop-limit orders and replies `PENDING`.
-   5. In Pre-Open, rests limit orders without matching and rejects market orders.
-   6. Runs the [pre-trade checks](#pre-trade-checks-fix-orders-only) on FIX limit orders.
-   7. Calls `match`, adds board and ISIN to the report, and replies.
-   8. Calls `triggerStops` for the symbol.
+   1. Rejects symbols with no book, halted/delisted/pending instruments and FIX orders that aren't whole market lots.
+   2. Rejects a ClOrdID the same broker is already using for a working order (resting or a parked stop).
+   3. Runs the [pre-trade checks](#pre-trade-checks-fix-orders-only) on FIX limit and stop-limit prices, in every session.
+   4. Gives the order an ID and applies the [session rules](#trading-sessions): nothing is accepted in Close and Closed, only the close price in Post-Close.
+   5. Prices a market-at-best order at the best opposite level and treats it as a limit order.
+   6. Parks stop and stop-limit orders and replies `PENDING`.
+   7. In Pre-Open, rests limit orders without matching and rejects market orders.
+   8. Calls `match`, adds board and ISIN to the report, and replies.
+   9. Calls `triggerStops` for the symbol.
 
    Every report about an order also goes to its `Notify` callback, on the matching goroutine: the reply, each fill while it rests, cancel/replace confirmations, a triggered stop and expiry. The FIX gateway queues them and sends them in that order.
 4. **Market data.** Each trade goes through `recordTrade`, which:
@@ -124,12 +125,12 @@ All matching code is in `engine/engine.go` (`match`, `consumeFront`, `triggerSto
 
   A stop becomes a market order; a stop-limit becomes a limit order at its Price. The triggered order is matched and its report goes to the order's `notify` callback. One triggered stop can move the price and fire others.
 - **Icebergs.** With MaxFloor (tag 111) set, only that much shows on the book; the rest is held back. When the visible slice fills, the next slice is shown and moves to the back of the queue, so it loses time priority. The held-back quantity counts in LeavesQty.
-- **Cancel** removes a resting order or a parked stop by ClOrdID.
-- **Replace** pulls the order, sets the new total quantity and price, and matches it again. This resets its time priority. See [protocols](protocols.md#ordercancelreplacerequest-35g) for the reports it produces.
+- **Cancel** removes a resting order or a parked stop by ClOrdID. Working orders are indexed by owner and ClOrdID (`openKey`), so two brokers may use the same ClOrdID and each can only reach its own order.
+- **Replace** first checks the amend like a new order: the market must be accepting orders (not Close/Closed), the new ClOrdID must not belong to another working order, the new quantity must be whole lots, and a new price must pass the tick and band checks. A refused amend leaves the order untouched. Otherwise it pulls the order, sets the new total quantity (unchanged when OrderQty is missing) and price, and matches it again. This resets its time priority. See [protocols](protocols.md#ordercancelreplacerequest-35g) for the reports it produces.
 
 ## Pre-trade checks (FIX orders only)
 
-`process` checks FIX limit orders with a price above 0 (actor starting `FIX:`). Market orders and `/api/order` orders skip these checks.
+`priceReason` checks the price of FIX limit and stop-limit orders (actor starting `FIX:`) — on new orders in every session, the Pre-Open auction included, and on amends. Market orders and `/api/order` orders skip these checks.
 
 1. **Tick size.** The price must be a multiple of the instrument's tick, taken from the security master. If the master doesn't give a tick, the default is `0.10` (`defaultTick`).
 2. **Price band.** The DSE daily circuit breaker. It's anchored on the previous close, or the last price if there's no previous close. The band width depends on that anchor (`bandPctFor`):

@@ -74,7 +74,7 @@ func TestTradingDayHousekeeping(t *testing.T) {
 	if len(expired) != 1 || expired[0].ClOrdID != "DAY1" || expired[0].Status != "EXPIRED" {
 		t.Fatalf("the day order must expire with a report, got %+v", expired)
 	}
-	if e.Open["GTC1"] == nil {
+	if e.FindOpen("GTC1", "") == nil {
 		t.Fatal("a GTC order must survive the end of the day")
 	}
 

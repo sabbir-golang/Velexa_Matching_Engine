@@ -150,16 +150,19 @@ func InstrumentFile() string {
 		return v
 	}
 	// Production keeps its state under /opt/velexa-sim-me. On a dev box without
-	// that directory, keep the master next to the binary instead of failing every
-	// admin save with "permission denied".
-	if st, err := os.Stat("/opt/velexa-sim-me"); err == nil && st.IsDir() {
-		return "/opt/velexa-sim-me/instruments.json"
+	// that directory, keep the master in the project directory instead of
+	// failing every admin save with "permission denied".
+	if config.OnServer() {
+		return config.StateFile("instruments.json")
 	}
 	return "instruments.json"
 }
 
+// InstrumentURL is the exchange security-master endpoint
+// (EXCHANGE_INSTRUMENT_URL). There is no default: unset, this source is skipped,
+// so a machine that cannot reach an exchange starts without waiting for one.
 func InstrumentURL() string {
-	return config.EnvOr("EXCHANGE_INSTRUMENT_URL", "http://10.1.1.45:8088/api/instrument-master")
+	return config.EnvOr("EXCHANGE_INSTRUMENT_URL", "")
 }
 
 // MasterInstr is one row of the exchange security master — the shape the
@@ -216,7 +219,9 @@ func LoadUniverse() []Instrument {
 			return u.Instr
 		}
 	}
-	if u, err := fetchUniverseURL(InstrumentURL()); err != nil {
+	if InstrumentURL() == "" {
+		log.Printf("[universe] no instrument file and no EXCHANGE_INSTRUMENT_URL — using the built-in universe (%d)", len(universe))
+	} else if u, err := fetchUniverseURL(InstrumentURL()); err != nil {
 		log.Printf("[universe] %v — using built-in universe (%d)", err, len(universe))
 	} else {
 		u.apply()

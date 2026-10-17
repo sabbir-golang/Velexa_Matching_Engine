@@ -360,7 +360,7 @@ body.role-user [data-admin-only]{display:none!important}
     <div class="panel pad" data-admin-only>
      <p class="note">The external plain-FIX gateway (:5443) accepts connections only from these source IPs. Add each OMS partner's public egress IP. Changes take effect immediately — no restart. This is the network gate; every session still authenticates with its SenderCompID + tag-554 password. (An empty list = open to all.)</p>
      <div class="grid2">
-      <div class="field"><label class="fl">Source IP *</label><input class="f" id="a_ip" placeholder="e.g. 203.202.247.121"></div>
+      <div class="field"><label class="fl">Source IP *</label><input class="f" id="a_ip" placeholder="e.g. 203.0.113.25"></div>
       <div class="field"><label class="fl">Label (broker / partner)</label><input class="f" id="a_label" placeholder="e.g. BDTASKOMS (old OMS)"></div>
      </div>
      <button class="btn acc" onclick="addAllow()">Add to allowlist</button>
@@ -491,7 +491,7 @@ function renderStatus(d){
   var sc=(d.schedule||"").split(","),ph=[["Pre-Open","limit orders collect for the opening auction"],["Continuous Trading","normal matching"],["Close","not accepted"],["Post-Close","at the closing price only"],["Closed","not accepted (until the next pre-open)"]];
   if(sc.length==5)document.getElementById("schedTbl").innerHTML=ph.map(function(p,i){return "<tr"+(p[0]==d.phase?" style='background:var(--panel2)'":"")+"><td><b>"+p[0]+"</b></td><td class=mono>"+esc(sc[i])+"</td><td class=muted>"+p[1]+"</td></tr>"}).join("");
   document.getElementById("authState").innerHTML=
-    "<tr><td>FIX logon authentication</td><td class=right><span class='chip "+(d.fix_auth?"up":"down")+"'><span class=d></span>"+(d.fix_auth?"ENFORCED":"OPEN")+"</span></td></tr>"+
+    "<tr><td>FIX logon authentication</td><td class=right><span class='chip "+(d.fix_auth?"up":"down")+"'><span class=d></span>"+(d.fix_auth?"ENFORCED":(d.fix_auth_mode=="auto"?"OPEN (until a broker is added)":"OPEN"))+"</span></td></tr>"+
     "<tr><td>ITCH feed authentication</td><td class=right><span class='chip "+(d.itch_auth?"up":"down")+"'><span class=d></span>"+(d.itch_auth?"ENFORCED":"OPEN")+"</span></td></tr>";
   var fe=flt("f_ev"),fd=flt("f_dash"),ev="",ec=0,mini="",mc=0;(d.events||[]).forEach(function(e){var t=(e.time||"").replace("T"," ").slice(0,19);
    var row="<td class=mono>"+esc(t)+"</td><td class=mono>"+esc(e.broker)+"</td><td><span class='chip "+esc(e.kind)+"'>"+esc(e.kind)+"</span></td>";
@@ -625,15 +625,16 @@ function addBroker(){
   function kv(k,v){return "<div class=k>"+k+"</div><div class=val>"+esc(v)+"</div>"}
   var ep=r.endpoints||{};
   document.getElementById("revealKV").innerHTML=(r.company?kv("Company",r.company):"")
-    +kv("FIXS endpoint (external)",ep.pub_ip+" : "+ep.fixs_port+"  (TLS)")
+    +kv(extLabel(ep),ep.ext_addr)
     +kv("Host / SNI",ep.pub_host)
-    +kv("Internal endpoint (on-platform)",ep.int_ip+" : "+ep.int_port)
+    +(ep.show_int?kv("Internal endpoint (on-platform)",ep.int_ip+" : "+ep.int_port):"")
     +kv("TargetCompID",ep.target)+kv("SenderCompID",r.sender)+kv("FIX password",r.fix_password)
     +kv("ITCH feed",ep.itch_ip+" : "+ep.itch_port)+kv("ITCH username",r.itch_user)+kv("ITCH password",r.itch_password);
   document.getElementById("reveal").className="reveal on";
   ["c_company","c_sender","c_contact","c_fixpass","c_itchuser","c_itchpass"].forEach(function(id){document.getElementById(id).value=""});
   loadBrokers();
  })}
+function extLabel(ep){return ep.ext_tls?"FIXS endpoint (external, TLS)":"FIX endpoint"}
 function sheetFrom(o){if(!o)return;var f=document.getElementById("sheetForm");
  f.company.value=o.company||"";f.sender.value=o.sender||"";f.fix_pass.value=o.fix_pass||"";f.itch_user.value=o.itch_user||"";f.itch_pass.value=o.itch_pass||"";csrfField(f);f.submit()}
 function copyCell(btn){var cv=btn.parentNode.querySelector(".cv");if(cv&&navigator.clipboard){navigator.clipboard.writeText(cv.textContent);btn.textContent="copied";setTimeout(function(){btn.textContent="copy"},900)}}
@@ -645,10 +646,10 @@ function openDetail(sender){j("broker/detail?sender="+encodeURIComponent(sender)
   var h="<div class=mh><div><h3>"+(d.company?esc(d.company):esc(d.sender))+"</h3><p class=msub>SenderCompID "+esc(d.sender)+(d.created?" · issued "+esc(d.created):"")+(d.contact?" · "+esc(d.contact):"")+"</p></div><button class=close onclick='closeModal()'>Close</button></div>";
   h+="<div class=pillrow>"+stat+"</div>";
   var ep=d.endpoints||{};
-  h+="<div class=credbox>"+cr("FIXS endpoint (external)",ep.pub_ip+" : "+ep.fixs_port+"  (TLS)",1)+cr("Host / SNI",ep.pub_host,1)+cr("Internal endpoint (on-platform)",ep.int_ip+" : "+ep.int_port,1)+cr("TargetCompID",ep.target,1)+cr("SenderCompID",d.sender)+cr("FIX password",d.fix_password||"(not set)")+cr("ITCH feed",ep.itch_ip+" : "+ep.itch_port,1)+cr("ITCH username",d.itch_user||"—")+cr("ITCH password",d.itch_password||"(not set)")+"</div>";
+  h+="<div class=credbox>"+cr(extLabel(ep),ep.ext_addr,1)+cr("Host / SNI",ep.pub_host,1)+(ep.show_int?cr("Internal endpoint (on-platform)",ep.int_ip+" : "+ep.int_port,1):"")+cr("TargetCompID",ep.target,1)+cr("SenderCompID",d.sender)+cr("FIX password",d.fix_password||"(not set)")+cr("ITCH feed",ep.itch_ip+" : "+ep.itch_port,1)+cr("ITCH username",d.itch_user||"—")+cr("ITCH password",d.itch_password||"(not set)")+"</div>";
   h+="<h2 style='margin-top:18px'>How to connect</h2><div class=guide>";
-  h+="<div class=st><span class=n>1</span><div>Open a <b>TLS</b> connection to <code>"+esc(ep.pub_ip+":"+ep.fixs_port)+"</code> (set <code>SocketUseSSL=Y</code>). Connect to the <b>origin IP</b> — the <code>"+esc(ep.pub_host)+"</code> hostname is Cloudflare-proxied and does not pass this port. On-platform brokers instead point their bm_itch to the internal endpoint <code>"+esc(ep.int_ip+":"+ep.int_port)+"</code>.</div></div>";
-  h+="<div class=st><span class=n>2</span><div>Send <b>Logon (35=A)</b> with your SenderCompID, <code>TargetCompID=DSEME</code>, Username (553) + Password (554).</div></div>";
+  h+="<div class=st><span class=n>1</span><div>"+(ep.ext_tls?"Open a <b>TLS</b> connection to <code>"+esc(ep.ext_addr)+"</code> (set <code>SocketUseSSL=Y</code>). Connect to the <b>origin IP</b> — the <code>"+esc(ep.pub_host)+"</code> hostname may sit behind a proxy that does not pass this port.":"Open a TCP connection to <code>"+esc(ep.ext_addr)+"</code>.")+(ep.show_int?" On-platform brokers instead use the internal endpoint <code>"+esc(ep.int_ip+":"+ep.int_port)+"</code>.":"")+"</div></div>";
+  h+="<div class=st><span class=n>2</span><div>Send <b>Logon (35=A)</b> with your SenderCompID, <code>TargetCompID="+esc(ep.target)+"</code>, Username (553) + Password (554).</div></div>";
   h+="<div class=st><span class=n>3</span><div>Submit <b>NewOrderSingle (35=D)</b>; receive <b>ExecutionReport (35=8)</b> per state change.</div></div>";
   h+="<div class=st><span class=n>4</span><div>Subscribe to market data on the <b>ITCH</b> feed using the username/password above.</div></div>";
   h+="<div class=tagrow style='margin-top:12px'><div>OrdType (40): <code>1</code> Mkt <code>2</code> Lmt <code>3</code> Stop <code>4</code> StopLmt</div><div>Iceberg: <code>111</code> MaxFloor</div><div>TIF (59): <code>0</code> Day <code>1</code> GTC <code>3</code> IOC <code>4</code> FOK <code>6</code> GTD</div><div>Cancel / Amend: <code>35=F</code> / <code>35=G</code></div></div></div>";

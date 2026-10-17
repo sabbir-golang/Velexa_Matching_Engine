@@ -55,15 +55,10 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{
 		"phase": phase, "instruments": instr, "orders": orders, "trades": trades, "running": running,
 		"auto_clock": eng.AutoClock(), "schedule": eng.ScheduleText(),
-		"fix_auth": brokers.Fix.Enabled, "itch_auth": brokers.Itch.Enabled,
-		"uptime": time.Since(meStart).Round(time.Second).String(),
-		"listeners": map[string]bool{
-			"FIX :" + fixPort():     portOpen("127.0.0.1:" + fixPort()),
-			"FIXS :5443":            portOpen("127.0.0.1:5443"),
-			"ITCH :" + itchPort():   portOpen("127.0.0.1:" + itchPort()),
-			"Gateway :" + webPort(): portOpen("127.0.0.1:" + webPort()),
-		},
-		"sessions": sessions, "events": events, "scope": "all",
+		"fix_auth": brokers.Fix.Enforced(), "fix_auth_mode": brokers.Fix.Mode, "itch_auth": brokers.Itch.Enabled,
+		"uptime":    time.Since(meStart).Round(time.Second).String(),
+		"listeners": listeners(),
+		"sessions":  sessions, "events": events, "scope": "all",
 		"universe": engine.InstrumentStatus(eng),
 	}
 	if all {
@@ -85,6 +80,20 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 		out["volume"], out["value"], out["audit"] = st.Volume, st.Value, mine
 	}
 	utils.WriteJSON(w, out)
+}
+
+// listeners checks the engine's own ports, and the TLS FIX gateway in front of
+// it when one is configured (ME_FIXS_PORT).
+func listeners() map[string]bool {
+	l := map[string]bool{
+		"FIX :" + fixPort():     portOpen("127.0.0.1:" + fixPort()),
+		"ITCH :" + itchPort():   portOpen("127.0.0.1:" + itchPort()),
+		"Gateway :" + webPort(): portOpen("127.0.0.1:" + webPort()),
+	}
+	if p := envPort("ME_FIXS_PORT", ""); p != "" {
+		l["FIXS :"+p] = portOpen("127.0.0.1:" + p)
+	}
+	return l
 }
 
 func fixPort() string  { return envPort("FIX_PORT", "5001") }

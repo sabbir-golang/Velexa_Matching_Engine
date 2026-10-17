@@ -24,6 +24,12 @@ func Serve() {
 	if port == "" {
 		port = "8010"
 	}
+	envFile := config.EnvFile
+	if envFile == "" {
+		envFile = "(none)"
+	}
+	log.Printf("[config] env file %s · data dir %s · FIX spec dir %s · this PC %s (%s)",
+		envFile, config.StateDir(), config.SpecDir(), config.LocalIP(), config.Hostname())
 	bus := engine.NewBus()
 	eng := engine.NewEngine(engine.LoadUniverse(), bus)
 	eng.LoadOrderBookIDs(config.EnvOr("ME_OBID_FILE", config.StateFile("orderbook_ids.json")))

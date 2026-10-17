@@ -27,6 +27,7 @@ fix_messages.log
 deploy/state/fix_brokers.json
 deploy/state/itch_brokers.json
 deploy/state/broker_meta.json
+deploy/state/fix_allow.json
 session.key
 initial-admin-password
 users.json

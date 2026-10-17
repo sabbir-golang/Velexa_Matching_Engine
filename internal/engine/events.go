@@ -225,9 +225,10 @@ func SessionCode(phase string) byte {
 // Reject texts the DSE uses; the FIX gateway prefixes them with the DSE error
 // number, e.g. "(293): Orders are not being accepted at this time".
 const (
-	ReasonNotAccepting    = "Orders are not being accepted at this time"
-	ReasonNotClosePrice   = "Order price is not equal to close price"
-	ReasonPriceNotAllowed = "Price is not allowed for market order"
+	ReasonNotAccepting     = "Orders are not being accepted at this time"
+	ReasonNotClosePrice    = "Order price is not equal to close price"
+	ReasonPriceNotAllowed  = "Price is not allowed for market order"
+	ReasonDuplicateClOrdID = "Duplicate ClOrdID: already used by a working order"
 )
 
 // CurrentPhase is the session phase.

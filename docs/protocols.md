@@ -51,7 +51,7 @@ Other application message types are accepted at session level and then ignored; 
 
 | Tag | Field | Handling |
 |---|---|---|
-| 11 | ClOrdID | Echoed back; the key for later cancel, replace and status requests. |
+| 11 | ClOrdID | Echoed back; the key for later cancel, replace and status requests. Must not repeat the ClOrdID of one of the session's working orders (rejected `Duplicate ClOrdID`). Different brokers may use the same values. |
 | 55 | Symbol | Required. Must be a valid ticker: 1–20 characters from `A–Z`, `0–9`, `.`, `-` and `_`. |
 | 54 | Side | `1` buy, `2` sell. Anything else is rejected. |
 | 38 | OrderQty | Required. Must be greater than 0 and a whole number. |
@@ -59,7 +59,7 @@ Other application message types are accepted at session level and then ignored; 
 | 44 | Price | Limit price, rounded to 2 decimals. On a market order it is allowed only in post-close and must be the close price. |
 | 99 | StopPx | Trigger price. Required for OrdType 3 and 4. |
 | 111 / 1138 | MaxFloor / DisplayQty | Iceberg display size: only this much shows on the book at a time. The OMS sends 1138. |
-| 59 | TimeInForce | `0` or missing: DAY. `1` GTC, `3` IOC, `4` FOK, `6` GTD. `S` (session) and other values: DAY. |
+| 59 | TimeInForce | `0` or missing: DAY. `1` GTC, `3` IOC, `4` FOK, `6` GTD (needs 126 or 432 in the future, else rejected). `S` (session) and other values: DAY. |
 | 126 | ExpireTime | GTD expiry, UTC, as `YYYYMMDD-HH:MM:SS` or `YYYYMMDD-HH:MM:SS.sss`. |
 | 432 | ExpireDate | GTD expiry date if 126 is missing; the order expires at 23:59:59 UTC that day. |
 | 1, 50, 453, 529, 762 | Account, SenderSubID, Parties, OrderRestrictions, SecuritySubType | Not used for matching; echoed on every report about the order (50 comes back as 57). |
@@ -96,9 +96,10 @@ Send OrigClOrdID (41), a new ClOrdID (11), the new total OrderQty (38) and optio
 
 | Situation | Result |
 |---|---|
-| New qty is no more than what has already filled (including leaving out tag 38) | 150=4, 39=4 (the order is done). |
+| New qty is no more than what has already filled | 150=4, 39=4 (the order is done). Leaving out tag 38 keeps the current quantity. |
 | Otherwise | 150=5 Replaced (39=0, or 1 if it had fills), then one 150=F per trade if the new price trades. |
-| Order unknown, finished, another session's, or a parked stop | OrderCancelReject (35=9) with 434=2, as for a cancel. |
+| Order unknown, finished, another session's, or a parked stop | OrderCancelReject (35=9) with 434=2, 37=`NONE`, 58=`(226): Invalid order number`. |
+| New price off tick or outside the band, quantity not whole lots, market closed (Close/Closed), or the new ClOrdID already used by a working order | OrderCancelReject (35=9) with 434=2, the order's OrderID (37), 39=0 and the reason in 58 (DSE number where known). The order is untouched. |
 
 #### OrderStatusRequest (35=H)
 

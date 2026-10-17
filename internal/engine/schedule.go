@@ -252,9 +252,7 @@ func (e *Engine) expireDayOrders() {
 		}
 		removed := b.removeWhere(func(o *Order) bool { return o.TIF == "" || o.TIF == Day })
 		for _, o := range removed {
-			if o.ClOrdID != "" {
-				delete(e.Open, o.ClOrdID)
-			}
+			e.forget(o)
 			e.emitDelete(o)
 			e.expired(o)
 		}

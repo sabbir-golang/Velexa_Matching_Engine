@@ -348,8 +348,7 @@ func (h *harness) depth(sym string, buy bool) []engine.Level {
 func (h *harness) hasOpen(clid string) bool {
 	h.eng.Mu.RLock()
 	defer h.eng.Mu.RUnlock()
-	_, ok := h.eng.Open[clid]
-	return ok
+	return h.eng.FindOpen(clid, "") != nil
 }
 
 // ---- verdict helpers ---------------------------------------------------------------
@@ -554,7 +553,13 @@ func TestConformance(t *testing.T) {
 		_ = os.WriteFile(out, b, 0o644)
 	}
 	t.Logf("conformance: %d cases %v -> %s", len(h.results), counts, out)
-	if os.Getenv("CONF_STRICT") == "1" && (counts["FAIL"] > 0 || counts["GAP"] > 0) {
+	// A FAIL is a regression (behaviour that worked, or that the DSE requires and
+	// the engine claims to do, is broken): it always fails the run. GAPs are known
+	// unimplemented features; CONF_STRICT=1 makes them fail too.
+	if counts["FAIL"] > 0 {
+		t.Errorf("conformance failures: %v", counts)
+	}
+	if os.Getenv("CONF_STRICT") == "1" && counts["GAP"] > 0 {
 		t.Fatalf("conformance gaps: %v", counts)
 	}
 }
@@ -603,12 +608,19 @@ func (h *harness) runOrderTypes() {
 		}
 		return sent, rs, info("accepted: " + summary(rs))
 	})
+	mb := h.sym(100, "MAIN")
+	h.seed(mb, engine.Sell, 100.5, 60)
+	h.seed(mb, engine.Sell, 101.0, 500)
 	h.c(cat, "OT-06", "Market-At-Best (40=Z)", "DSE-specific type: accepted and matched at best", func() (string, []reply, verdict) {
-		sent, rs, _ := h.order(e, ov{"40": "Z", "44": ""})
-		if accepted(rs) {
-			return sent, rs, pass("accepted")
+		sent, rs, _ := h.order(mb, ov{"40": "Z", "44": "", "38": "100"})
+		if hasMT(rs, "3") {
+			return sent, rs, gap("OrdType Z refused by the session layer (35=3) — Market-At-Best is not supported")
 		}
-		return sent, rs, gap("OrdType Z is not in the engine's data dictionary, so the session layer refuses it (35=3) — Market-At-Best is not supported")
+		// At-best takes the best opposite price only (100.50 x 60); the rest rests there.
+		if cumQty(rs) == 60 && accepted(rs) {
+			return sent, rs, pass("filled 60 at the best ask 100.50, remainder rests at 100.50")
+		}
+		return sent, rs, fail(summary(rs))
 	})
 	st := h.sym(100, "MAIN")
 	h.c(cat, "OT-07", "Stop (40=3) with StopPx (99)", "Not used by the OMS (informational)", func() (string, []reply, verdict) {
@@ -1325,9 +1337,9 @@ func (h *harness) runMatching() {
 func (h *harness) runStatic() {
 	cat := "Rules not modelled"
 	h.static(cat, "ST-1", "Day orders expire at market close", "Day orders are removed at close and reported",
-		"engine.go:35 — 'this continuous sim has no EOD cutoff': Day and GTC behave identically; nothing purges Day orders", gap("no end-of-day processing"))
+		"at the end of the day (Closed) expireDayOrders removes Day orders and reports 150=C; GTC/GTD stay", pass("covered by engine TestTradingDayHousekeeping"))
 	h.static(cat, "ST-2", "Post-close session: Market order priced at the close price", "DSE requires the close price on market orders after close",
-		"engine has only the phases 'Pre-Open' and 'Continuous Trading' (engine.go:161, 627-641); no post-close/close-price handling", gap("phase not modelled"))
+		"Post-Close accepts only orders at the closing price; a market order is priced at the close", pass("covered by engine TestTradingDayHousekeeping and the FIX market-price rule"))
 	h.static(cat, "ST-3", "Automatic circuit breaker / volatility halt", "Instrument halts on breaching limits; DSE halts per board rules",
 		"only a static price-band check plus the manual per-symbol halt added in the admin console; no automatic trigger", gap("not modelled"))
 	h.static(cat, "ST-4", "Category-based rules (A/B/G/N/Z) and board-specific rules", "Different lot sizes / bands / sessions by category and board",

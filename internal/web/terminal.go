@@ -213,7 +213,11 @@ $('ofrm').onsubmit=async e=>{e.preventDefault();
   if(!resp.ok){$('ores').innerHTML='<span class="down">'+esc((await resp.text()).trim()||'refused')+'</span>';return}
   const rep=await resp.json();
   const c=rep.status==='FILLED'?'up':(rep.status==='REJECTED'?'down':'');
-  $('ores').innerHTML='<span class="'+c+'">'+rep.status+'</span> '+(rep.filled_qty?('· '+rep.filled_qty.toLocaleString()+' @ '+fmt(rep.avg_px)+(rep.leaves_qty?(' · '+rep.leaves_qty+' resting'):'')):'· resting in book');
+  let detail='';
+  if(rep.status==='REJECTED')detail='· '+esc(rep.reason||'rejected');
+  else if(rep.filled_qty)detail='· '+rep.filled_qty.toLocaleString()+' @ '+fmt(rep.avg_px)+(rep.leaves_qty?(' · '+rep.leaves_qty+' resting'):'');
+  else if(rep.leaves_qty)detail='· resting in book';
+  $('ores').innerHTML='<span class="'+c+'">'+esc(rep.status)+'</span> '+detail;
   $('obtn').classList.add('flash');setTimeout(()=>$('obtn').classList.remove('flash'),600);loadBook();};
 // Order entry needs a signed-in console user (the order is placed in their name).
 function signedOut(){$('obtn').disabled=true;$('ores').innerHTML='<span class="down">Sign in to trade</span> · <a href="/" target="_top" style="color:inherit">sign in</a>'}

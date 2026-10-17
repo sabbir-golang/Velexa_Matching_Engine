@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Run with: sudo ~/matching-engine/deploy/regen-fixs-gateway.sh
+# Run with: sudo <repo>/deploy/regen-fixs-gateway.sh
 # Regenerates the :5443 plain-FIX gateway allowlist from fix_allow.json
 # and reloads nginx. Run after editing the allowlist in the admin console.
+#   FIXS_ALLOW_FILE  allowlist (default /opt/velexa-sim-me/fix_allow.json)
+#   FIXS_HOST_IP     this host's address, always allowed (default: first of `hostname -I`)
 set -euo pipefail
 ALLOW_FILE="${FIXS_ALLOW_FILE:-/opt/velexa-sim-me/fix_allow.json}"
+HOST_IP="${FIXS_HOST_IP:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
 OUT=/etc/nginx/stream-enabled/fixs-gateway.conf
 
-RULES=$(python3 - "$ALLOW_FILE" <<'PY'
+RULES=$(python3 - "$ALLOW_FILE" "$HOST_IP" <<'PY'
 import json,sys,ipaddress
 try:
     d = json.load(open(sys.argv[1]))
@@ -14,7 +17,7 @@ except Exception:
     d = {}
 ips = [k.strip() for k in d.keys() if k.strip()]
 # always permit loopback + this host so the admin health check works
-base = ["127.0.0.1", "10.238.41.107"]
+base = ["127.0.0.1"] + [h for h in sys.argv[2:3] if h]
 out = []
 for ip in base + ips:
     try:

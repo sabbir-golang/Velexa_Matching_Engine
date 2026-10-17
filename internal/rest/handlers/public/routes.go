@@ -12,6 +12,7 @@ func (h *Handler) RegRoutes(mux *http.ServeMux, manager *middleware.Manager) {
 	mux.Handle("/terminal", manager.With(http.HandlerFunc(h.Terminal)))
 	mux.Handle("/health", manager.With(http.HandlerFunc(h.Health)))
 	mux.Handle("/healthz", manager.With(http.HandlerFunc(h.Healthz)))
+	mux.Handle("/favicon.ico", manager.With(http.HandlerFunc(h.Favicon)))
 	mux.Handle("/api/status", manager.With(http.HandlerFunc(h.Status)))
 	mux.Handle("/api/market", manager.With(http.HandlerFunc(h.Market)))
 	mux.Handle("/api/book", manager.With(http.HandlerFunc(h.Book)))

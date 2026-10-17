@@ -13,11 +13,12 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 <!-- AUTO:env-vars -->
 | Variable | Default | Purpose | Read in |
 |---|---|---|---|
-| `EXCHANGE_INSTRUMENT_URL` | deployment-specific default, see `engine/loader.go` | URL of the exchange security master. Second choice for the instrument universe at boot and on reload (see [Instrument universe](architecture.md#instrument-universe)). | `engine/loader.go` (`instrumentURL`) |
-| `FIXS_ALLOW_FILE` | `/opt/velexa-sim-me/fix_allow.json` | Source-IP allowlist for the external FIX gateway on port 5443, edited from the admin console. | `rest/handlers/broker/broker_helpers.go` (`allowPath`), `deploy/regen-fixs-gateway.sh` |
+| `EXCHANGE_INSTRUMENT_URL` | unset (source skipped) | URL of the exchange security master. Second choice for the instrument universe at boot and on reload (see [Instrument universe](architecture.md#instrument-universe)). Unset, the engine goes straight to the built-in list instead of waiting for an exchange. | `engine/loader.go` (`InstrumentURL`) |
+| `FIXS_ALLOW_FILE` | `/opt/velexa-sim-me/fix_allow.json` | Source-IP allowlist for the external FIX gateway on port 5443, edited from the admin console. | `rest/handlers/broker/helpers.go` (`allowPath`), `deploy/regen-fixs-gateway.sh` |
 | `FIX_PORT` | `5001` | TCP port of the FIX acceptor. | `Cmd/serve.go` |
-| `FIX_SENDER` | `DSEME` | SenderCompID of the FIX acceptor; also printed as the TargetCompID on broker onboarding sheets. | `Cmd/serve.go`, `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `FIX_SENDER` | `DSEME` | SenderCompID of the FIX acceptor; also printed as the TargetCompID on broker onboarding sheets. | `Cmd/serve.go`, `rest/handlers/broker/helpers.go` (`meEndpoints`) |
 | `ITCH_PORT` | `5501` | TCP port of the SoupBinTCP ITCH market-data feed. | `itchgw/market.go` |
+| `ME_STATE_DIR` | `/opt/velexa-sim-me` if it exists, else `./data` | Folder for every data file (accounts, broker credentials, allowlist, audit trail, message log, orderbook ids, `session.key`). Created if missing. Each file's own variable still wins. | `config/config.go` (`StateDir`) |
 | `ME_USERS_FILE` | `<state dir>/users.json` | Console accounts and roles (PBKDF2 password hashes, mode 0600). | `database/users/users.go` (`Path`) |
 | `ME_RATE_LIMIT` | `off` | `on` turns on the sign-in lockout (5 failures lock an IP or a username for 15 minutes, also on the change-password form) and the sign-up quota (5 attempts per IP per hour). | `config/admin.go` (`RateLimit`) |
 | `ME_REGISTRATION` | `on` | Set `off` to close self-registration on the welcome page. | `config/admin.go` (`RegistrationOpen`) |
@@ -28,7 +29,7 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `ME_JOURNAL_CAP` | `400000` | Market events kept in memory; an ITCH client can resume (log in again with its next sequence) while its missed events are still held. | `engine/events.go` |
 | `ME_SESSION_AUTO` | `on` | `off` starts with the session clock off: phases change only from the admin console or `/api/session/*`. | `engine/schedule.go` |
 | `ME_SESSION_SCHEDULE` | `09:30,10:00,14:30,14:40,15:00` | Dhaka start times of pre-open, continuous trading, close, post-close and the end of the day (Sunday to Thursday). | `engine/schedule.go` |
-| `ME_ENV_FILE` | `me.env` (then `/opt/velexa-sim-me/me.env` on a server) | Env file loaded at start-up; the environment wins over it. | `config/envfile.go` |
+| `ME_ENV_FILE` | `me.env` (then `/opt/velexa-sim-me/me.env` on a server) | Env file loaded at start-up; the environment wins over it. When none exists, the engine writes one there from `me.env.example` with a random `ME_ADMIN_PASS` and `ME_ADMIN_SECRET` (mode 0600). `ME_ENV_GENERATE=off` stops that. | `config/envfile.go` |
 | `ME_ADMIN_PASS` | unset | Password of the environment admin. Seeds the first `admin` account and works as a break-glass admin only while `users.json` has no enabled admin. Unset (or the old published default) turns the environment admin off; the first admin then gets a random password written to `initial-admin-password`. | `config/admin.go` (`AdminPass`) |
 | `ME_ADMIN_SECRET` | random key in `<state dir>/session.key` | HMAC key that signs console session cookies. Used only when at least 32 bytes long; otherwise a random key is generated once and kept in `session.key`. Changing it signs everyone out. | `config/admin.go` (`SessionKey`) |
 | `ME_ADMIN_USER` | `admin` | Username of the environment admin; also reserved against self-registration. | `config/admin.go` (`AdminUser`) |
@@ -37,29 +38,29 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `ME_AUDIT_FILE` | `/opt/velexa-sim-me/admin_audit.jsonl` | Append-only admin audit log. | `database/audit/audit.go` (`Path`) |
 | `ME_AUTO_LIST` | `on` | Whether an order for an unknown but well-formed symbol opens a new book instead of being rejected. `off`, `0`, `false` or `no` disable it. | `engine/instruments.go` (`autoListEnabled`) |
 | `ME_BROKER_META_FILE` | `/opt/velexa-sim-me/broker_meta.json` | Broker metadata store (company, SenderCompID, linked ITCH user). | `brokers/meta.go` (`loadBrokerMeta`) |
-| `ME_FIXS_PORT` | `5443` | External FIX gateway port printed on onboarding sheets. Display only: the engine does not listen on it (nginx does, see [operations](operations.md#external-fix-gateway-port-5443)). | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `ME_FIXS_PORT` | unset | Port of an external TLS FIX gateway (nginx, see [operations](operations.md#external-fix-gateway-port-5443)). When set, onboarding sheets send brokers there with TLS instructions and the dashboard checks it; unset, sheets show the FIX acceptor itself. | `rest/handlers/broker/helpers.go` (`meEndpoints`), `rest/handlers/admin/status.go` |
 | `ME_FIX_APPLVER` | `9` | `DefaultApplVerID` when the BeginString is `FIXT.1.1` (`9` = FIX 5.0 SP2). | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
-| `ME_FIX_AUTH` | `on` | The FIX acceptor checks every Logon (CompID + tag 554) against `fix_brokers.json`. `off` lets any CompID log on (test rigs only). | `fixgw/fixacceptor.go` (`loadFixAuth`) |
+| `ME_FIX_AUTH` | unset (auto) | Unset: FIX logons are checked against `fix_brokers.json` once at least one broker is registered (a fresh install accepts any CompID until then). `on`: always checked. `off`: never. | `database/brokers/fixauth.go` (`LoadFix`) |
 | `ME_FIX_AUTH_FILE` | `/opt/velexa-sim-me/fix_brokers.json` | FIX logon credential store (CompID → password). | `fixgw/fixacceptor.go` (`loadFixAuth`) |
 | `ME_FIX_BEGIN` | `FIXT.1.1` | FIX BeginString of the acceptor session. The code comment names `FIX.4.4` as the rollback value. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
 | `ME_FIX_DD` | `on` | `off` turns off FIX 5.0 SP2 data-dictionary validation. Only applies when the BeginString is `FIXT.1.1`. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
 | `ME_FIX_MSGLOG_FILE` | `/opt/velexa-sim-me/fix_messages.log` | Append-only FIX message log. | `fixgw/msglog.go` (`initMsgLog`) |
 | `ME_FIX_SPEC_DIR` | `/opt/velexa-sim-me/spec` | Directory holding `FIXT11.xml` and `FIX50SP2.xml`, the QuickFIX data dictionaries. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
 | `ME_INSTRUMENT_FILE` | `/opt/velexa-sim-me/instruments.json` | Operator-supplied security master; first choice for the instrument universe. Admin imports are written here. | `engine/loader.go` (`instrumentFile`) |
-| `ME_INT_IP` | deployment-specific default, see `rest/handlers/broker/broker_helpers.go` | Internal (on-platform) FIX IP printed on onboarding sheets. | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
-| `ME_INT_PORT` | `5001` | Internal FIX port printed on onboarding sheets. Display only. | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `ME_INT_IP` | this PC's LAN IP | Internal (on-platform) FIX IP printed on onboarding sheets; shown only when it differs from the external endpoint. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
+| `ME_INT_PORT` | value of `FIX_PORT` | Internal FIX port printed on onboarding sheets. Display only. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
 | `ME_ITCH_AUTH` | `off` | `on` makes the ITCH feed check SoupBinTCP logins against `itch_brokers.json`. | `brokers/itchauth.go` (`loadItchAuth`) |
 | `ME_ITCH_AUTH_FILE` | `/opt/velexa-sim-me/itch_brokers.json` | ITCH feed credential store (username → password). | `brokers/itchauth.go` (`loadItchAuth`) |
-| `ME_ITCH_IP` | value of `ME_PUB_IP` | ITCH feed IP printed on onboarding sheets. | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
-| `ME_ITCH_PORT` | `5501` | ITCH feed port printed on onboarding sheets. Display only: the listener uses `ITCH_PORT`. | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
-| `ME_PUB_HOST` | deployment-specific default, see `rest/handlers/broker/broker_helpers.go` | Public hostname printed on onboarding sheets (Host / SNI). | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
-| `ME_PUB_IP` | deployment-specific default, see `rest/handlers/broker/broker_helpers.go` | Public IP printed on onboarding sheets for the external FIX gateway; also the default for `ME_ITCH_IP`. | `rest/handlers/broker/broker_helpers.go` (`meEndpoints`) |
+| `ME_ITCH_IP` | `ME_PUB_IP`, else this PC's LAN IP | ITCH feed IP printed on onboarding sheets. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
+| `ME_ITCH_PORT` | value of `ITCH_PORT` | ITCH feed port printed on onboarding sheets. Display only. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
+| `ME_PUB_HOST` | this PC's LAN IP | Host / SNI printed on onboarding sheets. Set it to a DNS name only if brokers should connect by name. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
+| `ME_PUB_IP` | this PC's LAN IP | Public IP printed on onboarding sheets for the external FIX endpoint; also the default for `ME_ITCH_IP`. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
 | `PORT` | `8010` | HTTP listen port (web UI, JSON API, WebSockets, admin console). | `Cmd/serve.go` |
 <!-- /AUTO:env-vars -->
 
 ### Variables that only change what the onboarding sheet says
 
-`ME_PUB_HOST`, `ME_PUB_IP`, `ME_FIXS_PORT`, `ME_INT_IP`, `ME_INT_PORT`, `ME_ITCH_IP` and `ME_ITCH_PORT` are read only by `meEndpoints` in `rest/handlers/broker/broker_helpers.go`. They fill in the connection details on the broker detail view and the printable onboarding sheet. They don't open or move any listener. To move the real listeners, set `PORT`, `FIX_PORT` and `ITCH_PORT`.
+`ME_PUB_HOST`, `ME_PUB_IP`, `ME_FIXS_PORT`, `ME_INT_IP`, `ME_INT_PORT`, `ME_ITCH_IP` and `ME_ITCH_PORT` only change the connection details on the broker detail view and the printable onboarding sheet (`meEndpoints` in `rest/handlers/broker/helpers.go`); they don't open or move any listener. Left unset, they follow the machine the engine runs on: its LAN IP address (the interface of the default route, also used as Host / SNI) and the real `FIX_PORT` / `ITCH_PORT`, so a fresh install on any PC hands out working addresses. Set them when brokers reach the engine through a public IP, NAT or a proxy. To move the real listeners, set `PORT`, `FIX_PORT` and `ITCH_PORT`.
 
 ### Minimal single-box setup
 
@@ -79,7 +80,7 @@ With no variables set, the engine runs standalone on one machine:
 | `fix_brokers.json` | `ME_FIX_AUTH_FILE` | JSON object: SenderCompID → password | FIX logon credentials. Rewritten (mode `0600`) when brokers are added or revoked in the admin console. |
 | `itch_brokers.json` | `ME_ITCH_AUTH_FILE` | JSON object: username → password | ITCH feed credentials. Rewritten (mode `0600`) from the admin console. |
 | `broker_meta.json` | `ME_BROKER_META_FILE` | JSON object: SenderCompID → `{company, sender, itch_user, contact, created}` | Links each broker's FIX CompID to its ITCH user and company for the admin console. Holds no passwords. |
-| `fix_allow.json` | `FIXS_ALLOW_FILE` | JSON object: IP address → label | Source-IP allowlist for the external FIX gateway. Written mode `0600`; read by `deploy/regen-fixs-gateway.sh` (run with sudo). |
+| `fix_allow.json` | `FIXS_ALLOW_FILE` | JSON object: IP address → label | Source-IP allowlist for the external FIX gateway. Written mode `0600`; read by `deploy/regen-fixs-gateway.sh` (run with sudo), which always adds loopback and this host (`FIXS_HOST_IP`, default the first address of `hostname -I`). Not tracked in git; see `deploy/state/fix_allow.json.example`. |
 | `users.json` | `ME_USERS_FILE` | JSON array of accounts | Console accounts: role, profile, PBKDF2-SHA256 hash (600 000 iterations) and a per-account session token. Mode `0600`. Git-ignored. |
 | `session.key` | `ME_ADMIN_SECRET` | 32 random bytes | Key that signs session cookies, created on first start. Mode `0600`. Deleting it signs everyone out. Git-ignored. |
 | `initial-admin-password` | — | `username password` | Written next to `users.json` only when the first admin was created with a random password (no `ME_ADMIN_PASS`). Mode `0600`. Delete it after signing in. |
@@ -168,6 +169,6 @@ What protects the console and the gateways, and what you still have to do yourse
 - **Browser protections.** Every response carries `Content-Security-Policy` (scripts, styles, frames and form targets limited to this origin; Google Fonts allowed), `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` and `Permissions-Policy`; console pages are `Cache-Control: no-store`; HSTS is sent over HTTPS. The console pages use inline scripts and event handlers, so the CSP allows `'unsafe-inline'`; values shown in the console are escaped before they reach the page, and FIX logons with a CompID other than 1–20 letters, digits, `.`, `-`, `_` are refused.
 - **Order entry and session control.** `/api/order` needs a signed-in console user and records them as the order's actor (`USER:<name>`). `/api/session/preopen` and `/api/session/open` need an admin and POST; `GET /api/session` stays public. Market data (`/api/market`, `/api/book`, `/events`, the WebSocket feeds) is public.
 - **Behind a reverse proxy.** Set `ME_TRUSTED_PROXIES` to the proxy's address so client IPs are right, and `ME_COOKIE_SECURE=on` when users come in over HTTPS. See [operations](operations.md).
-- **FIX and ITCH credentials.** `ME_FIX_AUTH` defaults to `on`. `ME_ITCH_AUTH` still defaults to `off`; turn it on once every ITCH client has a login in `itch_brokers.json`. Passwords are compared in constant time. `/admin/api/broker/detail` returns a broker's FIX and ITCH passwords to admins and to the broker's owner.
+- **FIX and ITCH credentials.** With `ME_FIX_AUTH` unset, FIX logons are checked once the first broker is registered — until then anyone who can reach `FIX_PORT` can log on, so register a broker (or set `ME_FIX_AUTH=on`) before exposing the port. `ME_ITCH_AUTH` still defaults to `off`; turn it on once every ITCH client has a login in `itch_brokers.json`. Passwords are compared in constant time. `/admin/api/broker/detail` returns a broker's FIX and ITCH passwords to admins and to the broker's owner.
 - **ITCH login check.** With `ME_ITCH_AUTH=on`, every login (market, index and news feeds) is checked against `itch_brokers.json`; a short or malformed login packet has empty credentials and is refused with a LoginReject. The legacy feed (`ME_ITCH_MODE=legacy`) still skips the check for a login body shorter than 16 bytes.
-- **Credentials in git history.** `deploy/state/fix_brokers.json`, `itch_brokers.json` and `broker_meta.json` are no longer tracked (`*.example` files show the format), but older commits still contain them. Rotate every password that was in them, and rewrite history (for example with `git filter-repo`) if the repository is shared.
+- **Credentials in git history.** `deploy/state/fix_brokers.json`, `itch_brokers.json`, `broker_meta.json` and `fix_allow.json` are no longer tracked (`*.example` files show the format), but older commits still contain them. Rotate every password that was in them, and rewrite history (for example with `git filter-repo`) if the repository is shared.

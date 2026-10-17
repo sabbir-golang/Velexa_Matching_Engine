@@ -15,13 +15,42 @@ import (
 // External brokers authenticate at logon with their assigned SenderCompID plus
 // a password (FIX tag 554; tag 553 Username, if sent, must equal the CompID).
 // The allowlist maps broker CompID → password, loaded from ME_FIX_AUTH_FILE
-// (JSON: {"ALPHAEQUITIE":"secret", ...}). Enforcement is on unless ME_FIX_AUTH=off
-// so the internal single-box setup keeps working unauthenticated by default.
+// (JSON: {"ALPHAEQUITIE":"secret", ...}).
+//
+// ME_FIX_AUTH picks the mode: "on" always checks, "off" never checks, and unset
+// means "auto": logons are checked as soon as at least one broker is
+// registered, so a fresh install accepts its first OMS before any credentials
+// exist and locks down once the first broker is added in the console.
 type FixAuth struct {
-	mu      sync.RWMutex
-	Enabled bool
-	path    string
-	creds   map[string]string // CompID (upper) → password
+	mu    sync.RWMutex
+	Mode  string // on | off | auto
+	path  string
+	creds map[string]string // CompID (upper) → password
+}
+
+// Enforced reports whether logons are being checked right now.
+func (a *FixAuth) Enforced() bool {
+	if a == nil {
+		return false
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.enforcedLocked()
+}
+
+func (a *FixAuth) enforcedLocked() bool {
+	return a.Mode == "on" || (a.Mode == "auto" && len(a.creds) > 0)
+}
+
+// fixAuthMode reads ME_FIX_AUTH: on, off, or (unset / anything else) auto.
+func fixAuthMode() string {
+	switch strings.ToLower(config.EnvOr("ME_FIX_AUTH", "auto")) {
+	case "on", "true", "1", "yes":
+		return "on"
+	case "off", "false", "0", "no":
+		return "off"
+	}
+	return "auto"
 }
 
 // Fix is the process-wide allowlist, set by StartFixAcceptor and also read
@@ -40,9 +69,9 @@ func (a *FixAuth) Password(comp string) string {
 
 func LoadFix() *FixAuth {
 	a := &FixAuth{
-		Enabled: strings.EqualFold(config.EnvOr("ME_FIX_AUTH", "on"), "on"),
-		path:    config.EnvOr("ME_FIX_AUTH_FILE", config.StateFile("fix_brokers.json")),
-		creds:   map[string]string{},
+		Mode:  fixAuthMode(),
+		path:  config.EnvOr("ME_FIX_AUTH_FILE", config.StateFile("fix_brokers.json")),
+		creds: map[string]string{},
 	}
 	if b, err := os.ReadFile(a.path); err == nil {
 		var m map[string]string
@@ -52,7 +81,10 @@ func LoadFix() *FixAuth {
 			}
 		}
 	}
-	log.Printf("[FIX] logon auth enabled=%v registered_brokers=%d", a.Enabled, len(a.creds))
+	log.Printf("[FIX] logon auth mode=%s enforced=%v registered_brokers=%d", a.Mode, a.enforcedLocked(), len(a.creds))
+	if a.Mode == "auto" && len(a.creds) == 0 {
+		log.Printf("[FIX] no brokers registered yet: any CompID may log on until the first broker is added (Broker Credentials)")
+	}
 	return a
 }
 
@@ -60,12 +92,13 @@ func LoadFix() *FixAuth {
 // acceptor session's TargetCompID); user/pass come from the Logon (553/554).
 // Returns "" when allowed, otherwise the rejection reason.
 func (a *FixAuth) Authorize(broker, user, pass string) string {
-	if !a.Enabled {
-		return ""
-	}
 	a.mu.RLock()
+	enforced := a.enforcedLocked()
 	want, ok := a.creds[strings.ToUpper(strings.TrimSpace(broker))]
 	a.mu.RUnlock()
+	if !enforced {
+		return ""
+	}
 	if !ok {
 		return "broker not registered: " + broker
 	}

@@ -36,7 +36,14 @@ make run                          # same as: go run .
 # or build a binary: make build && ./bin/velexa-sim-me
 ```
 
-Start it from the repository root: it finds the FIX dictionaries in `spec/` and keeps its data files in `data/` there (when `/opt/velexa-sim-me` doesn't exist).
+Start it from the repository root: it finds the FIX dictionaries in `spec/` and keeps its data files in `data/` there (when `/opt/velexa-sim-me` doesn't exist; `ME_STATE_DIR` picks another folder).
+
+### Run on a new PC
+
+1. Install Go 1.25+, clone the repository, and run `make run` from its root.
+2. On the first run the engine writes `me.env` (mode 0600) from [`me.env.example`](me.env.example), with a random admin password and session secret. The log says so; open `me.env` and use `ME_ADMIN_USER` / `ME_ADMIN_PASS` to sign in at <http://localhost:8010/> with **Admin login**. Edit `me.env` to change ports or anything else, then restart.
+3. Your OMS can log on to FIX at `<this PC's IP>:5001` straight away: until the first broker is registered, any CompID is accepted. Register brokers under **Broker Credentials**; from then on every logon must use its CompID and password. The broker sheet fills in this PC's LAN IP and the real ports unless `ME_PUB_IP` and friends are set.
+4. Nothing else is needed: with no `instruments.json` and no `EXCHANGE_INSTRUMENT_URL`, it starts at once on the built-in instrument list.
 
 Then:
 
@@ -50,9 +57,9 @@ Then:
   ```
 
 Without other settings, the engine:
-- runs on the 430 built-in DSE instruments, after trying the default exchange URL, which can take up to 12 s
-- has FIX and ITCH authentication turned off
-- looks for its data files under `/opt/velexa-sim-me/`, or in `./data/` when that directory does not exist
+- runs on the 430 built-in DSE instruments (an `instruments.json` in the project root or `EXCHANGE_INSTRUMENT_URL` gives it the real master)
+- checks FIX logons once the first broker is registered (`ME_FIX_AUTH=on` always checks, `off` never); ITCH logins are not checked unless `ME_ITCH_AUTH=on`
+- keeps its data files in `ME_STATE_DIR`, else `/opt/velexa-sim-me/`, else `./data/`
 
 For a real deployment, see [configuration](docs/configuration.md) and [operations](docs/operations.md). Before exposing the engine to anyone, read the [security notes](docs/configuration.md#security-notes).
 
@@ -65,7 +72,7 @@ For a real deployment, see [configuration](docs/configuration.md) and [operation
 | 5501 | `ITCH_PORT` | SoupBinTCP ITCH market-data feed |
 | 5502 | `ME_ITCH_INDEX_PORT` | SoupBinTCP ITCH index feed |
 | 5503 | `ME_ITCH_NEWS_PORT` | SoupBinTCP ITCH news feed |
-| 5443 | n/a (nginx) | External FIX gateway, IP-allowlisted, forwards to 5001 |
+| 5443 | `ME_FIXS_PORT` (nginx) | Optional external TLS FIX gateway, IP-allowlisted, forwards to 5001. Set `ME_FIXS_PORT` when it exists so sheets and the dashboard show it. |
 | 80 / 443 | n/a (nginx) | Reverse proxy to 8010 |
 
 ## Documentation
@@ -78,9 +85,9 @@ For a real deployment, see [configuration](docs/configuration.md) and [operation
 | [Protocols](docs/protocols.md) | FIX acceptor (sessions, tags, execution reports) and ITCH feed (framing, message layouts) |
 | [Operations](docs/operations.md) | Running, nginx front ends, broker onboarding, logs, health checks, troubleshooting |
 | [Development](docs/development.md) | Source layout, build and test, conventions, how to make common changes |
+| [Testing](docs/testing.md) | Test plan: every suite and test case, the manual OMS checklist, last results, known gaps |
 
 These docs are kept in sync with the code by the `/update-docs` Claude Code skill in `.claude/skills/update-docs/`.
-# Velexa_Matching_Engine
 
 ## Project layout
 
