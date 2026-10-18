@@ -147,8 +147,5 @@ func (a *FixAuth) save() error {
 	b, _ := json.MarshalIndent(a.creds, "", " ")
 	path := a.path
 	a.mu.RUnlock()
-	if path == "" {
-		return nil
-	}
-	return os.WriteFile(path, b, 0o600)
+	return writeFileAtomic(path, b)
 }

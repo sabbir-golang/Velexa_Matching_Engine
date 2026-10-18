@@ -12,6 +12,9 @@ import (
 	"velexa-sim-me/internal/utils"
 )
 
+// errSave is shown when broker credentials cannot be written to the data folder.
+const errSave = "could not save the broker credentials — check that the engine's data folder is writable (see the engine log)"
+
 // genPass makes a random broker password (96 bits).
 func genPass(prefix string) string {
 	b := make([]byte, 12)
@@ -43,7 +46,9 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 // acceptor itself.
 func meEndpoints() map[string]string {
 	lan := config.LocalIP()
-	fixPort := config.EnvOr("FIX_PORT", "5001")
+	// The port brokers reach: ME_PUB_FIX_PORT when it differs from the listener
+	// (a container whose 5001 is published on another host port), else FIX_PORT.
+	fixPort := config.EnvOr("ME_PUB_FIX_PORT", config.EnvOr("FIX_PORT", "5001"))
 	ep := map[string]string{
 		"pub_host":  config.EnvOr("ME_PUB_HOST", lan),
 		"pub_ip":    config.EnvOr("ME_PUB_IP", lan),

@@ -1,6 +1,8 @@
 package broker
 
 import (
+	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -22,11 +24,31 @@ func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 		middleware.Forbid(w)
 		return
 	}
-	if rec := brokers.Meta.Get(sender); rec != nil && rec.ItchUser != "" {
-		brokers.Itch.Del(rec.ItchUser)
+	rec := brokers.Meta.Get(sender)
+	fixPass := brokers.Fix.Password(sender)
+	var itchUser, itchPass string
+	if rec != nil && rec.ItchUser != "" {
+		itchUser, itchPass = rec.ItchUser, brokers.Itch.Password(rec.ItchUser)
 	}
-	brokers.Fix.Del(sender)
-	brokers.Meta.Del(sender)
+	errs := []error{brokers.Fix.Del(sender), brokers.Meta.Del(sender)}
+	if itchUser != "" {
+		errs = append(errs, brokers.Itch.Del(itchUser))
+	}
+	if err := errors.Join(errs...); err != nil {
+		// Put it back: a revocation that is not saved would undo itself at the next restart.
+		if fixPass != "" {
+			brokers.Fix.Add(sender, fixPass)
+		}
+		if itchUser != "" && itchPass != "" {
+			brokers.Itch.Add(itchUser, itchPass)
+		}
+		if rec != nil {
+			brokers.Meta.Add(rec)
+		}
+		log.Printf("[brokers] revoking %s failed: %v", sender, err)
+		utils.WriteJSON(w, map[string]any{"ok": false, "error": errSave})
+		return
+	}
 	audit.Record(middleware.ActorOf(r), "REVOKE", sender)
 	utils.WriteJSON(w, map[string]any{"ok": true})
 }

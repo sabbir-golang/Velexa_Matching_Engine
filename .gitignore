@@ -31,3 +31,8 @@ deploy/state/fix_allow.json
 session.key
 initial-admin-password
 users.json
+
+# docker system-test work folders (tools/docker-e2e.sh)
+.docker-e2e.*
+# docker compose settings (secrets)
+.env

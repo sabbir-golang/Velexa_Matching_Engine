@@ -1,6 +1,8 @@
 package broker
 
 import (
+	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -52,14 +54,21 @@ func (h *Handler) Add(w http.ResponseWriter, r *http.Request) {
 		itchPass = genPass("ITCH")
 	}
 	company := strings.TrimSpace(req.Company)
-	brokers.Fix.Add(sender, fixPass)
-	brokers.Itch.Add(itchUser, itchPass)
 	owner := "" // registered by an admin: belongs to the exchange
 	if !middleware.IsAdmin(r) {
 		owner = middleware.Username(r)
 	}
-	brokers.Meta.Add(&brokers.Record{Company: company, Sender: sender, ItchUser: itchUser,
-		Contact: strings.TrimSpace(req.Contact), Created: time.Now().Format("2006-01-02 15:04"), Owner: owner})
+	rec := &brokers.Record{Company: company, Sender: sender, ItchUser: itchUser,
+		Contact: strings.TrimSpace(req.Contact), Created: time.Now().Format("2006-01-02 15:04"), Owner: owner}
+	if err := errors.Join(brokers.Fix.Add(sender, fixPass), brokers.Itch.Add(itchUser, itchPass), brokers.Meta.Add(rec)); err != nil {
+		// Never hand out credentials that would vanish at the next restart.
+		brokers.Fix.Del(sender)
+		brokers.Itch.Del(itchUser)
+		brokers.Meta.Del(sender)
+		log.Printf("[brokers] issuing %s failed: %v", sender, err)
+		utils.WriteJSON(w, map[string]any{"ok": false, "error": errSave})
+		return
+	}
 	label := sender
 	if company != "" {
 		label = company + " (" + sender + ")"

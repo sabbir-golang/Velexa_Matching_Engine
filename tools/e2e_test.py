@@ -227,12 +227,15 @@ def main():
     ap.add_argument("--load", type=int, default=2000, help="orders per broker in the throughput case")
     ap.add_argument("--save", help="write the issued broker credentials here (for --after-restart)")
     ap.add_argument("--after-restart", help="only run the persistence checks, with credentials from this file")
+    ap.add_argument("--after-restore", help="only check a restored backup, with credentials from this file")
     a = ap.parse_args()
     base = f"http://127.0.0.1:{a.http}"
     adm = Console(base)
     ctx = {}
     if a.after_restart:
         return after_restart(a, base, adm, json.load(open(a.after_restart)))
+    if a.after_restore:
+        return after_restore(a, base, adm, json.load(open(a.after_restore)))
 
     @case("SYS-01", "Engine is up: /healthz, /health and /api/status answer")
     def sys01():
@@ -455,7 +458,7 @@ def main():
 
 
 def after_restart(a, base, adm, creds):
-    @case("PER-01", "After a restart: admin can still sign in (users.json, session key)")
+    @case("PER-01", "After a restart: admin can still sign in (stored accounts, session key)")
     def per01():
         code, h, _ = adm.login(a.admin_user, a.admin_pass)
         assert code == 303 and h.get("Location", "").endswith("/admin"), f"{code} {h.get('Location')}"
@@ -482,6 +485,32 @@ def after_restart(a, base, adm, creds):
         assert r and r[-1].get("35") == "5", f"revoked broker still logs on: {r}"
 
     for c in (per01, per02, per03, per04):
+        c()
+    return report()
+
+
+def after_restore(a, base, adm, creds):
+    """A backup restored into an empty database and data folder (a new server)."""
+    @case("BAK-01", "Restored backup: admin signs in with the same password")
+    def bak01():
+        code, h, _ = adm.login(a.admin_user, a.admin_pass)
+        assert code == 303 and h.get("Location", "").endswith("/admin"), f"{code} {h.get('Location')}"
+
+    @case("BAK-02", "Restored backup: brokers as they were (E2EAAA kept, revoked E2EBBB still gone)")
+    def bak02():
+        senders = {b["sender"] for b in adm.json("/admin/api/brokers")["brokers"]}
+        assert "E2EAAA" in senders and "E2EBBB" not in senders, senders
+
+    @case("BAK-03", "Restored backup: the broker logs on with its old FIX password; audit trail kept")
+    def bak03():
+        f = Fix(a.fix, "E2EAAA")
+        r = f.logon(creds["E2EAAA"]["fix_password"])
+        f.close()
+        assert r and r[-1].get("35") == "A", r
+        actions = {e["action"] for e in adm.json("/admin/api/status").get("audit", [])}
+        assert {"ISSUE", "REVOKE"} <= actions, f"audit entries missing: {sorted(actions)}"
+
+    for c in (bak01, bak02, bak03):
         c()
     return report()
 

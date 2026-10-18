@@ -1,0 +1,24 @@
+# Only the source and the FIX dictionaries go into the build.
+.git
+.github
+.claude
+.vscode
+.idea
+docs
+backups
+bin
+logs
+data
+**/data
+deploy/state
+me.env
+.env
+.env.*
+*.log
+*.bak
+*.bak.*
+instruments.json
+tools/__pycache__
+.docker-e2e.*
+Dockerfile
+docker-compose*.yml

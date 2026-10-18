@@ -69,13 +69,7 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 			actors = append(actors, "FIX:"+b)
 		}
 		st := eng.StatsFor(actors)
-		me := strings.ToLower(middleware.Username(r)) + " ("
-		mine := []audit.Entry{}
-		for _, e := range audit.Recent(300) {
-			if strings.HasPrefix(strings.ToLower(e.Actor), me) && len(mine) < 60 {
-				mine = append(mine, e)
-			}
-		}
+		mine := audit.RecentFor(middleware.Username(r)+" (", 60) // their own entries only
 		out["scope"], out["my_brokers"], out["orders"], out["trades"] = "own", len(own), st.Orders, st.Trades
 		out["volume"], out["value"], out["audit"] = st.Volume, st.Value, mine
 	}

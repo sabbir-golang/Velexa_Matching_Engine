@@ -1,0 +1,72 @@
+# Velexa matching engine + its PostgreSQL.
+#   make docker-up        (first time: writes .env, starts everything)
+#   docker compose ps | logs -f engine | down
+# Settings come from .env (tools/docker-setup.sh writes it; see .env.docker.example).
+name: velexa-me
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: velexa_me
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is not set — run make docker-setup}
+      POSTGRES_DB: velexa_me
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velexa_me -d velexa_me"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+    logging: &logging
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  engine:
+    build:
+      context: .
+      args:
+        VERSION: ${ME_VERSION:-dev}
+    image: velexa-sim-me:${ME_VERSION:-dev}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    user: "${DOCKER_UID:-10001}:${DOCKER_GID:-10001}"
+    env_file: ${DOCKER_ENV_FILE:-.env}
+    environment:
+      # Fixed inside the container; the published host ports are below.
+      PORT: "8010"
+      FIX_PORT: "5001"
+      ITCH_PORT: "5501"
+      ME_ITCH_INDEX_PORT: "5502"
+      ME_ITCH_NEWS_PORT: "5503"
+      # What broker sheets show: the host's address and published ports.
+      ME_PUB_FIX_PORT: ${DOCKER_FIX_PORT:-5001}
+      ME_ITCH_PORT: ${DOCKER_ITCH_PORT:-5501}
+      ME_DB_URL: ${ME_DB_URL:-postgres://velexa_me:${DB_PASSWORD}@db:5432/velexa_me?sslmode=disable}
+    ports:
+      - "${DOCKER_BIND:-0.0.0.0}:${DOCKER_HTTP_PORT:-8010}:8010"
+      - "${DOCKER_BIND:-0.0.0.0}:${DOCKER_FIX_PORT:-5001}:5001"
+      - "${DOCKER_BIND:-0.0.0.0}:${DOCKER_ITCH_PORT:-5501}:5501"
+      - "${DOCKER_BIND:-0.0.0.0}:${DOCKER_ITCH_INDEX_PORT:-5502}:5502"
+      - "${DOCKER_BIND:-0.0.0.0}:${DOCKER_ITCH_NEWS_PORT:-5503}:5503"
+    volumes:
+      - ${DOCKER_DATA_DIR:-./data}:/data
+    # Hardening: non-root (user above), no Linux capabilities, read-only image;
+    # only the data folder and /tmp are writable. (no-new-privileges is left out:
+    # some kernels refuse to start any process with it.)
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    stop_grace_period: 20s
+    networks: [backend]
+    logging: *logging
+
+volumes:
+  db-data:
+
+networks:
+  backend:

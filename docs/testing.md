@@ -6,12 +6,15 @@ This page is the test plan for the matching engine. It lists every test suite, h
 
 | Command | What it runs | Time |
 |---|---|---|
-| `make test` | All Go tests: unit, integration, the FIX conformance suite | ~40 s |
+| `make test` | All Go tests: unit, integration, the FIX conformance suite (PostgreSQL tests are skipped) | ~40 s |
+| `make test-db` | The same, plus the PostgreSQL tests, against a throwaway `postgres:16-alpine` container | ~45 s |
 | `make race` | The same tests under the race detector | ~45 s |
 | `make e2e` | System test: builds the engine, starts it as a fresh install on spare ports, then drives the console, two FIX brokers and the ITCH feed, runs the browser UI test, and restarts the engine to check persistence | ~25 s |
 | `make check` | `vet` + `race` + `e2e`: run this before every commit | ~75 s |
+| `E2E_DB=1 make e2e` | The system test with accounts and audit in a throwaway PostgreSQL | ~30 s |
 | `make cover` | Statement coverage across all packages | ~45 s |
 | `make bench` | Matching throughput benchmark | ~1 s |
+| `make docker-test` | Builds the image and runs the system test against engine + PostgreSQL containers on spare ports, then restart, clean-stop, backup → wipe → restore and container-hardening checks | ~2 min |
 | `make conformance` / `make report` | Only the DSE FIX conformance suite / its PDF report | ~35 s |
 
 `make e2e` never touches your `data/` folder, `me.env` or the ports of a running engine. It runs in a temporary folder on ports 18910 (HTTP), 15901 (FIX) and 15951–15953 (ITCH); the variables `E2E_HTTP_PORT`, `E2E_FIX_PORT` and `E2E_ITCH_PORT` move them. The browser part needs Node 22+ and Google Chrome or Chromium; without them it is skipped with a note.
@@ -107,6 +110,18 @@ Other FIX tests: logon passwords never reach the message log (`TestLogonPassword
 | ACC-U3 | Per-user isolation | A user sees and manages only the brokers they registered; a re-used username inherits nothing | `TestUsersOnlySeeTheirOwnBrokers` | PASS |
 | ACC-U4 | First admin, default password, break-glass admin | Created from the env or a random password; the old default is replaced; env admin only while no file admin exists | `TestBootstrapCreatesTheEnvAdmin`, `TestDefaultPasswordIsReplaced`, `TestBreakGlassOnlyWithoutAFileAdmin` | PASS |
 
+### Database (`internal/database/db`, PostgreSQL tests — run with `make test-db`)
+
+| ID | Case | Expected | Automated by | Status |
+|---|---|---|---|---|
+| DB-U1 | Start against an empty server | The database is created, migrations applied once and recorded; a second run changes nothing | `TestMigrationsApplyOnceAndInOrder` | PASS |
+| DB-U2 | Accounts across a restart | Profile, role, disabled flag, password hash, session token and last login all come back; deletes stay deleted | `TestPGAccountsSurviveARestart` | PASS |
+| DB-U3 | Same email twice | Refused | `TestPGEmailIsUniqueInTheDatabase` | PASS |
+| DB-U4 | Database goes away during add, role change, delete | Error "could not be saved"; memory unchanged, so it never disagrees with the database | `TestPGFailedWriteIsRolledBack` | PASS |
+| DB-U5 | First start with an existing `users.json` | Imported with hashes and session tokens (nobody signed out), file renamed, never imported twice | `TestPGImportsUsersJSONOnce` | PASS |
+| DB-U6 | Audit trail in the database | Newest first; per-user prefix lookup (with `_` literal); old jsonl imported; entries fall back to the file when the database is down | `TestDatabaseTrail`, `TestFileTrail` | PASS |
+| DB-01 | System test with `E2E_DB=1` | Accounts and audit rows in PostgreSQL, no `users.json`, everything survives a restart | `tools/e2e.sh` | PASS |
+
 ### Configuration and portability (`internal/config`, `internal/rest/handlers/broker`)
 
 | ID | Case | Expected | Automated by | Status |
@@ -147,6 +162,21 @@ Other FIX tests: logon passwords never reach the message log (`TestLogonPassword
 | PER-04 | Restart: revoke a broker | Its logon is refused | PASS |
 | PER-05 | Restart: order-book IDs | Unchanged | PASS |
 | LOG-01 | Engine log | No panic, fatal error or data race | PASS |
+
+### Docker deployment (`make docker-test`)
+
+| ID | Case | Expected | Status |
+|---|---|---|---|
+| (system) | SYS/SEC/BRK/FIX/ITCH/WEB/PERF cases above, against the containers | 20/20 | PASS |
+| DOCK-01 | `docker compose stop engine` | Clean stop on SIGTERM within seconds (log ends with `stopped`) | PASS |
+| PER-01…04 | Restart the engine container | Accounts, brokers, FIX credentials and revocations survive | PASS |
+| BAK-01…03 | Backup, delete the database volume and data folder, restore | Admin password, brokers (and revocations), FIX passwords and the audit trail come back | PASS |
+| DOCK-02 | Engine user | Not root | PASS |
+| DOCK-03 | Root filesystem | Read-only | PASS |
+| DOCK-04 | Docker health check | `healthy`, version reported | PASS |
+| DOCK-05 | Storage | Accounts in the compose PostgreSQL; broker files in the data folder | PASS |
+| BRK-U1 | A broker credential cannot be saved (read-only folder) | Error reported, change undone; the engine refuses to start on a folder it cannot write | PASS (`TestSaveFailuresAreReported`) |
+| FIX-U1 | FIX message log size | Rotated at `ME_FIX_MSGLOG_MAX_MB`, `ME_FIX_MSGLOG_KEEP` files kept, only the tail read at start-up | PASS (`TestMessageLogRotatesAndReadsOnlyItsTail`) |
 
 ## Manual checks with the OMS
 

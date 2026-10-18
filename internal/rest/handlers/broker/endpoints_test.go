@@ -40,4 +40,11 @@ func TestEndpointsFollowThisMachine(t *testing.T) {
 	if !strings.Contains(brokerSheetHTML("Co", "JBL", "p", "JBL", "q"), "SocketUseSSL") {
 		t.Fatal("TLS instructions missing when a FIXS gateway is configured")
 	}
+
+	// In a container the published host port may differ from the listener's.
+	t.Setenv("ME_FIXS_PORT", "")
+	t.Setenv("ME_PUB_FIX_PORT", "7001")
+	if ep = meEndpoints(); ep["ext_addr"] != "203.0.113.10:7001" || ep["int_port"] != "7001" {
+		t.Fatalf("ME_PUB_FIX_PORT not used: %v", ep)
+	}
 }

@@ -2,6 +2,8 @@
 
 This page is for whoever deploys and runs the engine. It covers building and starting it, the ports it uses, the nginx front ends (the HTTPS reverse proxy and the external FIX gateway), onboarding brokers from the admin console, logs and health checks, and troubleshooting. Testing is described in [testing](testing.md). For individual settings, see [configuration](configuration.md).
 
+To run the engine with Docker (the recommended way on a new PC or server), see [Running with Docker](docker.md). The rest of this page also applies there, except where it names files and commands that Docker replaces.
+
 ## Build and run
 
 ```bash
@@ -136,13 +138,40 @@ curl -s -b jar -X POST localhost:8010/admin/api/instruments/reload
 
 See [http-api](http-api.md#logging-in) for creating the cookie jar.
 
+## Database
+
+Console accounts and the audit trail go to PostgreSQL when `ME_DB_URL` is set (see [configuration](configuration.md#database)); otherwise they stay in files and none of this applies.
+
+**On this PC:**
+
+```bash
+make db          # creates/starts the container velexa_me_pg (postgres:16-alpine, 127.0.0.1:5435,
+                 # volume velexa_me_pg_data, random password) and adds ME_DB_URL to me.env
+# then restart the engine: it imports users.json and admin_audit.jsonl once and logs
+#   [db] connected to velexa_me@127.0.0.1:5435/velexa_me (schema v1): N accounts
+make db-psql     # SQL shell:  select username, role, disabled, last_login_at from users;
+make db-backup   # pg_dump to backups/velexa_me-YYYYMMDD-HHMM.sql.gz
+```
+
+The container restarts with Docker (`--restart unless-stopped`). Running `make db` again only starts it; the password never changes. To start over, remove the `ME_DB_URL` line from `me.env` and run `docker rm -f velexa_me_pg && docker volume rm velexa_me_pg_data`.
+
+**Restore a backup** (stop the engine first):
+
+```bash
+gunzip -c backups/velexa_me-20261017-1200.sql.gz | docker exec -i velexa_me_pg psql -U velexa_me -d velexa_me
+```
+
+To restore into a fresh database, drop and recreate `velexa_me` first.
+
+**On a server,** point `ME_DB_URL` at that server's PostgreSQL with a user that owns one database for the engine, for example `postgres://velexa_me:…@db-host:5432/velexa_me?sslmode=require`. Run one engine per database, and back it up like any other production database.
+
 ## Logs and files
 
 | What | Where | Notes |
 |---|---|---|
 | Process log | stderr | Go `log` lines prefixed `[FIX]`, `[ITCH]`, `[universe]`, `[session]`. Redirect it yourself. `*.log` files are git-ignored. |
 | FIX message log | `ME_FIX_MSGLOG_FILE` | Every message except heartbeats. Never rotated or trimmed by the engine; `.gitignore` notes it once grew to 9.6 GB. The engine keeps the file open in append mode, so if you rotate it externally, use copy-and-truncate. |
-| Admin audit log | `ME_AUDIT_FILE` | One JSON object per line. |
+| Admin audit log | `audit_log` table, or `ME_AUDIT_FILE` without a database | One JSON object per line in the file. With a database the file only appears if an insert failed; it is imported at the next start. |
 | nginx | `/var/log/nginx/matching-engine.*.log`, `/var/log/nginx/fixs-gateway.*.log` | From the nginx configs above. |
 
 ## Health checks
@@ -170,3 +199,5 @@ The dashboard checks the ports the engine actually uses on `127.0.0.1` (`FIX_POR
 | Books are empty and prices don't move | Expected: there are no simulated traders. Prices move only when real orders trade. |
 | External broker can't connect on 5443 | Its IP isn't allowed, or `deploy/regen-fixs-gateway.sh` wasn't run after editing the allowlist. |
 | Browser shows no live updates through nginx | Proxy buffering is on. The snippet in `deploy/nginx-443.patch` turns it off. |
+| Engine exits with `[db] cannot connect to PostgreSQL …` | `ME_DB_URL` is set but the database isn't reachable: `docker start velexa_me_pg` (or `make db`), check the host, port and password in `me.env`. The engine refuses to run on files instead, so the data never splits. |
+| Console shows "the change could not be saved" | The database refused or lost a write; the change was undone. See the `[users]` log line for the database error. |

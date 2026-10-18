@@ -4,6 +4,7 @@
 # tools/e2e_test.py and tools/ui_test.mjs against it, restarts it and checks
 # that state survived.
 #   make e2e           or   tools/e2e.sh [orders-per-broker]
+#   E2E_DB=1 make e2e  — the same with accounts and audit in a throwaway PostgreSQL
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOAD="${1:-2000}"
@@ -18,10 +19,21 @@ stop() { # stop the engine and wait until it has really exited
   kill -9 "$PID" 2>/dev/null || true
   PID=""
 }
-cleanup() { stop; rm -rf "$WORK"; }
+DBC=""
+cleanup() { stop; [ -n "$DBC" ] && docker rm -f "$DBC" >/dev/null 2>&1; rm -rf "$WORK"; }
 trap cleanup EXIT
 
 (cd "$ROOT" && go build -o "$WORK/me" .)
+
+DB_ENV=()
+if [ "${E2E_DB:-0}" = 1 ]; then
+  DBC="velexa_me_e2epg_$$"
+  docker run -d --rm --name "$DBC" -e POSTGRES_PASSWORD=e2e -p 127.0.0.1::5432 postgres:16-alpine >/dev/null
+  DBPORT=$(docker port "$DBC" 5432/tcp | head -1 | sed 's/.*://')
+  for _ in $(seq 1 60); do docker exec "$DBC" pg_isready -h 127.0.0.1 -U postgres -q && break; sleep 0.5; done
+  DB_ENV=(ME_DB_URL="postgres://postgres:e2e@127.0.0.1:$DBPORT/velexa_me?sslmode=disable")
+  echo "== using PostgreSQL on 127.0.0.1:$DBPORT for accounts and audit"
+fi
 cp -r "$ROOT/spec" "$WORK/spec"
 
 start() {
@@ -31,7 +43,7 @@ start() {
   # Background the engine process itself (not a subshell), so $! is its PID.
   cd "$WORK"
   env -i PATH="$PATH" HOME="$HOME" PORT=$HTTP FIX_PORT=$FIX ITCH_PORT=$ITCH \
-    ME_ITCH_INDEX_PORT=$((ITCH + 1)) ME_ITCH_NEWS_PORT=$((ITCH + 2)) ME_SESSION_AUTO=off \
+    ME_ITCH_INDEX_PORT=$((ITCH + 1)) ME_ITCH_NEWS_PORT=$((ITCH + 2)) ME_SESSION_AUTO=off "${DB_ENV[@]}" \
     ./me >>"$WORK/engine.log" 2>&1 &
   PID=$!
   cd - >/dev/null
@@ -68,6 +80,14 @@ if [ "$OB_BEFORE" = "$(md5sum "$WORK/data/orderbook_ids.json" | cut -d' ' -f1)" 
   echo "PER-05   PASS  Order book IDs are unchanged across the restart"
 else
   echo "PER-05   FAIL  Order book IDs changed across the restart"; rc=1
+fi
+if [ -n "$DBC" ]; then
+  q() { docker exec "$DBC" psql -U postgres -d velexa_me -tAc "$1"; }
+  if [ ! -e "$WORK/data/users.json" ] && [ "$(q 'select count(*) from users')" -ge 2 ] && [ "$(q 'select count(*) from audit_log')" -ge 5 ]; then
+    echo "DB-01    PASS  Accounts ($(q 'select count(*) from users')) and audit entries ($(q 'select count(*) from audit_log')) are in PostgreSQL, no users.json"
+  else
+    echo "DB-01    FAIL  accounts/audit not in PostgreSQL (users.json present: $([ -e "$WORK/data/users.json" ] && echo yes || echo no))"; rc=1
+  fi
 fi
 if grep -qE "panic|DATA RACE|fatal error" "$WORK/engine.log"; then
   echo "LOG-01   FAIL  engine log has a panic/race:"; grep -nE "panic|DATA RACE|fatal error" "$WORK/engine.log" | head; rc=1

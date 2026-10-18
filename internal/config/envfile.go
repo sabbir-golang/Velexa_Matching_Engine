@@ -31,7 +31,10 @@ var EnvFile string
 
 func envFilePath() string {
 	if p := strings.TrimSpace(os.Getenv("ME_ENV_FILE")); p != "" {
-		return p
+		if fileExists(p) {
+			return p
+		}
+		return "" // not there (yet): generated on first run unless ME_ENV_GENERATE=off
 	}
 	if _, err := os.Stat("me.env"); err == nil {
 		return "me.env"

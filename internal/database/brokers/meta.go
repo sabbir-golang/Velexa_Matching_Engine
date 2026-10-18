@@ -3,6 +3,7 @@ package brokers
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"sort"
 	"strings"
@@ -61,19 +62,19 @@ func (m *brokerMeta) Get(sender string) *Record {
 	return m.recs[strings.ToUpper(strings.TrimSpace(sender))]
 }
 
-func (m *brokerMeta) Add(r *Record) {
+func (m *brokerMeta) Add(r *Record) error {
 	r.Sender = strings.ToUpper(strings.TrimSpace(r.Sender))
 	m.mu.Lock()
 	m.recs[r.Sender] = r
 	m.mu.Unlock()
-	m.save()
+	return m.save()
 }
 
-func (m *brokerMeta) Del(sender string) {
+func (m *brokerMeta) Del(sender string) error {
 	m.mu.Lock()
 	delete(m.recs, strings.ToUpper(strings.TrimSpace(sender)))
 	m.mu.Unlock()
-	m.save()
+	return m.save()
 }
 
 // ReleaseOwner hands every broker owned by username back to the exchange (no
@@ -90,7 +91,9 @@ func (m *brokerMeta) ReleaseOwner(username string) int {
 	}
 	m.mu.Unlock()
 	if n > 0 {
-		m.save()
+		if err := m.save(); err != nil {
+			log.Printf("[brokers] could not save %s: %v", m.path, err)
+		}
 	}
 	return n
 }
@@ -130,12 +133,23 @@ func (m *brokerMeta) List() []*Record {
 	return out
 }
 
-func (m *brokerMeta) save() {
+func (m *brokerMeta) save() error {
 	m.mu.RLock()
 	b, _ := json.MarshalIndent(m.recs, "", " ")
 	path := m.path
 	m.mu.RUnlock()
-	if path != "" {
-		os.WriteFile(path, b, 0o600)
+	return writeFileAtomic(path, b)
+}
+
+// writeFileAtomic replaces path with b (mode 0600) through a temporary file, so
+// a crash never leaves a half-written credential file. "" = not persisted.
+func writeFileAtomic(path string, b []byte) error {
+	if path == "" {
+		return nil
 	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }

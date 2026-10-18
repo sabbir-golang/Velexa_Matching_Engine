@@ -16,6 +16,8 @@ make check            # vet + race detector + the end-to-end system/UI test: run
 
 Every suite, test case and the manual OMS checklist are in [testing](testing.md).
 
+The production image is built from `Dockerfile` (static binary, Alpine runtime, non-root) and run with `docker-compose.yml`; `make docker-test` checks both. The binary also answers `velexa-sim-me version` and `velexa-sim-me healthcheck`, and stops cleanly on SIGTERM. See [Running with Docker](docker.md).
+
 ## Project layout
 
 ```
@@ -93,8 +95,10 @@ go run .
 | `rest/handlers/admin/` | `login.go` (sign-in, sign-out), `dashboard.go` (`/admin`, `/user`), `status.go`, `trading_session.go` (market phase and the DSE clock), `session.go`, `fixlog.go`, `throttle.go` (login brute-force throttle). |
 | `rest/handlers/broker/` | `list.go`, `detail.go`, `add.go`, `revoke.go`, `sheet.go` (broker credentials and onboarding sheet), `allowlist.go` (OMS IP allowlist), `helpers.go`, `sheet_html.go`. |
 | `rest/handlers/instrument/` | `list.go`, `save.go` (add / edit), `halt.go` (halt / delist), `export.go`, `import.go` (reload / import), `rows.go` (directory rows and the DSE-style XML/CSV builders). |
-| `database/users/users.go` | Console account store: roles `admin`/`user`, profile, password hashing, last-admin guard, `users.json`. |
-| `database/audit/audit.go` | Credential audit log: in-memory ring plus append-only file. |
+| `database/users/users.go` | Console account store: roles `admin`/`user`, profile, password hashing, sessions, last-admin guard. Keeps accounts in memory and writes every change through to its backend (rolled back if the write fails). |
+| `database/users/backend_file.go`, `backend_pg.go` | Where accounts are kept: `users.json`, or the PostgreSQL `users` table (with the one-time `users.json` import). |
+| `database/audit/audit.go`, `audit_pg.go` | Audit trail: file sink (ring + `admin_audit.jsonl`) or the `audit_log` table, with file fallback and import. |
+| `database/db/db.go`, `migrate.go`, `migrations/*.sql` | PostgreSQL connection (`ME_DB_URL`), create-if-missing, embedded schema migrations. `db/dbtest` gives tests a throwaway database. |
 | `utils/respond.go` | `WriteJSON` and `AtoiDefault`, shared by the handlers. |
 | `config/envfile.go` | Loads `me.env` (or `ME_ENV_FILE`) into the environment at start-up, without overriding variables that are already set. |
 | `config/admin.go` | Console credentials from the environment and the registration switch. |
@@ -148,6 +152,12 @@ Other files in the repo:
 - **Theme.** Every page has a dark / light button (sun and moon icon). The choice is kept in the browser (`localStorage` key `me-theme`) and shared by the console and the embedded Trade Terminal. Page styles live in `internal/web/theme.go` (`*LightCSS` overrides on `data-theme="light"`); dark is the default.
 
 ## Common changes
+
+### Change the database schema
+
+1. Add a new file `internal/database/db/migrations/NNNN_what.sql` with the next number. Never edit a migration that has been released: every engine applies each file once, in order, in its own transaction, and records it in `schema_migrations`.
+2. Update the code that reads or writes the table (`users/backend_pg.go`, `audit/audit_pg.go`).
+3. Run `make test-db`: it starts a throwaway PostgreSQL and runs the database tests too (plain `make test` skips them).
 
 ### Add an environment variable
 

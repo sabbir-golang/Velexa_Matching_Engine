@@ -19,7 +19,9 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `FIX_SENDER` | `DSEME` | SenderCompID of the FIX acceptor; also printed as the TargetCompID on broker onboarding sheets. | `Cmd/serve.go`, `rest/handlers/broker/helpers.go` (`meEndpoints`) |
 | `ITCH_PORT` | `5501` | TCP port of the SoupBinTCP ITCH market-data feed. | `itchgw/market.go` |
 | `ME_STATE_DIR` | `/opt/velexa-sim-me` if it exists, else `./data` | Folder for every data file (accounts, broker credentials, allowlist, audit trail, message log, orderbook ids, `session.key`). Created if missing. Each file's own variable still wins. | `config/config.go` (`StateDir`) |
-| `ME_USERS_FILE` | `<state dir>/users.json` | Console accounts and roles (PBKDF2 password hashes, mode 0600). | `database/users/users.go` (`Path`) |
+| `ME_DB_URL` | unset (files) | PostgreSQL URL for console accounts and the audit trail, for example `postgres://velexa_me:PASSWORD@127.0.0.1:5435/velexa_me?sslmode=disable`. Unset, they stay in `users.json` and `admin_audit.jsonl`. When set, the engine creates the database if it is missing, applies the schema migrations, and refuses to start if it cannot reach it. `make db` sets it up on this PC. See [Database](#database). | `config/database.go`, `database/db` |
+| `ME_DB_MAX_CONNS` | `10` | Size of the PostgreSQL connection pool. | `config/database.go` |
+| `ME_USERS_FILE` | `<state dir>/users.json` | Console accounts and roles (PBKDF2 password hashes, mode 0600) when no database is configured. With `ME_DB_URL`, imported into the database once on first start, then renamed `.imported-…`. | `database/users/backend_file.go` |
 | `ME_RATE_LIMIT` | `off` | `on` turns on the sign-in lockout (5 failures lock an IP or a username for 15 minutes, also on the change-password form) and the sign-up quota (5 attempts per IP per hour). | `config/admin.go` (`RateLimit`) |
 | `ME_REGISTRATION` | `on` | Set `off` to close self-registration on the welcome page. | `config/admin.go` (`RegistrationOpen`) |
 | `ME_OBID_FILE` | `<state dir>/orderbook_ids.json` | Permanent symbol → ITCH orderbook id map. Ids never change once handed out, so adding or sorting instruments cannot shift other symbols' ids. | `Cmd/serve.go`, `engine/obids.go` |
@@ -30,12 +32,13 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `ME_SESSION_AUTO` | `on` | `off` starts with the session clock off: phases change only from the admin console or `/api/session/*`. | `engine/schedule.go` |
 | `ME_SESSION_SCHEDULE` | `09:30,10:00,14:30,14:40,15:00` | Dhaka start times of pre-open, continuous trading, close, post-close and the end of the day (Sunday to Thursday). | `engine/schedule.go` |
 | `ME_ENV_FILE` | `me.env` (then `/opt/velexa-sim-me/me.env` on a server) | Env file loaded at start-up; the environment wins over it. When none exists, the engine writes one there from `me.env.example` with a random `ME_ADMIN_PASS` and `ME_ADMIN_SECRET` (mode 0600). `ME_ENV_GENERATE=off` stops that. | `config/envfile.go` |
+| `ME_IN_CONTAINER` | detected | `1` tells the engine it runs in a container (also detected from `/.dockerenv`); it then warns when `ME_PUB_IP` is missing. Set by the Docker image. | `config/version.go` |
 | `ME_ADMIN_PASS` | unset | Password of the environment admin. Seeds the first `admin` account and works as a break-glass admin only while `users.json` has no enabled admin. Unset (or the old published default) turns the environment admin off; the first admin then gets a random password written to `initial-admin-password`. | `config/admin.go` (`AdminPass`) |
 | `ME_ADMIN_SECRET` | random key in `<state dir>/session.key` | HMAC key that signs console session cookies. Used only when at least 32 bytes long; otherwise a random key is generated once and kept in `session.key`. Changing it signs everyone out. | `config/admin.go` (`SessionKey`) |
 | `ME_ADMIN_USER` | `admin` | Username of the environment admin; also reserved against self-registration. | `config/admin.go` (`AdminUser`) |
 | `ME_COOKIE_SECURE` | `off` | `on` when users reach the console over HTTPS through a proxy: session and CSRF cookies get `Secure` (the session cookie is then named `__Host-me_admin`) and responses carry HSTS. Leave off on plain HTTP or the browser drops the cookie. | `config/admin.go` (`CookieSecure`) |
 | `ME_TRUSTED_PROXIES` | `127.0.0.1,::1` | Comma-separated IPs or CIDRs of reverse proxies whose `X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP` and `X-Forwarded-Proto` headers are believed. From any other peer these headers are ignored, so a client cannot pick its own address to dodge the sign-in lockout. | `config/admin.go` (`TrustedProxies`), `rest/middleware/session.go` (`ClientIP`) |
-| `ME_AUDIT_FILE` | `/opt/velexa-sim-me/admin_audit.jsonl` | Append-only admin audit log. | `database/audit/audit.go` (`Path`) |
+| `ME_AUDIT_FILE` | `<state dir>/admin_audit.jsonl` | Audit trail when no database is configured; with `ME_DB_URL`, only a fallback for entries the database could not take (imported at the next start). | `database/audit/audit.go` (`Path`) |
 | `ME_AUTO_LIST` | `on` | Whether an order for an unknown but well-formed symbol opens a new book instead of being rejected. `off`, `0`, `false` or `no` disable it. | `engine/instruments.go` (`autoListEnabled`) |
 | `ME_BROKER_META_FILE` | `/opt/velexa-sim-me/broker_meta.json` | Broker metadata store (company, SenderCompID, linked ITCH user). | `brokers/meta.go` (`loadBrokerMeta`) |
 | `ME_FIXS_PORT` | unset | Port of an external TLS FIX gateway (nginx, see [operations](operations.md#external-fix-gateway-port-5443)). When set, onboarding sheets send brokers there with TLS instructions and the dashboard checks it; unset, sheets show the FIX acceptor itself. | `rest/handlers/broker/helpers.go` (`meEndpoints`), `rest/handlers/admin/status.go` |
@@ -45,6 +48,8 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `ME_FIX_BEGIN` | `FIXT.1.1` | FIX BeginString of the acceptor session. The code comment names `FIX.4.4` as the rollback value. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
 | `ME_FIX_DD` | `on` | `off` turns off FIX 5.0 SP2 data-dictionary validation. Only applies when the BeginString is `FIXT.1.1`. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
 | `ME_FIX_MSGLOG_FILE` | `/opt/velexa-sim-me/fix_messages.log` | Append-only FIX message log. | `fixgw/msglog.go` (`initMsgLog`) |
+| `ME_FIX_MSGLOG_MAX_MB` | `256` | The FIX message log is rotated when it would grow past this size (MB). Only the last 4 MB are read at start-up. | `fixgw/msglog.go` (`initMsgLog`) |
+| `ME_FIX_MSGLOG_KEEP` | `5` | Rotated message logs kept (`fix_messages.log.1` … `.5`); `0` keeps none. | `fixgw/msglog.go` |
 | `ME_FIX_SPEC_DIR` | `/opt/velexa-sim-me/spec` | Directory holding `FIXT11.xml` and `FIX50SP2.xml`, the QuickFIX data dictionaries. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
 | `ME_INSTRUMENT_FILE` | `/opt/velexa-sim-me/instruments.json` | Operator-supplied security master; first choice for the instrument universe. Admin imports are written here. | `engine/loader.go` (`instrumentFile`) |
 | `ME_INT_IP` | this PC's LAN IP | Internal (on-platform) FIX IP printed on onboarding sheets; shown only when it differs from the external endpoint. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
@@ -55,6 +60,7 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `ME_ITCH_PORT` | value of `ITCH_PORT` | ITCH feed port printed on onboarding sheets. Display only. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
 | `ME_PUB_HOST` | this PC's LAN IP | Host / SNI printed on onboarding sheets. Set it to a DNS name only if brokers should connect by name. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
 | `ME_PUB_IP` | this PC's LAN IP | Public IP printed on onboarding sheets for the external FIX endpoint; also the default for `ME_ITCH_IP`. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
+| `ME_PUB_FIX_PORT` | value of `FIX_PORT` | FIX port printed on onboarding sheets when brokers reach the acceptor on another port (a container whose 5001 is published as another host port). Display only. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
 | `PORT` | `8010` | HTTP listen port (web UI, JSON API, WebSockets, admin console). | `Cmd/serve.go` |
 <!-- /AUTO:env-vars -->
 
@@ -81,10 +87,10 @@ With no variables set, the engine runs standalone on one machine:
 | `itch_brokers.json` | `ME_ITCH_AUTH_FILE` | JSON object: username → password | ITCH feed credentials. Rewritten (mode `0600`) from the admin console. |
 | `broker_meta.json` | `ME_BROKER_META_FILE` | JSON object: SenderCompID → `{company, sender, itch_user, contact, created}` | Links each broker's FIX CompID to its ITCH user and company for the admin console. Holds no passwords. |
 | `fix_allow.json` | `FIXS_ALLOW_FILE` | JSON object: IP address → label | Source-IP allowlist for the external FIX gateway. Written mode `0600`; read by `deploy/regen-fixs-gateway.sh` (run with sudo), which always adds loopback and this host (`FIXS_HOST_IP`, default the first address of `hostname -I`). Not tracked in git; see `deploy/state/fix_allow.json.example`. |
-| `users.json` | `ME_USERS_FILE` | JSON array of accounts | Console accounts: role, profile, PBKDF2-SHA256 hash (600 000 iterations) and a per-account session token. Mode `0600`. Git-ignored. |
+| `users.json` | `ME_USERS_FILE` | JSON array of accounts | Console accounts (role, profile, PBKDF2-SHA256 hash, session token), used **only without a database**. Mode `0600`. Git-ignored. |
 | `session.key` | `ME_ADMIN_SECRET` | 32 random bytes | Key that signs session cookies, created on first start. Mode `0600`. Deleting it signs everyone out. Git-ignored. |
 | `initial-admin-password` | — | `username password` | Written next to `users.json` only when the first admin was created with a random password (no `ME_ADMIN_PASS`). Mode `0600`. Delete it after signing in. |
-| `admin_audit.jsonl` | `ME_AUDIT_FILE` | JSON lines: `{time, actor, action, target}` | Admin audit trail. The last 300 entries are reloaded at startup. Git-ignored. |
+| `admin_audit.jsonl` | `ME_AUDIT_FILE` | JSON lines: `{time, actor, action, target}` | Audit trail without a database (the newest 300 entries are kept in memory); with a database, only a fallback for failed inserts. Mode `0600`. Git-ignored. |
 | `fix_messages.log` | `ME_FIX_MSGLOG_FILE` | Text lines: `YYYY-MM-DD HH:MM:SS.mmm DIR SESSION RAW`, with FIX SOH shown as `\|` | Every FIX message in and out except heartbeats. Logon passwords (tags 554 and 925) are replaced with `***` before anything is stored; an older log is scrubbed once at startup. Mode `0600`. The last 4000 lines are reloaded at startup. Git-ignored. |
 | `spec/FIXT11.xml`, `spec/FIX50SP2.xml` | `ME_FIX_SPEC_DIR` | QuickFIX XML data dictionaries | Transport and application dictionaries for FIX 5.0 SP2 validation. |
 <!-- /AUTO:config-files -->
@@ -134,6 +140,22 @@ Rows with `is_index: true`, or with `status` `halted` or `delisted`, are skipped
 ```text
 99	example	terminal_example_db	EXAMPLEBRKR	DSE-999	Example Securities Ltd.
 ```
+
+## Database
+
+With `ME_DB_URL` set, console accounts and the audit trail live in PostgreSQL. Broker credentials, the allowlist, order-book IDs and the FIX message log stay in files.
+
+| Table | Holds |
+|---|---|
+| `users` | One row per console account: `username_key` (lower-case, primary key), `username`, `role` (`admin`/`user`), `disabled`, `password_hash` (PBKDF2-SHA256), `session_ver` (changing it signs the account out everywhere), profile (`full_name`, `email` — unique when set, `phone`, `gender`, `country`), `created_at`, `last_login_at`, `updated_at`. |
+| `audit_log` | One row per audited action: `id`, `at`, `actor` (`name (ip)`), `action`, `target`. Indexed by time and by actor. |
+| `schema_migrations` | Which schema migrations (`internal/database/db/migrations/*.sql`) have been applied. |
+
+- **Start-up.** The engine connects (retrying for 30 s), creates the database if it doesn't exist (the user needs `CREATEDB`, otherwise create it by hand), applies new migrations under an advisory lock, and loads the accounts. If any of that fails it stops with the reason instead of falling back to files, so the data never splits.
+- **Moving from files.** On the first start with a database, an existing `users.json` is imported into the empty `users` table — password hashes and session tokens included, so nobody has to sign in again — and `admin_audit.jsonl` into `audit_log`. Each file is then renamed `….imported-<date>`.
+- **Writes.** The engine keeps the accounts in memory for the per-request session check and writes every change to the database before it counts; if the write fails, the change is undone and the console shows "the change could not be saved". An audit entry the database cannot take is written to `admin_audit.jsonl` and imported at the next start.
+- **One engine per database.** Edits made directly in the database are seen after the engine restarts; always change accounts through the console.
+- **Secrets.** The database password is only in `me.env` (mode 0600). Use `sslmode=require` (or `verify-full`) when the database is on another machine.
 
 ## Deployment directory layout
 

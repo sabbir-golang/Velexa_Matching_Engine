@@ -2,7 +2,9 @@
 package rest
 
 import (
+	"context"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -66,10 +68,31 @@ func (server *Server) newMux(manager *middleware.Manager) *http.ServeMux {
 	return mux
 }
 
-// Start serves HTTP on addr (":8010") and blocks until the server stops.
-func (server *Server) Start(addr string) {
+// Run serves HTTP on addr (":8010") until ctx is cancelled (SIGTERM), then
+// stops accepting connections, ends the long-lived streams, and waits up to
+// 10 s for requests in flight. It returns an error only if serving failed.
+func (server *Server) Run(ctx context.Context, addr string) error {
+	// Requests get a context that ends at shutdown, so /events (SSE) and the
+	// WebSocket feeds — which otherwise stay open for hours — finish promptly.
+	base, endStreams := context.WithCancel(context.Background())
+	defer endStreams()
 	// No WriteTimeout: /events (SSE) and the WebSocket feeds stay open for hours.
 	httpSrv := &http.Server{Addr: addr, Handler: server.Routes(), ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout: 15 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 64 << 10}
-	log.Fatal(httpSrv.ListenAndServe())
+		ReadTimeout: 15 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 64 << 10,
+		BaseContext: func(net.Listener) context.Context { return base }}
+	errc := make(chan error, 1)
+	go func() { errc <- httpSrv.ListenAndServe() }()
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+	}
+	log.Printf("[http] shutting down")
+	endStreams()
+	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := httpSrv.Shutdown(sctx); err != nil {
+		return httpSrv.Close()
+	}
+	return nil
 }

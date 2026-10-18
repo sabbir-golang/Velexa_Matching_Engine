@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -22,6 +21,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"velexa-sim-me/internal/config"
 )
@@ -103,13 +104,18 @@ var (
 	ErrExists          = errors.New("that username already exists")
 	ErrNotFound        = errors.New("no such user")
 	ErrLastAdmin       = errors.New("cannot remove, disable or demote the last enabled admin")
+	ErrStorage         = errors.New("the change could not be saved")
 )
 
-// Store is the set of console accounts, persisted to a JSON file.
+// Store is the set of console accounts. It holds them in memory (the session
+// check on every request needs no storage round trip) and writes every change
+// through to its backend — users.json, or PostgreSQL with ME_DB_URL — before
+// the change counts.
 type Store struct {
-	mu    sync.RWMutex
-	path  string
-	users map[string]*User // keyed by lower-case username
+	mu       sync.RWMutex
+	be       backend
+	stateDir string           // where initial-admin-password is written
+	users    map[string]*User // keyed by lower-case username
 
 	// The environment account (ME_ADMIN_USER / ME_ADMIN_PASS) is a break-glass
 	// admin: it works only while users.json has no enabled admin, so a lost or
@@ -122,32 +128,56 @@ type Store struct {
 // Path is where accounts are stored by default.
 func Path() string { return config.EnvOr("ME_USERS_FILE", config.StateFile("users.json")) }
 
-// Load reads the store from path and makes sure at least one admin exists: if the
-// file has none, the environment admin (envUser/envPass) is added, or — with no
-// usable envPass — an admin with a random password written to
-// initial-admin-password next to the file. envPass "" turns the break-glass
-// environment admin off.
+// Load reads the store from the JSON file at path (used when no database is
+// configured) and makes sure at least one admin exists: if there is none, the
+// environment admin (envUser/envPass) is added, or — with no usable envPass —
+// an admin with a random password written to initial-admin-password next to
+// the file. envPass "" turns the break-glass environment admin off.
 func Load(path, envUser, envPass string) *Store {
-	s := &Store{path: path, users: map[string]*User{}, envVer: newToken()}
+	s, err := open(&fileBackend{path: path}, filepath.Dir(path), envUser, envPass)
+	if err != nil { // only an unreadable file gets here; start with the env admin
+		log.Printf("[users] %s is unreadable (%v) — starting with the environment admin only", path, err)
+		s, _ = open(&emptyBackend{&fileBackend{path: path}}, filepath.Dir(path), envUser, envPass)
+	}
+	return s
+}
+
+// LoadDB reads the store from PostgreSQL (the users table). On first use it
+// imports an existing users.json (importFrom) into the empty table. stateDir
+// is where initial-admin-password goes if the first admin gets a random one.
+func LoadDB(pool *pgxpool.Pool, name, importFrom, stateDir, envUser, envPass string) (*Store, error) {
+	be := &pgBackend{pool: pool, name: name}
+	if importFrom != "" {
+		if err := be.importFile(importFrom); err != nil {
+			return nil, fmt.Errorf("import %s: %w", importFrom, err)
+		}
+	}
+	return open(be, stateDir, envUser, envPass)
+}
+
+// open loads the accounts from be and applies the start-up rules: every account
+// gets a session token, the published default password is re-keyed or
+// disabled, and the first admin is created when there is none.
+func open(be backend, stateDir, envUser, envPass string) (*Store, error) {
+	s := &Store{be: be, stateDir: stateDir, users: map[string]*User{}, envVer: newToken()}
 	if envUser != "" && envPass != "" {
 		s.envUser, s.envPassSum = envUser, sha256.Sum256([]byte(envPass))
 	}
-	dirty := false
-	if b, err := os.ReadFile(path); err == nil {
-		var list []*User
-		if err := json.Unmarshal(b, &list); err != nil {
-			log.Printf("[users] %s is unreadable (%v) — starting with the environment admin only", path, err)
-		}
-		for _, u := range list {
-			if u != nil && u.Username != "" && u.Role.Valid() {
-				if u.SessionVer == "" {
-					u.SessionVer, dirty = newToken(), true
-				}
-				s.users[key(u.Username)] = u
+	list, err := be.load()
+	if err != nil {
+		return nil, err
+	}
+	changed := map[string]bool{}
+	for _, u := range list {
+		if u != nil && u.Username != "" && u.Role.Valid() {
+			if u.SessionVer == "" {
+				u.SessionVer = newToken()
+				changed[key(u.Username)] = true
 			}
+			s.users[key(u.Username)] = u
 		}
 	}
-	// The environment admin's file account may still hold the published default
+	// The environment admin's account may still hold the published default
 	// password from an older build: re-key it to ME_ADMIN_PASS, or disable it.
 	if u := s.users[key(envUser)]; u != nil && !u.Disabled && verifyPassword(u.Hash, config.DefaultAdminPass) {
 		if h, err := hashPassword(envPass); envPass != "" && err == nil {
@@ -157,26 +187,65 @@ func Load(path, envUser, envPass string) *Store {
 			u.Disabled = true
 			log.Printf("[users] %q still had the old default password and ME_ADMIN_PASS is not set — account disabled", u.Username)
 		}
-		u.SessionVer, dirty = newToken(), true
+		u.SessionVer = newToken()
+		changed[key(u.Username)] = true
 	}
 	if !s.hasEnabledAdmin() {
-		dirty = s.bootstrapAdmin(envUser, envPass) || dirty
-	}
-	if dirty {
-		if err := s.saveLocked(); err != nil {
-			log.Printf("[users] could not save %s: %v", path, err)
+		if k := s.bootstrapAdmin(envUser, envPass); k != "" {
+			changed[k] = true
 		}
 	}
-	return s
+	for k := range changed {
+		if err := s.be.save(s.users, k); err != nil {
+			return nil, fmt.Errorf("saving %q to %s: %w", k, be.describe(), err)
+		}
+	}
+	return s, nil
 }
 
-// bootstrapAdmin creates the first admin account. Caller holds s.mu (or owns s).
-func (s *Store) bootstrapAdmin(envUser, envPass string) bool {
+// emptyBackend starts from nothing but saves to the wrapped backend (a damaged
+// users.json is replaced instead of failing the start).
+type emptyBackend struct{ backend }
+
+func (emptyBackend) load() ([]*User, error) { return nil, nil }
+
+// Storage names where the accounts are kept, for logs.
+func (s *Store) Storage() string { return s.be.describe() }
+
+// Count is the number of accounts.
+func (s *Store) Count() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.users)
+}
+
+// commitLocked persists the account with key k after a change. If storage
+// fails, the in-memory change is undone (before is the account as it was, nil
+// if it did not exist) and the error returned. Caller holds s.mu.
+func (s *Store) commitLocked(k string, before *User) error {
+	err := s.be.save(s.users, k)
+	if err == nil {
+		return nil
+	}
+	if before == nil {
+		delete(s.users, k)
+	} else if cur := s.users[k]; cur != nil {
+		*cur = *before
+	} else {
+		s.users[k] = before
+	}
+	log.Printf("[users] could not save %q to %s: %v", k, s.be.describe(), err)
+	return fmt.Errorf("%w: %v", ErrStorage, err)
+}
+
+// bootstrapAdmin creates the first admin account and returns its key ("" if
+// none was created). Caller holds s.mu (or owns s).
+func (s *Store) bootstrapAdmin(envUser, envPass string) string {
 	if envUser == "" {
 		envUser = "admin"
 	}
 	if old := s.users[key(envUser)]; old != nil && !old.Disabled {
-		return false // an enabled non-admin already has the name; keep it
+		return "" // an enabled non-admin already has the name; keep it
 	}
 	pass, generated := envPass, false
 	if pass == "" {
@@ -184,21 +253,21 @@ func (s *Store) bootstrapAdmin(envUser, envPass string) bool {
 	}
 	h, err := hashPassword(pass)
 	if err != nil {
-		return false
+		return ""
 	}
 	s.users[key(envUser)] = &User{Username: envUser, Role: RoleAdmin, Created: now(), Hash: h, SessionVer: newToken()}
 	if !generated {
 		log.Printf("[users] created the admin account %q from the environment", envUser)
-		return true
+		return key(envUser)
 	}
-	file := filepath.Join(filepath.Dir(s.path), "initial-admin-password")
+	file := filepath.Join(s.stateDir, "initial-admin-password")
 	_ = os.MkdirAll(filepath.Dir(file), 0o750)
 	if err := os.WriteFile(file, []byte(envUser+" "+pass+"\n"), 0o600); err != nil {
 		log.Printf("[users] created the admin account %q; could not save its password (%v): %s", envUser, err, pass)
 	} else {
 		log.Printf("[users] created the admin account %q with a random password — see %s (delete it after signing in)", envUser, file)
 	}
-	return true
+	return key(envUser)
 }
 
 func key(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
@@ -245,11 +314,12 @@ func (s *Store) Authenticate(username, password string) (*User, bool) {
 	if u == nil || u.Disabled || u.Hash != hash { // changed while the password was checked
 		return nil, false
 	}
+	before := *u
 	if upgraded != "" {
 		u.Hash = upgraded
 	}
 	u.LastLogin = now()
-	_ = s.saveLocked()
+	_ = s.commitLocked(key(username), &before) // a failed save must not block the sign-in
 	p := u.Public()
 	return &p, true
 }
@@ -283,8 +353,9 @@ func (s *Store) RevokeSessions(username string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if u := s.users[key(username)]; u != nil {
+		before := *u
 		u.SessionVer = newToken()
-		return s.saveLocked()
+		return s.commitLocked(key(username), &before)
 	}
 	if key(username) == key(s.envUser) {
 		s.envVer = newToken()
@@ -339,7 +410,7 @@ func (s *Store) Add(username, password string, role Role) error {
 		return ErrExists
 	}
 	s.users[key(username)] = &User{Username: username, Role: role, Created: now(), Hash: h, SessionVer: newToken()}
-	return s.saveLocked()
+	return s.commitLocked(key(username), nil)
 }
 
 // Normalize trims the profile and checks every field; the error text names the
@@ -413,7 +484,7 @@ func (s *Store) Register(username, password string, p Profile) error {
 		}
 	}
 	s.users[key(username)] = &User{Username: username, Role: RoleUser, Created: now(), Profile: p, Hash: h, SessionVer: newToken()}
-	return s.saveLocked()
+	return s.commitLocked(key(username), nil)
 }
 
 // SetRole changes an account's role.
@@ -481,8 +552,9 @@ func (s *Store) Delete(username string) error {
 	if u.Role == RoleAdmin && !u.Disabled && s.otherEnabledAdmins(u) == 0 {
 		return ErrLastAdmin
 	}
+	before := *u
 	delete(s.users, key(username))
-	return s.saveLocked()
+	return s.commitLocked(key(username), &before)
 }
 
 func (s *Store) mutate(username string, fn func(*User) error) error {
@@ -492,10 +564,12 @@ func (s *Store) mutate(username string, fn func(*User) error) error {
 	if u == nil {
 		return ErrNotFound
 	}
+	before := *u
 	if err := fn(u); err != nil {
+		*u = before
 		return err
 	}
-	return s.saveLocked()
+	return s.commitLocked(key(username), &before)
 }
 
 // otherEnabledAdmins counts enabled admins other than u. Caller holds s.mu.
@@ -507,27 +581,6 @@ func (s *Store) otherEnabledAdmins(u *User) int {
 		}
 	}
 	return n
-}
-
-// saveLocked writes the file atomically. Caller holds s.mu.
-func (s *Store) saveLocked() error {
-	list := make([]*User, 0, len(s.users))
-	for _, u := range s.users {
-		list = append(list, u)
-	}
-	sort.Slice(list, func(i, j int) bool { return key(list[i].Username) < key(list[j].Username) })
-	b, err := json.MarshalIndent(list, "", " ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o750); err != nil {
-		return err
-	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
 }
 
 // reserved reports whether a self-registered account may not take this name:

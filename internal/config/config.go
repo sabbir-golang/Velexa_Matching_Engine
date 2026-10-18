@@ -56,3 +56,16 @@ func SpecDir() string {
 	}
 	return "spec"
 }
+
+// CheckStateDir makes sure the data folder can be written: broker credentials,
+// the allowlist and order-book IDs are saved there, and a folder the engine
+// cannot write would lose them at the next restart.
+func CheckStateDir() error {
+	f, err := os.CreateTemp(StateDir(), ".write-check-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	f.Close()
+	return os.Remove(name)
+}

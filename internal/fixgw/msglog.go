@@ -2,8 +2,11 @@ package fixgw
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,51 +34,142 @@ type fixMsg struct {
 type msgLogStore struct {
 	mu   sync.Mutex
 	ring []fixMsg
-	file *os.File
 	max  int
+
+	// The durable copy: one line per message, rotated by size.
+	file     *os.File
+	path     string
+	size     int64
+	maxBytes int64 // rotate when the file would grow past this (ME_FIX_MSGLOG_MAX_MB)
+	keep     int   // rotated files kept: path.1 … path.keep (ME_FIX_MSGLOG_KEEP)
 }
 
 var MsgLog = &msgLogStore{max: 4000}
+
+const (
+	tailBytes     = 4 << 20  // read at most this much of the file at start-up
+	scrubMaxBytes = 64 << 20 // rewrite (mask passwords in) older files only up to this size
+)
 
 func initMsgLog() {
 	path := config.EnvOr("ME_FIX_MSGLOG_FILE", config.StateFile("fix_messages.log"))
 	if path == "" {
 		return
 	}
-	// Load recent history so the message log survives a restart (the ring is
-	// in-memory; the file is the durable record). Line format:
+	mb, _ := strconv.Atoi(config.EnvOr("ME_FIX_MSGLOG_MAX_MB", "256"))
+	keep, err := strconv.Atoi(config.EnvOr("ME_FIX_MSGLOG_KEEP", "5"))
+	if mb <= 0 {
+		mb = 256
+	}
+	if err != nil || keep < 0 {
+		keep = 5
+	}
+	MsgLog.path, MsgLog.maxBytes, MsgLog.keep = path, int64(mb)<<20, keep
+
+	// Older builds wrote logon passwords in clear: scrub a file of reasonable size once.
+	if st, err := os.Stat(path); err == nil && st.Size() <= scrubMaxBytes {
+		if b, err := os.ReadFile(path); err == nil {
+			if masked := maskSecrets(string(b)); masked != string(b) {
+				tmp := path + ".tmp"
+				if os.WriteFile(tmp, []byte(masked), 0o600) == nil {
+					_ = os.Rename(tmp, path)
+				}
+			}
+		}
+	}
+	// Load the newest messages so the message log survives a restart (the ring
+	// is in memory; the file is the durable record). Only the file's tail is
+	// read, so a large log does not slow the start or fill memory. Line format:
 	//   2006-01-02 15:04:05.000 DIR SESSION RAW   (RAW has no spaces)
-	if b, err := os.ReadFile(path); err == nil {
-		// Older builds wrote logon passwords in clear: scrub the file once.
-		if masked := maskSecrets(string(b)); masked != string(b) {
-			tmp := path + ".tmp"
-			if os.WriteFile(tmp, []byte(masked), 0o600) == nil && os.Rename(tmp, path) == nil {
-				b = []byte(masked)
-			}
+	lines := tailLines(path, tailBytes)
+	if len(lines) > MsgLog.max {
+		lines = lines[len(lines)-MsgLog.max:]
+	}
+	for _, ln := range lines {
+		f := strings.Fields(ln)
+		if len(f) < 5 {
+			continue
 		}
-		lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
-		if len(lines) > MsgLog.max {
-			lines = lines[len(lines)-MsgLog.max:]
+		ts, _ := time.Parse("2006-01-02 15:04:05.000", f[0]+" "+f[1])
+		raw := maskSecrets(f[4])
+		cl := fixField(raw, "11")
+		if cl == "" {
+			cl = fixField(raw, "41")
 		}
-		for _, ln := range lines {
-			f := strings.Fields(ln)
-			if len(f) < 5 {
-				continue
-			}
-			ts, _ := time.Parse("2006-01-02 15:04:05.000", f[0]+" "+f[1])
-			raw := f[4]
-			cl := fixField(raw, "11")
-			if cl == "" {
-				cl = fixField(raw, "41")
-			}
-			MsgLog.ring = append(MsgLog.ring, fixMsg{
-				Time: ts, Dir: f[2], Session: f[3], Raw: raw, MsgType: fixField(raw, "35"), ClOrdID: cl})
+		MsgLog.ring = append(MsgLog.ring, fixMsg{
+			Time: ts, Dir: f[2], Session: f[3], Raw: raw, MsgType: fixField(raw, "35"), ClOrdID: cl})
+	}
+	MsgLog.mu.Lock()
+	defer MsgLog.mu.Unlock()
+	MsgLog.openLocked()
+	if MsgLog.size > MsgLog.maxBytes {
+		MsgLog.rotateLocked()
+	}
+}
+
+// tailLines returns the complete lines in the last n bytes of a file.
+func tailLines(path string, n int64) []string {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil
+	}
+	off := st.Size() - n
+	if off < 0 {
+		off = 0
+	}
+	buf := make([]byte, st.Size()-off)
+	if _, err := f.ReadAt(buf, off); err != nil && err != io.EOF {
+		return nil
+	}
+	text := string(buf)
+	if off > 0 { // the first line is cut: drop it
+		if i := strings.IndexByte(text, '\n'); i >= 0 {
+			text = text[i+1:]
 		}
 	}
-	if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
-		_ = f.Chmod(0o600)
-		MsgLog.file = f
+	text = strings.TrimRight(text, "\n")
+	if text == "" {
+		return nil
 	}
+	return strings.Split(text, "\n")
+}
+
+// openLocked opens the log file for appending. Caller holds s.mu.
+func (s *msgLogStore) openLocked() {
+	f, err := os.OpenFile(s.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		log.Printf("[FIX] message log %s: %v (messages kept in memory only)", s.path, err)
+		s.file = nil
+		return
+	}
+	_ = f.Chmod(0o600)
+	s.file, s.size = f, 0
+	if st, err := f.Stat(); err == nil {
+		s.size = st.Size()
+	}
+}
+
+// rotateLocked moves the log to path.1 (path.1 to path.2, … keeping s.keep
+// files) and starts a new one. Caller holds s.mu.
+func (s *msgLogStore) rotateLocked() {
+	if s.file != nil {
+		s.file.Close()
+	}
+	if s.keep == 0 {
+		_ = os.Remove(s.path)
+	} else {
+		_ = os.Remove(fmt.Sprintf("%s.%d", s.path, s.keep))
+		for i := s.keep - 1; i >= 1; i-- {
+			_ = os.Rename(fmt.Sprintf("%s.%d", s.path, i), fmt.Sprintf("%s.%d", s.path, i+1))
+		}
+		_ = os.Rename(s.path, s.path+".1")
+	}
+	s.openLocked()
 }
 
 // secretTagRE finds the logon password tags (554 Password, 925 NewPassword) in
@@ -108,16 +202,24 @@ func (s *msgLogStore) add(session, dir string, data []byte) {
 		cl = fixField(raw, "41") // OrigClOrdID on cancel/replace/reject
 	}
 	m := fixMsg{Time: time.Now(), Session: session, Dir: dir, MsgType: mt, ClOrdID: cl, Raw: raw}
+	line := fmt.Sprintf("%s %-3s %-14s %s\n", m.Time.UTC().Format("2006-01-02 15:04:05.000"), dir, session, raw)
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.ring = append(s.ring, m)
 	if len(s.ring) > s.max {
 		s.ring = s.ring[len(s.ring)-s.max:]
 	}
-	f := s.file
-	s.mu.Unlock()
-	if f != nil {
-		fmt.Fprintf(f, "%s %-3s %-14s %s\n", m.Time.UTC().Format("2006-01-02 15:04:05.000"), dir, session, raw)
+	if s.file == nil {
+		return
 	}
+	if s.maxBytes > 0 && s.size+int64(len(line)) > s.maxBytes {
+		s.rotateLocked()
+		if s.file == nil {
+			return
+		}
+	}
+	n, _ := s.file.WriteString(line)
+	s.size += int64(n)
 }
 
 // Recent returns up to limit newest messages, optionally filtered by broker

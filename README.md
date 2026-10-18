@@ -27,7 +27,17 @@ A Go simulator of the Dhaka Stock Exchange (DSE) matching engine, built so an or
   - the audit log
   - console users with roles: `admin` (full access) and `user` (read-only: dashboard, Trade Terminal, broker credentials, message log), managed on the Users page
 
-## Quick start
+## Quick start with Docker (recommended for any PC or server)
+
+You need Docker with the Compose plugin; nothing else.
+
+```bash
+make docker-up        # first time: writes .env (host IP, random secrets), builds, starts engine + PostgreSQL
+```
+
+Sign in at `http://<host IP>:8010/` with **Admin login**, as `ME_ADMIN_USER` / `ME_ADMIN_PASS` from `.env`. To move to another machine: `make docker-backup` there, `make docker-restore FILE=…` and `make docker-up` here. Everything else, including the production checklist, is in [Running with Docker](docs/docker.md).
+
+## Quick start without Docker
 
 You need Go 1.25 or newer.
 
@@ -44,6 +54,7 @@ Start it from the repository root: it finds the FIX dictionaries in `spec/` and 
 2. On the first run the engine writes `me.env` (mode 0600) from [`me.env.example`](me.env.example), with a random admin password and session secret. The log says so; open `me.env` and use `ME_ADMIN_USER` / `ME_ADMIN_PASS` to sign in at <http://localhost:8010/> with **Admin login**. Edit `me.env` to change ports or anything else, then restart.
 3. Your OMS can log on to FIX at `<this PC's IP>:5001` straight away: until the first broker is registered, any CompID is accepted. Register brokers under **Broker Credentials**; from then on every logon must use its CompID and password. The broker sheet fills in this PC's LAN IP and the real ports unless `ME_PUB_IP` and friends are set.
 4. Nothing else is needed: with no `instruments.json` and no `EXCHANGE_INSTRUMENT_URL`, it starts at once on the built-in instrument list.
+5. Optional: `make db` starts a PostgreSQL container and points `me.env` at it, so console accounts and the audit trail are kept in a database instead of files (see [Database](docs/operations.md#database)).
 
 Then:
 
@@ -83,6 +94,7 @@ For a real deployment, see [configuration](docs/configuration.md) and [operation
 | [Configuration](docs/configuration.md) | Every environment variable and data file, directory layout, security notes |
 | [HTTP API](docs/http-api.md) | Every route, request and response, WebSocket and SSE streams, admin API |
 | [Protocols](docs/protocols.md) | FIX acceptor (sessions, tags, execution reports) and ITCH feed (framing, message layouts) |
+| [Running with Docker](docs/docker.md) | Install, update, back up and move the engine with Docker; production checklist |
 | [Operations](docs/operations.md) | Running, nginx front ends, broker onboarding, logs, health checks, troubleshooting |
 | [Development](docs/development.md) | Source layout, build and test, conventions, how to make common changes |
 | [Testing](docs/testing.md) | Test plan: every suite and test case, the manual OMS checklist, last results, known gaps |
