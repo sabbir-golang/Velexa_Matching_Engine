@@ -16,6 +16,8 @@ make check            # vet + race detector + the end-to-end system/UI test: run
 
 Every suite, test case and the manual OMS checklist are in [testing](testing.md).
 
+For live reload while coding, `make dev` runs the engine under [Air](https://github.com/air-verse/air) in Docker (or `make dev-local` on the host): every saved `.go` file rebuilds and restarts it within seconds — see [Running with Docker](docker.md#live-reload-while-developing) and `.air.toml`.
+
 The production image is built from `Dockerfile` (static binary, Alpine runtime, non-root) and run with `docker-compose.yml`; `make docker-test` checks both. The binary also answers `velexa-sim-me version` and `velexa-sim-me healthcheck`, and stops cleanly on SIGTERM. See [Running with Docker](docker.md).
 
 ## Project layout

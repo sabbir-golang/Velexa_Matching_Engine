@@ -46,6 +46,15 @@ const (
 // IOC/FOK never rest; empty TIF is treated as Day for backward compatibility.
 func (t TIF) resting() bool { return t == "" || t == Day || t == GTC || t == GTD }
 
+// OrderInfo is what the broker's order says about whom it is for; the engine
+// does not use it, it is carried for the order report.
+type OrderInfo struct {
+	Account string // BO account (FIX tag 1)
+	Client  string // client code (party ID 448 with role 452=5)
+	Board   string // board / order sub-type (tag 762, e.g. PUBLIC)
+	Trader  string // trader (SenderSubID, tag 50)
+}
+
 type Order struct {
 	ID      uint64
 	Symbol  string
@@ -68,7 +77,8 @@ type Order struct {
 	// cancel / replace confirmations, a triggered stop and expiry. It is called on
 	// the matching goroutine, so it must not block.
 	Notify func(*ExecReport)
-	Ctx    any // opaque to the engine; echoed on every report (the FIX gateway's order context)
+	Ctx    any       // opaque to the engine; echoed on every report (the FIX gateway's order context)
+	Info   OrderInfo // who the order is for, as the broker sent it (for the order report)
 
 	CumQty   int64   // filled so far, over the order's life
 	CumValue float64 // sum of fill qty x price, over the order's life
@@ -161,9 +171,15 @@ type Engine struct {
 	schedule     Schedule                       // the trading-day clock (set by StartClock)
 	tradingDate  string                         // Dhaka date of the current trading day (set when a day starts)
 	lastReplaced *Order                         // the order doReplace worked on, for ReplaceAs (matching goroutine only)
-	journal      *Journal                       // public market events, for the ITCH feed
-	obStore      *obIDStore                     // keeps the ids permanent; nil = position based (tests)
-	Trades       []Trade                        // recent ring (newest last)
+	days         dayStats                       // daily report counters (daystats.go)
+
+	// OnOrderEvent, when set (before Run), sees every report about every order
+	// — first reply, fills, cancel, amend, expiry, trigger — for the order log.
+	// It runs on the matching goroutine and must not block.
+	OnOrderEvent func(*Order, *ExecReport)
+	journal      *Journal   // public market events, for the ITCH feed
+	obStore      *obIDStore // keeps the ids permanent; nil = position based (tests)
+	Trades       []Trade    // recent ring (newest last)
 	Seq          uint64
 	TradeSeq     uint64
 	orderCount   uint64
@@ -467,7 +483,34 @@ func (e *Engine) process(o *Order) {
 	e.triggerStops(o.Symbol)
 }
 
+// observe passes an order's report to the order log, if one is attached.
+func (e *Engine) observe(o *Order, rep *ExecReport) {
+	if e.OnOrderEvent != nil && rep != nil {
+		e.OnOrderEvent(o, rep)
+	}
+}
+
+// RejectUnsubmitted records a new order that was refused before it reached the
+// matching engine (by the FIX gateway or the order API): it is counted in the
+// daily report and appears in the order log as rejected.
+func (e *Engine) RejectUnsubmitted(o *Order, reason string) {
+	e.CountReject(o.Actor, o.Side)
+	e.observe(o, &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side, Status: "REJECTED",
+		Reason: reason, OrderQty: o.OrigQty, Price: o.Price})
+}
+
+// SetMinSeq makes the next order IDs larger than n, so a restart during the
+// day never hands out an OrderID that was already used (call before Run).
+func (e *Engine) SetMinSeq(n uint64) {
+	e.Mu.Lock()
+	if e.Seq < n {
+		e.Seq = n
+	}
+	e.Mu.Unlock()
+}
+
 func (e *Engine) replyTo(o *Order, rep *ExecReport) {
+	e.countReply(o, rep) // every new order gets exactly one first reply
 	if rep != nil && rep.Price == 0 {
 		rep.Price = o.Price // echo limit price so the blotter "Price" column shows it
 	}
@@ -477,6 +520,7 @@ func (e *Engine) replyTo(o *Order, rep *ExecReport) {
 	if rep != nil && rep.Ctx == nil {
 		rep.Ctx = o.Ctx
 	}
+	e.observe(o, rep)
 	if rep != nil && o.Notify != nil {
 		o.Notify(rep)
 	}
@@ -487,7 +531,7 @@ func (e *Engine) replyTo(o *Order, rep *ExecReport) {
 
 // notify sends a follow-up report to the order's owner, if it has one.
 func (e *Engine) notify(o *Order, rep *ExecReport) {
-	if o.Notify == nil || rep == nil {
+	if rep == nil {
 		return
 	}
 	if rep.Ctx == nil {
@@ -499,7 +543,10 @@ func (e *Engine) notify(o *Order, rep *ExecReport) {
 	if rep.Price == 0 {
 		rep.Price = o.Price
 	}
-	o.Notify(rep)
+	e.observe(o, rep) // every order, also those without a Notify (console orders)
+	if o.Notify != nil {
+		o.Notify(rep)
+	}
 }
 
 // avgOf is an order's average fill price.
@@ -621,6 +668,7 @@ func (e *Engine) recordTrade(tr Trade, md *MarketData) {
 	md.Ref = tr.Price
 	md.Volume += tr.Qty
 	md.Trades++
+	e.days.trade("", tr.Qty, tr.Price, true)
 	if tr.Price > md.High {
 		md.High = tr.Price
 	}
@@ -662,7 +710,7 @@ func (e *Engine) consumeFront(lv *PriceLevel, q int64, kind EvKind, tr Trade) {
 
 // reportRestingFill tells a resting order's owner about one fill against it.
 func (e *Engine) reportRestingFill(o *Order, tr Trade, q int64) {
-	if o.Notify == nil {
+	if o.Notify == nil && e.OnOrderEvent == nil {
 		return
 	}
 	leaves := o.Qty + o.Hidden
@@ -796,6 +844,7 @@ func (e *Engine) doCancel(orig, cl, actor string) *ExecReport {
 		rep := &ExecReport{OrderID: o.ID, ClOrdID: cl, OrigClOrdID: orig, Symbol: o.Symbol, Side: o.Side,
 			Status: "CANCELED", FilledQty: o.CumQty, CumValue: o.CumValue, AvgPx: avgOf(o), LeavesQty: 0,
 			OrderQty: o.OrigQty, Price: o.Price, Event: "CANCEL", Ctx: o.Ctx}
+		e.days.order(o.Actor, func(c *DayCounters) { c.Cancelled++ })
 		e.notify(o, rep)
 		return rep
 	}
@@ -803,6 +852,7 @@ func (e *Engine) doCancel(orig, cl, actor string) *ExecReport {
 		e.removeStop(s)
 		rep := &ExecReport{OrderID: s.ID, ClOrdID: cl, OrigClOrdID: orig, Symbol: s.Symbol, Side: s.Side,
 			Status: "CANCELED", OrderQty: s.OrigQty, Price: s.Price, Event: "CANCEL", Ctx: s.Ctx}
+		e.days.order(s.Actor, func(c *DayCounters) { c.Cancelled++ })
 		e.notify(s, rep)
 		return rep
 	}
@@ -882,6 +932,7 @@ func (e *Engine) doReplace(orig, newCl, actor string, newQty int64, newPx float6
 			Status: "REJECT_CXL", Reason: reason, Ctx: o.Ctx}
 	}
 	e.lastReplaced = o
+	e.days.order(o.Actor, func(c *DayCounters) { c.Amended++ })
 	filled := o.CumQty
 	e.Book(o.Symbol).remove(o)
 	e.forget(o)
@@ -1072,6 +1123,7 @@ func (e *Engine) sweepExpired() {
 
 // expired tells an order's owner that it expired unexecuted (in full or in part).
 func (e *Engine) expired(o *Order) {
+	e.days.order(o.Actor, func(c *DayCounters) { c.Expired++ })
 	e.notify(o, &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, OrigClOrdID: o.ClOrdID, Symbol: o.Symbol,
 		Side: o.Side, Status: "EXPIRED", FilledQty: o.CumQty, CumValue: o.CumValue, AvgPx: avgOf(o),
 		LeavesQty: 0, OrderQty: o.OrigQty, Price: o.Price, Event: "EXPIRE"})
@@ -1211,6 +1263,7 @@ func (e *Engine) statOf(actor string) *ActorStats {
 }
 
 func (e *Engine) statTrade(actor string, q int64, px float64) {
+	e.days.trade(actor, q, px, false)
 	st := e.statOf(actor)
 	st.Trades++
 	st.Volume += q

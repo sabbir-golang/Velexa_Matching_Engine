@@ -104,8 +104,9 @@ Open `http://<host>:8010/admin` (or the proxied URL) and sign in with `ME_ADMIN_
 
 | View | What you can do |
 |---|---|
-| Dashboard | Engine phase, counters, uptime, whether FIX/ITCH auth is on, listener checks, instrument universe source. Refreshes every 3 s. |
+| Dashboard | Engine phase, counters, uptime, whether FIX/ITCH auth is on, listener checks, instrument universe source. Refreshes every 3 s. **Daily report**: orders received (buy/sell), accepted, rejected (with the reject rate), cancelled, amended, expired, trades executed, volume and turnover for any date — today's live, earlier days from the saved history — with Download CSV and Print. Admins see the whole exchange, users only their own brokers. |
 | Trade Terminal | The `/terminal` trade page embedded: market watch, order book, tape and manual order entry. |
+| Order Report | Every order of a day — time, broker, OrderID, client, symbol, side, type, quantity, price, filled, status, board; click a row for the BO account, ClOrdID, trader, validity, average price and reject reason. Filter by broker, symbol, side, status or an ID; download **Excel** (IDs kept as text) or **CSV**. Admins see every broker, users only their own. |
 | FIX Sessions | Connected brokers with logon time and sequence numbers. Force a disconnect or reset sequence numbers. |
 | Market Session | The session phase and the DSE clock. Force Pre-Open, Open, Close, Post-Close or End of day (switches the clock to manual), or switch back to the schedule. |
 | Broker Credentials | Issue, view and revoke broker FIX and ITCH credentials, and print onboarding sheets. |

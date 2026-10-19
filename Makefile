@@ -5,7 +5,7 @@ BIN := bin/velexa-sim-me
 PKG := .
 
 .PHONY: build run test test-db race cover bench e2e check vet fmt conformance report clean db db-psql db-backup \
-	docker-setup docker-up docker-down docker-logs docker-ps docker-backup docker-restore docker-test
+	docker-setup docker-up docker-down docker-logs docker-ps docker-backup docker-restore docker-test dev dev-local
 
 build:            ## compile the engine to bin/velexa-sim-me
 	go build -o $(BIN) $(PKG)
@@ -30,6 +30,12 @@ db-backup:        ## dump the engine's database to backups/
 
 docker-setup:     ## write .env for docker compose (host IP, random secrets, data-folder owner)
 	tools/docker-setup.sh
+
+dev:              ## live reload in Docker: Air rebuilds and restarts the engine on every saved .go file
+	tools/docker-dev.sh
+
+dev-local:        ## live reload on this machine with Air (go install github.com/air-verse/air@v1.67.4)
+	air -c .air.toml
 
 docker-up:        ## build and start engine + PostgreSQL in Docker (runs docker-setup the first time)
 	tools/docker-up.sh

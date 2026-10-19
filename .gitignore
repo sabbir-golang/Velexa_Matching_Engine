@@ -36,3 +36,6 @@ users.json
 .docker-e2e.*
 # docker compose settings (secrets)
 .env
+
+# Air live-reload build output and Go caches (make dev)
+/tmp/

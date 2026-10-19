@@ -17,6 +17,9 @@ import (
 // wantRoutes is every URL the engine served before the handlers were reorganised
 // into internal/rest. A route that is dropped or renamed fails here.
 var wantRoutes = []string{
+	"/admin/api/report/daily",
+	"/admin/api/report/orders",
+	"/admin/report/daily",
 	"/",
 	"/terminal",
 	"/register",
@@ -67,9 +70,15 @@ var wantRoutes = []string{
 	"/marketdepth",
 }
 
-func testServer(t *testing.T) *Server {
+func testServer(t *testing.T) *Server { return testServerWith(t, nil) }
+
+// testServerWith lets a test prepare the engine (attach an order log, …) before it starts.
+func testServerWith(t *testing.T, prepare func(*engine.Engine)) *Server {
 	t.Helper()
 	eng := engine.NewEngine([]engine.Instrument{{Symbol: "GP", Name: "Grameenphone", Prev: 331.20}}, engine.NewBus())
+	if prepare != nil {
+		prepare(eng)
+	}
 	go eng.Run()
 	return NewServer(&deps.Deps{Eng: eng, Bus: engine.NewBus(), Itch: itchgw.NewGateway(eng),
 		Users: users.Load(filepath.Join(t.TempDir(), "users.json"), adminName, adminPW)})

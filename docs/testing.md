@@ -178,6 +178,24 @@ Other FIX tests: logon passwords never reach the message log (`TestLogonPassword
 | BRK-U1 | A broker credential cannot be saved (read-only folder) | Error reported, change undone; the engine refuses to start on a folder it cannot write | PASS (`TestSaveFailuresAreReported`) |
 | FIX-U1 | FIX message log size | Rotated at `ME_FIX_MSGLOG_MAX_MB`, `ME_FIX_MSGLOG_KEEP` files kept, only the tail read at start-up | PASS (`TestMessageLogRotatesAndReadsOnlyItsTail`) |
 
+### Daily report
+
+| ID | Case | Expected | Automated by | Status |
+|---|---|---|---|---|
+| REP-U1 | A scripted day: accepted, duplicate and band rejects, a trade, an amend, a refused amend, a cancel, a gateway reject, end-of-day expiry | Exact counts per broker and for the exchange; a refused amend is not counted; a trade counts once for the exchange and once per side | `TestDailyReportCounts` | PASS |
+| REP-U2 | Midnight (Dhaka) and a restart | Counts move to the new day; today's saved figures are carried on after a restart | `TestDailyReportRollsOverAndSeeds` | PASS |
+| REP-U3 | Storage (file and PostgreSQL) | Save replaces a day, past days load, `Days` lists newest first; a failed save is retried | `TestFileStore`, `TestPGStore`, `TestSaverRetries` | PASS |
+| REP-U4 | Report API | Exchange totals for an admin, own brokers for a user; CSV and printable page; past days from history; "no activity" for an empty date; bad and future dates refused | `TestDailyReport` | PASS |
+
+### Order report
+
+| ID | Case | Expected | Automated by | Status |
+|---|---|---|---|---|
+| ORD-U1 | An order's life: rests, partly fills, fills, is cancelled, amended, refused by the gateway, refused for the band; a Trade Terminal order | One row each with the right status, filled, average price, client, BO account, board, trader, newest ClOrdID and reject reason | `TestOrderLogFile`, `TestOrderLogPostgres` | PASS |
+| ORD-U2 | Restart during the day | Today's rows come back; order numbers continue after the highest used (no OrderID handed out twice) | same | PASS |
+| ORD-U3 | Report API | Every order for an admin, own brokers for a user; filters by status, side, broker, symbol, text; CSV header and lines; .xlsx is a valid workbook with IDs as text | `TestOrderReport` | PASS |
+| ORD-M1 | OMS-style FIX orders (448/452=5 client, tag 1 BO account, 762 board, 50 trader) → Excel opened in LibreOffice | Client `00018` and 20-digit ClOrdIDs / 16-digit BO accounts shown in full | manual run, 19 Oct 2026 | PASS |
+
 ## Manual checks with the OMS
 
 Run these after `make check` passes and before a release, with the real OMS (broker terminal + `fix_initiator_go`) pointed at a test engine, never at production.

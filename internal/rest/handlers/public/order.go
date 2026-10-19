@@ -29,24 +29,30 @@ func (h *Handler) Order(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Symbol = strings.ToUpper(strings.TrimSpace(req.Symbol))
-	if req.Qty <= 0 {
-		http.Error(w, fmt.Sprintf("invalid quantity %d: must be greater than zero", req.Qty), 400)
-		return
-	}
-	if !eng.Listed(req.Symbol) && !eng.AutoList(req.Symbol, req.Price) {
-		http.Error(w, fmt.Sprintf("unknown symbol %s: not in this engine's instrument universe (%s)",
-			req.Symbol, engine.UniverseSource()), 400)
-		return
-	}
 	side := engine.Buy
 	if req.Side == "SELL" || req.Side == "sell" {
 		side = engine.Sell
+	}
+	actor := "USER:" + middleware.Username(r)
+	reject := func(reason string) {
+		o := eng.NewOrder(req.Symbol, side, engine.Limit, req.Price, req.Qty, actor)
+		o.ClOrdID = req.ClOrdID
+		eng.RejectUnsubmitted(o, reason) // counted, and listed in the order report
+		http.Error(w, reason, 400)
+	}
+	if req.Qty <= 0 {
+		reject(fmt.Sprintf("invalid quantity %d: must be greater than zero", req.Qty))
+		return
+	}
+	if !eng.Listed(req.Symbol) && !eng.AutoList(req.Symbol, req.Price) {
+		reject(fmt.Sprintf("unknown symbol %s: not in this engine's instrument universe (%s)", req.Symbol, engine.UniverseSource()))
+		return
 	}
 	typ := engine.Limit
 	if req.Type == "MARKET" || req.Type == "market" || req.Price <= 0 {
 		typ = engine.Market
 	}
-	o := eng.NewOrder(req.Symbol, side, typ, req.Price, req.Qty, "USER:"+middleware.Username(r))
+	o := eng.NewOrder(req.Symbol, side, typ, req.Price, req.Qty, actor)
 	o.ClOrdID = req.ClOrdID
 	rep := eng.SubmitAndWait(o)
 	utils.WriteJSON(w, rep)

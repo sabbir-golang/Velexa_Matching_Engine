@@ -154,6 +154,19 @@ input.f::placeholder{text-transform:none}
 .cls-row{display:flex;align-items:center;gap:10px;padding:11px 16px;border-top:1px solid var(--line);font-size:13px}
 .cls-row:first-child{border-top:0}.cls-row .d{width:7px;height:7px;border-radius:50%;flex:none}.cls-row .c{margin-left:auto;color:var(--mut);font-size:11.5px;font-family:"IBM Plex Mono",monospace}
 .kpi .sub{margin-top:9px;font-size:11.5px;color:var(--mut)}.kpi .sub .pill{padding:2px 9px;font-size:11px}
+.orsum{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 10px;font-size:12.5px;color:var(--mut)}.orsum b{color:var(--ink);font-family:"IBM Plex Mono",monospace}
+.ortbl td{white-space:nowrap;font-size:12.5px}.ortbl tbody tr.r{cursor:pointer}.ortbl tbody tr.r:hover td{background:var(--panel2)}
+.ortbl td.mono{font-family:"IBM Plex Mono",monospace;font-size:12px}
+.ortbl tr.det td{background:var(--panel2);white-space:normal;font-size:12px;color:var(--mut)}.ortbl tr.det b{color:var(--ink);font-weight:600}
+.st{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;font-weight:600;background:var(--panel2);color:var(--mut)}
+.st.Filled{background:rgba(22,163,74,.14);color:var(--grn)}.st.Partial{background:rgba(37,99,235,.13);color:var(--blue)}
+.st.Rejected{background:rgba(220,38,38,.13);color:var(--red)}.st.Cancelled,.st.Expired{background:rgba(183,121,31,.15);color:var(--amber)}
+.sd-Buy{color:var(--grn);font-weight:600}.sd-Sell{color:var(--red);font-weight:600}
+.repbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.repbar input.f{width:auto;max-width:170px;padding:6px 10px;color-scheme:dark}
+[data-theme="light"] .repbar input.f{color-scheme:light}
+.kpis.rep .kpi{padding:14px 16px}.kpis.rep .kpi .v{font-size:21px}
+.kpi.red::after{background:var(--red)}
 .mcard .modal-ico{width:38px;height:38px;border-radius:11px;background:rgba(77,208,177,.14);color:var(--acc);display:flex;align-items:center;justify-content:center;flex:none}
 .mcard .modal-ico svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2}
 .mcard .mft{display:flex;justify-content:flex-end;gap:9px;margin-top:6px}
@@ -198,6 +211,7 @@ body.role-user [data-admin-only]{display:none!important}
    <div class="navitem on" data-v="dash"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</div>
    <div class="navgrp">Trading</div>
    <div class="navitem" data-v="trade"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l3-4 3 2 4-6"/></svg>Trade Terminal</div>
+   <div class="navitem" data-v="orders"><svg viewBox="0 0 24 24"><path d="M9 4h10v16H5V8z"/><path d="M9 4v4H5"/><path d="M9 12h6M9 16h6"/></svg>Order Report</div>
    <div class="navitem" data-v="sessions"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>FIX Sessions<span class="badge" id="navSess"></span></div>
    <div class="navitem" data-v="market" data-admin-only><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Market Session</div>
    <div class="navitem" data-v="instruments" data-admin-only><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>Instruments</div>
@@ -230,6 +244,15 @@ body.role-user [data-admin-only]{display:none!important}
 
    <section class="view on" id="view-dash">
     <div class="kpis" id="kpis"></div>
+    <h2>Daily report <span class="muted" id="rep_note" style="font-weight:500;font-size:12px"></span></h2>
+    <div class="repbar">
+     <input type="date" class="f" id="rep_date" onchange="loadReport()" aria-label="Report date">
+     <button class="btn sm ghost" onclick="repToday()">Today</button>
+     <span style="flex:1"></span>
+     <button class="btn sm" onclick="repCSV()">Download CSV</button>
+     <button class="btn sm" onclick="repPrint()">Print</button>
+    </div>
+    <div class="kpis rep" id="report"></div>
     <h2>Listeners</h2>
     <div class="panel"><table><tbody id="listeners"></tbody></table></div>
     <h2>Recent activity</h2>
@@ -384,6 +407,27 @@ body.role-user [data-admin-only]{display:none!important}
     <div class="panel"><table><thead><tr><th>Username</th><th>Name &amp; contact</th><th>Role</th><th>Status</th><th>Last login</th><th class="right">Actions</th></tr></thead><tbody id="userList"></tbody></table></div>
    </section>
 
+   <section class="view" id="view-orders">
+    <div class="simbar">
+     <div class="row" style="flex-wrap:wrap">
+      <input type="date" class="f" id="or_date" style="max-width:165px" onchange="loadOrders()" aria-label="Date">
+      <select class="f" id="or_broker" style="max-width:230px" onchange="loadOrders()" aria-label="Broker"><option value="">All brokers</option></select>
+      <input class="f" id="or_symbol" placeholder="Symbol" style="max-width:120px" onkeydown="if(event.key=='Enter')loadOrders()">
+      <select class="f" id="or_side" style="max-width:120px" onchange="loadOrders()" aria-label="Side"><option value="">Buy &amp; sell</option><option value="buy">Buy</option><option value="sell">Sell</option></select>
+      <select class="f" id="or_status" style="max-width:140px" onchange="loadOrders()" aria-label="Status"><option value="">All statuses</option><option>New</option><option>Partial</option><option>Filled</option><option>Cancelled</option><option>Rejected</option><option>Expired</option><option>Pending</option></select>
+      <input class="f" id="or_q" placeholder="OrderID, ClOrdID, client or BO" style="max-width:230px" onkeydown="if(event.key=='Enter')loadOrders()">
+      <button class="btn sm acc" onclick="loadOrders()">Search</button>
+      <button class="btn sm ghost" onclick="orClear()">Clear</button>
+      <span style="flex:1"></span>
+      <button class="btn sm" onclick="orExport('xlsx')">Excel</button>
+      <button class="btn sm" onclick="orExport('csv')">CSV</button>
+     </div>
+    </div>
+    <div class="orsum" id="or_sum"></div>
+    <div class="panel" style="overflow-x:auto"><table class="ortbl"><thead><tr><th>Time</th><th>Broker</th><th>OrderID</th><th>Client</th><th>Symbol</th><th>Side</th><th>Type</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Filled</th><th>Status</th><th>Board</th></tr></thead><tbody id="orders"></tbody></table></div>
+    <p class="note" style="margin-top:12px">Every order of the day with its latest state; click a row for the BO account, ClOrdID, trader, validity, average price and reject reason. Excel keeps OrderID, client and BO account as text. Newest first; the page shows up to 2,000 orders, the downloads all of them.</p>
+   </section>
+
    <section class="view" id="view-msglog">
     <div class="simbar">
      <div class="row">
@@ -422,7 +466,7 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"'\x60]/g,function(c){r
 // jsa makes a value safe as a JavaScript string argument inside an HTML attribute: onclick="f("+jsa(x)+")".
 function jsa(s){return esc(JSON.stringify(String(s==null?"":s)))}
 function j(p,o){return fetch("/admin/api/"+p,o).then(function(r){return r.json()})}
-var titles={dash:["Dashboard","Live engine status"],trade:["Trade Terminal","Live order book, trade tape &amp; order entry"],sessions:["FIX Sessions","Connected brokers &amp; controls"],market:["Market Session","Trading phase &amp; the DSE clock"],creds:["Broker Credentials","Issue &amp; manage FIX/ITCH access"],instruments:["Instruments","List &amp; manage tradeable securities (DSE board, tick, previous close)"],access:["External OMS Access","Source-IP allowlist for the plain-FIX gateway"],msglog:["Message Log","FIX message trace — every order in &amp; out"],users:["Users","Console accounts &amp; roles"],diag:["Diagnostics","Auth state &amp; event log"]};
+var titles={dash:["Dashboard","Live engine status"],trade:["Trade Terminal","Live order book, trade tape &amp; order entry"],sessions:["FIX Sessions","Connected brokers &amp; controls"],market:["Market Session","Trading phase &amp; the DSE clock"],creds:["Broker Credentials","Issue &amp; manage FIX/ITCH access"],instruments:["Instruments","List &amp; manage tradeable securities (DSE board, tick, previous close)"],access:["External OMS Access","Source-IP allowlist for the plain-FIX gateway"],orders:["Order Report","Every order of the day — client, status and fills, with Excel / CSV download"],msglog:["Message Log","FIX message trace — every order in &amp; out"],users:["Users","Console accounts &amp; roles"],diag:["Diagnostics","Auth state &amp; event log"]};
 function show(v){
  document.querySelectorAll(".navitem").forEach(function(n){n.classList.toggle("on",n.dataset.v==v)});
  document.querySelectorAll(".view").forEach(function(s){s.classList.remove("on")});
@@ -432,6 +476,7 @@ function show(v){
  if(v=="trade"){var t=document.getElementById("tradeIframe");if(!t.getAttribute("src"))t.src="/?embed=1"}
  if(v=="users"){loadUsers()}
  if(v=="msglog"){loadMsgLog()}
+ if(v=="orders"){loadOrders()}
  if(v=="access"){loadAllow()}
  if(v=="instruments"){loadInstr()}
 }
@@ -459,6 +504,56 @@ function flt(id){var e=document.getElementById(id);return e?e.value.trim().toLow
 function hit(txt,f){return !f||String(txt).toLowerCase().indexOf(f)>=0}
 function setc(id,t){var e=document.getElementById(id);if(e)e.textContent=t}
 var _s=null,_b=null;
+// Daily report: today's figures are live, other dates come from the saved history.
+var REP=[["orders","Orders received",""],["buy_orders","Buy orders","blue"],["sell_orders","Sell orders","blue"],
+ ["accepted","Accepted","grn"],["rejected","Rejected","red"],["cancelled","Cancelled","amber"],["amended","Amended","amber"],
+ ["expired","Expired","amber"],["trades","Trades executed","grn"],["volume","Volume (shares)",""],["turnover","Turnover (Tk)",""]];
+function repDate(){return document.getElementById("rep_date").value||""}
+function repQ(){var d=repDate();return d?"date="+encodeURIComponent(d):""}
+function repToday(){document.getElementById("rep_date").value="";loadReport()}
+function repCSV(){window.location.href="/admin/api/report/daily?format=csv&"+repQ()}
+function repPrint(){window.open("/admin/report/daily?"+repQ(),"_blank")}
+function loadReport(){j("report/daily?"+repQ()).then(function(r){
+ var box=document.getElementById("report");
+ if(!r.ok){box.innerHTML="<div class='panel pad16 muted'>"+esc(r.error||"No report for this date")+"</div>";window._repLive=false;return}
+ var el=document.getElementById("rep_date");
+ if(r.today){el.max=r.date;if(!el.value)el.value=r.date}
+ window._repLive=!!r.live;
+ var t=r.totals||{};
+ document.getElementById("rep_note").textContent="· "+r.date+" · "+(r.scope=="exchange"?"whole exchange":"your brokers")+(r.live?" · live":" · final");
+ if(!r.has_data){box.innerHTML="<div class='panel pad16 muted' style='grid-column:1/-1'>No trading activity was recorded on "+esc(r.date)+".</div>";return}
+ box.innerHTML=REP.map(function(m){var v=t[m[0]]||0;
+  var txt=m[0]=="turnover"?Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):Number(v).toLocaleString();
+  var sub=m[0]=="rejected"&&t.orders?"<div class=sub>"+esc(t.reject_rate)+"% of orders</div>":(m[0]=="trades"&&t.trades?"<div class=sub>avg "+esc(t.avg_trade_size)+" shares @ "+esc(t.avg_price)+"</div>":"");
+  return "<div class='kpi "+m[2]+"'><div class=v>"+esc(txt)+"</div><div class=l>"+esc(m[1])+"</div>"+sub+"</div>"}).join("");
+})}
+// Order report: one row per order; filters are sent to the server, downloads get every match.
+function orQuery(){var g=function(i){return document.getElementById(i).value.trim()};
+ var p=[["date",g("or_date")],["broker",g("or_broker")],["symbol",g("or_symbol")],["side",g("or_side")],["status",g("or_status")],["q",g("or_q")]];
+ return p.filter(function(x){return x[1]}).map(function(x){return x[0]+"="+encodeURIComponent(x[1])}).join("&")}
+function orClear(){["or_symbol","or_q"].forEach(function(i){document.getElementById(i).value=""});["or_broker","or_side","or_status"].forEach(function(i){document.getElementById(i).value=""});loadOrders()}
+function orExport(f){window.location.href="/admin/api/report/orders?format="+f+"&"+orQuery()}
+var _orRows=[];
+function fmtN(v,d){return Number(v||0).toLocaleString(undefined,d?{minimumFractionDigits:d,maximumFractionDigits:d}:{})}
+function loadOrders(){j("report/orders?"+orQuery()).then(function(r){
+ var tb=document.getElementById("orders"),sum=document.getElementById("or_sum");
+ if(!r.ok){tb.innerHTML="<tr><td colspan=12 class='pad16 muted'>"+esc(r.error||"Not available")+"</td></tr>";sum.innerHTML="";window._orLive=false;return}
+ var de=document.getElementById("or_date");if(r.today){de.max=r.date;if(!de.value)de.value=r.date}
+ window._orLive=!!r.today;
+ var bs=document.getElementById("or_broker"),cur=bs.value;
+ bs.innerHTML="<option value=''>All brokers</option>"+(r.brokers||[]).map(function(b){return "<option value='"+esc(b.id)+"'>"+esc(b.label)+"</option>"}).join("");bs.value=cur;
+ var st=r.by_status||{};
+ sum.innerHTML="<span><b>"+fmtN(r.total)+"</b> orders"+(r.shown<r.total?" (newest "+fmtN(r.shown)+" shown)":"")+"</span>"+
+  ["Filled","Partial","New","Cancelled","Rejected","Expired"].filter(function(k){return st[k]}).map(function(k){return "<span>"+k+" <b>"+fmtN(st[k])+"</b></span>"}).join("")+
+  "<span>Filled qty <b>"+fmtN(r.filled_qty)+"</b></span><span>Turnover <b>"+fmtN(r.turnover,2)+"</b></span>";
+ _orRows=r.rows||[];
+ tb.innerHTML=_orRows.map(function(x,i){return "<tr class=r data-i='"+i+"'><td class=mono>"+esc(x.time)+"</td><td>"+esc(x.broker)+"</td><td class=mono>"+esc(x.order_id||"—")+"</td><td class=mono>"+esc(x.client||"—")+"</td><td><b>"+esc(x.symbol)+"</b></td><td class='sd-"+esc(x.side)+"'>"+esc(x.side)+"</td><td>"+esc(x.type)+"</td><td class='right mono'>"+fmtN(x.qty)+"</td><td class='right mono'>"+fmtN(x.price,2)+"</td><td class='right mono'>"+fmtN(x.filled)+"</td><td><span class='st "+esc(x.status)+"'>"+esc(x.status)+"</span></td><td>"+esc(x.board||"—")+"</td></tr>"}).join("")||"<tr><td colspan=12 class='pad16 muted'>No orders"+(orQuery().indexOf("=")>0&&orQuery()!="date="+encodeURIComponent(r.date)?" match these filters":" on "+esc(r.date))+".</td></tr>";
+})}
+document.addEventListener("click",function(ev){var tr=ev.target.closest&&ev.target.closest("#orders tr.r");if(!tr)return;
+ var nx=tr.nextElementSibling;if(nx&&nx.classList.contains("det")){nx.remove();return}
+ var x=_orRows[+tr.dataset.i];if(!x)return;var d=document.createElement("tr");d.className="det";
+ d.innerHTML="<td colspan=12>BO account <b>"+esc(x.account||"—")+"</b> · ClOrdID <b>"+esc(x.cl_ord_id||"—")+"</b> · Trader <b>"+esc(x.trader||"—")+"</b> · Validity <b>"+esc(x.tif||"—")+"</b> · Avg price <b>"+(x.filled?fmtN(x.avg_px,2):"—")+"</b> · Broker ID <b>"+esc(x.broker_id)+"</b>"+(x.reason?" · Reason <b>"+esc(x.reason)+"</b>":"")+"</td>";
+ tr.after(d)});
 function refresh(){j("status").then(function(d){_s=d;renderStatus(d)})}
 function renderStatus(d){
   if(!d)return;
@@ -685,4 +780,6 @@ function delUser(u){if(!confirm("Delete user "+u+"?"))return;jpost("user/delete"
 function changeMyPassword(){var o=prompt("Current password:");if(!o)return;var n=prompt("New password (min 8 characters):");if(!n)return;
  jpost("me/password",{Old:o,New:n}).then(function(x){if(!x.ok)toast(x.error||"Failed",true);else toast("Password changed")})}
 loadMe();refresh();loadBrokers();setInterval(refresh,3000);
+loadReport();setInterval(function(){if(window._repLive&&document.getElementById("view-dash").classList.contains("on"))loadReport()},5000);
+setInterval(function(){if(window._orLive&&document.getElementById("view-orders").classList.contains("on")&&!document.querySelector("#orders tr.det"))loadOrders()},5000);
 </script></body></html>`

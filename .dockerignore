@@ -19,6 +19,7 @@ me.env
 *.bak.*
 instruments.json
 tools/__pycache__
+tmp
 .docker-e2e.*
 Dockerfile
 docker-compose*.yml

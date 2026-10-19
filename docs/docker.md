@@ -31,7 +31,8 @@ If accounts were kept in the stand-alone `velexa_me_pg` container (`make db`), t
 
 | Command | Does |
 |---|---|
-| `make docker-up` | Build and start, or update after a `git pull` (rebuilds and restarts the engine) |
+| `make docker-up` | Build and start, or update after a `git pull` (rebuilds and restarts the engine). Also switches back from `make dev` to the production image |
+| `make dev` | Live reload: the engine runs under Air on the project folder; a saved `.go` file is rebuilt and the engine restarts in seconds (see below) |
 | `make docker-ps` | Status and health of both containers |
 | `make docker-logs` | Follow the engine log |
 | `make docker-down` | Stop both containers. Data and database are kept |
@@ -40,6 +41,25 @@ If accounts were kept in the stand-alone `velexa_me_pg` container (`make db`), t
 | `docker compose exec db psql -U velexa_me -d velexa_me` | SQL shell on the database |
 
 Both containers restart by themselves after a crash or a reboot (`restart: unless-stopped`).
+
+## Live reload while developing
+
+```bash
+make dev        # engine under Air in Docker; follows its log (Ctrl+C stops following, the stack keeps running)
+make docker-up  # back to the production image
+```
+
+`make dev` replaces the engine container with a development one (`Dockerfile.dev`, `docker-compose.dev.yml`):
+
+- It runs [Air](https://github.com/air-verse/air) on the mounted project folder.
+- It keeps the same ports, `.env`, data folder and database, so the console, FIX and ITCH work as usual.
+- Saving a `.go` file (or a FIX dictionary in `spec/`) rebuilds the engine. The running engine is stopped cleanly (brokers get a FIX Logout, data is saved), and the new one is serving about 2 seconds later. A broker's OMS has to log on again after each restart.
+- A change that doesn't compile is shown in the log, and the running engine keeps going.
+- The build output and Go caches live in `tmp/` (git-ignored, owned by you).
+
+The rules are in `.air.toml`. To run Air directly on this machine instead (with `me.env` and `./data`, no Docker), install it with `go install github.com/air-verse/air@v1.67.4` and run `make dev-local`. Stop the Docker engine first, because both use the same ports.
+
+Use the production image (`make docker-up`) for anything that isn't development: it is smaller, read-only, and doesn't need the source.
 
 ## Moving to another PC or server
 

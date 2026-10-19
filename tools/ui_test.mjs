@@ -17,7 +17,7 @@ const ADMIN_PASS = process.env.ADMIN_PASS;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const prof = mkdtempSync(join(tmpdir(), "cdp-"));
-const chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", "--no-first-run", "--remote-debugging-port=9333",
+const chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", "--no-first-run","--remote-allow-origins=*", "--remote-debugging-port=9333",
   `--user-data-dir=${prof}`, "--window-size=1400,900", "about:blank"], { stdio: "ignore" });
 
 let ws, id = 0;
@@ -32,7 +32,11 @@ async function connect() {
     } catch {}
     await sleep(200);
   }
-  await new Promise((r) => ws.addEventListener("open", r));
+  await new Promise((r, j) => { // fail fast instead of waiting forever if Chrome refuses the connection
+    ws.addEventListener("open", r);
+    ws.addEventListener("error", () => j(new Error("Chrome refused the DevTools connection")));
+    setTimeout(() => j(new Error("Chrome DevTools connection timed out")), 10000);
+  });
   ws.addEventListener("message", (ev) => {
     const m = JSON.parse(ev.data);
     if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); return; }

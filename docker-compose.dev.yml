@@ -1,0 +1,35 @@
+# Live-reload development on top of docker-compose.yml: the engine container
+# runs Air on the mounted project folder, so a saved .go file is rebuilt and the
+# engine restarts within seconds. Same ports, database, data folder and .env.
+#   make dev        (make docker-up goes back to the production image)
+services:
+  engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: velexa-sim-me-dev
+    working_dir: /src
+    volumes:
+      - .:/src
+    environment:
+      # What the production image sets in its Dockerfile.
+      ME_STATE_DIR: /data
+      ME_ENV_FILE: /data/me.env
+      ME_ENV_GENERATE: "off"
+      ME_FIX_SPEC_DIR: /src/spec
+      ME_INSTRUMENT_FILE: /data/instruments.json
+      ME_IN_CONTAINER: "1"
+      TZ: Asia/Dhaka
+      # Go caches inside the mounted folder (tmp/, git-ignored), owned by DOCKER_UID.
+      HOME: /src/tmp/home
+      GOCACHE: /src/tmp/gocache
+      GOMODCACHE: /src/tmp/gomod
+      GOFLAGS: -buildvcs=false
+    read_only: false
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8010/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 180s   # the first build downloads modules and compiles everything
+      retries: 3
+    stop_grace_period: 25s

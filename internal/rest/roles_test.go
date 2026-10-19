@@ -33,7 +33,8 @@ var viewerRoutes = map[string]bool{
 	"/admin": true, "/admin/api/status": true, "/admin/api/me": true, "/admin/api/me/password": true,
 	"/admin/api/brokers": true, "/admin/api/fixlog": true,
 	"/admin/api/broker/detail": true, "/admin/api/broker/add": true, "/admin/api/broker/del": true, "/admin/api/broker/sheet": true,
-	"/admin/api/session": true, // a user's own brokers only (checked per broker)
+	"/admin/api/session":      true,                                                                // a user's own brokers only (checked per broker)
+	"/admin/api/report/daily": true, "/admin/report/daily": true, "/admin/api/report/orders": true, // a user: own brokers only
 }
 
 func isConsoleRoute(p string) bool {

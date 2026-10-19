@@ -1,0 +1,27 @@
+# Live reload with Air (https://github.com/air-verse/air): saving a .go file
+# rebuilds the engine and restarts it.
+#   make dev         in Docker, with the compose database (recommended)
+#   make dev-local   on this machine (needs: go install github.com/air-verse/air@v1.67.4)
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/velexa-sim-me ."
+  entrypoint = ["./tmp/velexa-sim-me"]
+  include_ext = ["go", "xml"]                # Go code (pages are Go strings) and the FIX dictionaries
+  exclude_dir = ["tmp", "data", "backups", "bin", "logs", "docs", "deploy", "tools", ".git", ".claude"]
+  exclude_regex = ["_test\\.go$", "^\\.docker-e2e", "^\\.smoke"]
+  delay = 500                                # ms to wait after a change, so a save of many files builds once
+  stop_on_error = true                       # a failed build keeps the running engine
+  send_interrupt = true                      # stop with SIGINT: the engine logs brokers out and saves its data
+  kill_delay = "15s"                         # then wait for the clean stop before killing
+  rerun = false
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = false

@@ -67,6 +67,23 @@ func partiesTemplate() quickfix.GroupTemplate {
 	return quickfix.GroupTemplate{quickfix.GroupElement(tPartyID), quickfix.GroupElement(tPartyIDSource), quickfix.GroupElement(tPartyRole)}
 }
 
+// info is what the order says about whom it is for, for the order report: the
+// BO account (1), the client (448 with role 452=5, else the first party), the
+// board (762) and the trader (50).
+func (c *orderCtx) info() engine.OrderInfo {
+	client := ""
+	for _, p := range c.parties {
+		if p.role == "5" {
+			client = p.id
+			break
+		}
+	}
+	if client == "" && len(c.parties) > 0 {
+		client = c.parties[0].id
+	}
+	return engine.OrderInfo{Account: c.account, Client: client, Board: c.subType, Trader: c.senderSub}
+}
+
 // newOrderCtx reads the fields of an order message that the reports echo.
 func newOrderCtx(m *quickfix.Message, sid quickfix.SessionID) *orderCtx {
 	get := func(t quickfix.Tag) string { v, _ := m.Body.GetString(t); return v }

@@ -398,6 +398,9 @@ func (fa *Acceptor) handleNewOrder(m *quickfix.Message, sid quickfix.SessionID) 
 		reason = fa.marketPriceRule(symbol, px)
 	}
 	if reason != "" {
+		rej := fa.eng.NewOrder(symbol, side, typ, px, int64(qty), "FIX:"+sid.TargetCompID)
+		rej.ClOrdID, rej.Info, rej.TIF = clOrdID, ctx.info(), mapTIF(fa.getStr(m, tTimeInForce))
+		fa.eng.RejectUnsubmitted(rej, reason)
 		fa.deliver(&engine.ExecReport{ClOrdID: clOrdID, Symbol: symbol, Side: side,
 			Status: "REJECTED", Reason: reason, OrderQty: int64(qty), Price: px, Ctx: ctx})
 		return
@@ -410,10 +413,12 @@ func (fa *Acceptor) handleNewOrder(m *quickfix.Message, sid quickfix.SessionID) 
 	o.StopPx = stopPx
 	o.Display = int64(display)
 	o.TIF = mapTIF(fa.getStr(m, tTimeInForce))
+	o.Info = ctx.info()
 	if o.TIF == engine.GTD {
 		o.Expire = parseExpire(fa.getStr(m, tExpireTime), fa.getStr(m, tExpireDate))
 		// A GTD order needs an expiry in the future; without one it would never expire.
 		if reason := gtdReason(o.Expire); reason != "" {
+			fa.eng.RejectUnsubmitted(o, reason)
 			fa.deliver(&engine.ExecReport{ClOrdID: clOrdID, Symbol: symbol, Side: side,
 				Status: "REJECTED", Reason: reason, OrderQty: int64(qty), Price: px, Ctx: ctx})
 			return

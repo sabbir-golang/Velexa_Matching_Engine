@@ -1,0 +1,7 @@
+# Development image: Go toolchain + Air. The source is mounted at /src and
+# rebuilt on every change (see .air.toml and docker-compose.dev.yml).
+ARG GO_VERSION=1.26
+FROM golang:${GO_VERSION}-alpine
+RUN go install github.com/air-verse/air@v1.67.4 && mv /go/bin/air /usr/local/bin/air
+WORKDIR /src
+ENTRYPOINT ["air", "-c", ".air.toml"]

@@ -35,7 +35,7 @@ You need Docker with the Compose plugin; nothing else.
 make docker-up        # first time: writes .env (host IP, random secrets), builds, starts engine + PostgreSQL
 ```
 
-Sign in at `http://<host IP>:8010/` with **Admin login**, as `ME_ADMIN_USER` / `ME_ADMIN_PASS` from `.env`. To move to another machine: `make docker-backup` there, `make docker-restore FILE=…` and `make docker-up` here. Everything else, including the production checklist, is in [Running with Docker](docs/docker.md).
+Sign in at `http://<host IP>:8010/` with **Admin login**, as `ME_ADMIN_USER` / `ME_ADMIN_PASS` from `.env`. While developing, `make dev` runs the same stack with live reload (Air): save a `.go` file and the engine rebuilds and restarts in seconds. To move to another machine: `make docker-backup` there, `make docker-restore FILE=…` and `make docker-up` here. Everything else, including the production checklist, is in [Running with Docker](docs/docker.md).
 
 ## Quick start without Docker
 
