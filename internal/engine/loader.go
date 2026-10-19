@@ -215,7 +215,11 @@ func LoadUniverse() []Instrument {
 		} else {
 			u.apply()
 			UniverseSrc.Store(fmt.Sprintf("file:%s (%d instruments)", path, len(u.Instr)))
-			log.Printf("[universe] loaded %d instruments from %s", len(u.Instr), path)
+			if len(u.Instr) == 0 {
+				log.Printf("[universe] %s lists no instruments — the engine starts empty; list instruments on the console's Instruments page", path)
+			} else {
+				log.Printf("[universe] loaded %d instruments from %s", len(u.Instr), path)
+			}
 			return u.Instr
 		}
 	}
@@ -251,6 +255,9 @@ func LoadUniverseFile(path string) (UniverseSet, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return UniverseSet{}, err
+	}
+	if emptyMaster(b) { // an operator cleared the list on purpose: start with no instruments
+		return UniverseSet{Meta: map[string]InstrMeta{}}, nil
 	}
 	rows, err := ParseMaster(b)
 	if err != nil {
@@ -367,6 +374,22 @@ func ValidSymbol(s string) bool {
 		}
 	}
 	return true
+}
+
+// emptyMaster reports whether a master file is an explicitly empty list —
+// {"instruments": []} or [] — as written when every instrument was removed. The
+// engine then starts with no instruments instead of falling back to the
+// built-in list. A file that has rows but none usable is still an error.
+func emptyMaster(b []byte) bool {
+	trimmed := strings.TrimSpace(string(b))
+	if trimmed == "[]" {
+		return true
+	}
+	var payload struct {
+		Instruments *[]json.RawMessage `json:"instruments"`
+	}
+	return strings.HasPrefix(trimmed, "{") && json.Unmarshal([]byte(trimmed), &payload) == nil &&
+		payload.Instruments != nil && len(*payload.Instruments) == 0
 }
 
 // ParseMaster accepts the exchange JSON payload ({"instruments":[...]}), a bare

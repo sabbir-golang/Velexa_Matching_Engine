@@ -51,7 +51,7 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `ME_FIX_MSGLOG_MAX_MB` | `256` | The FIX message log is rotated when it would grow past this size (MB). Only the last 4 MB are read at start-up. | `fixgw/msglog.go` (`initMsgLog`) |
 | `ME_FIX_MSGLOG_KEEP` | `5` | Rotated message logs kept (`fix_messages.log.1` … `.5`); `0` keeps none. | `fixgw/msglog.go` |
 | `ME_FIX_SPEC_DIR` | `/opt/velexa-sim-me/spec` | Directory holding `FIXT11.xml` and `FIX50SP2.xml`, the QuickFIX data dictionaries. | `fixgw/fixacceptor.go` (`StartFixAcceptor`) |
-| `ME_INSTRUMENT_FILE` | `/opt/velexa-sim-me/instruments.json` | Operator-supplied security master; first choice for the instrument universe. Admin imports are written here. | `engine/loader.go` (`instrumentFile`) |
+| `ME_INSTRUMENT_FILE` | `/opt/velexa-sim-me/instruments.json` | Operator-supplied security master; first choice for the instrument universe. Admin imports are written here. An explicitly empty list (`{"instruments": []}`, as saved when every instrument is removed) starts the engine with no instruments instead of the built-in list. | `engine/loader.go` (`instrumentFile`) |
 | `ME_INT_IP` | this PC's LAN IP | Internal (on-platform) FIX IP printed on onboarding sheets; shown only when it differs from the external endpoint. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
 | `ME_INT_PORT` | value of `FIX_PORT` | Internal FIX port printed on onboarding sheets. Display only. | `rest/handlers/broker/helpers.go` (`meEndpoints`) |
 | `ME_ITCH_AUTH` | `off` | `on` makes the ITCH feed check SoupBinTCP logins against `itch_brokers.json`. | `brokers/itchauth.go` (`loadItchAuth`) |

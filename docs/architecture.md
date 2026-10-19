@@ -202,6 +202,8 @@ The engine does not use a database.
 2. **`EXCHANGE_INSTRUMENT_URL`**, fetched with a 12-second timeout. It's used only if it gives at least 50 tradeable instruments; fewer means the exchange hasn't imported its end-of-day file yet.
 3. **The built-in list**: 430 real DSE tickers in `engine/universe_data.go` (`universe`) from the DSE end-of-day ticker file of 14 Sep 2023 — 374 equities, 36 mutual funds, 12 corporate bonds and 8 debentures at their closing prices. Class, category, sector and ISIN come from `refdata/dse.go`.
 
+If the instrument file holds an explicitly empty list (`{"instruments": []}` or `[]`, as saved when every instrument has been removed), the engine starts with **no instruments** and does not fall back to the built-in list; list instruments on the console's Instruments page. A file that has rows but none usable is still treated as broken.
+
 The chosen source is shown as `universe.source` in `/api/status` and the admin console.
 
 `buildUniverse` skips the following rows:

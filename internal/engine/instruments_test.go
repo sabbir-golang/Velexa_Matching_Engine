@@ -245,3 +245,44 @@ func TestEnrichMeta(t *testing.T) {
 		t.Fatalf("sectors: %v", sectors)
 	}
 }
+
+// A master emptied on purpose (every instrument removed) is kept empty at the
+// next start instead of falling back to the built-in list; a broken one is not.
+func TestEmptyMasterMeansNoInstruments(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"saved.json": `{"count": 0, "instruments": []}`,
+		"bare.json":  `[]`,
+	} {
+		p := filepath.Join(dir, name)
+		os.WriteFile(p, []byte(body), 0o600)
+		u, err := LoadUniverseFile(p)
+		if err != nil || len(u.Instr) != 0 {
+			t.Fatalf("%s: %d instruments, err %v; want an empty universe", name, len(u.Instr), err)
+		}
+	}
+	for name, body := range map[string]string{
+		"blank.json": ``,
+		"junk.json":  `{"instruments": [{"name": "no symbol"}]}`,
+		"other.json": `{"rows": []}`,
+	} {
+		p := filepath.Join(dir, name)
+		os.WriteFile(p, []byte(body), 0o600)
+		if _, err := LoadUniverseFile(p); err == nil {
+			t.Errorf("%s must be refused, not read as an empty list", name)
+		}
+	}
+	// The engine runs with no instruments and can list one later.
+	e := NewEngine(nil, NewBus())
+	go e.Run()
+	if r := submit(e, limit(e, "X1", Buy, 10, 1)); r.Status != "REJECTED" {
+		t.Fatalf("order on an empty engine: %s", r.Status)
+	}
+	if added, _ := e.ListInstruments(UniverseSet{Instr: []Instrument{{Symbol: "GP", Name: "Grameenphone", Prev: 10}},
+		Meta: map[string]InstrMeta{"GP": {Board: "MAIN", Tick: 0.1}}}); added != 1 || !e.Listed("GP") {
+		t.Fatalf("listing on an empty engine: added %d listed %v", added, e.Listed("GP"))
+	}
+	if r := submit(e, limit(e, "X2", Buy, 10, 1)); r.Status != "NEW" {
+		t.Fatalf("order after listing: %s %q", r.Status, r.Reason)
+	}
+}
