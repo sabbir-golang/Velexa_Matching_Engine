@@ -7,6 +7,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f .env ] || tools/docker-setup.sh
 mkdir -p tmp/home tmp/gocache tmp/gomod
+# A go.mod of its own keeps the module cache in tmp/ out of `go test ./...`.
+[ -f tmp/go.mod ] || printf 'module devcache\n' > tmp/go.mod
 DC=(docker compose -f docker-compose.yml -f docker-compose.dev.yml)
 "${DC[@]}" build engine
 "${DC[@]}" up -d db

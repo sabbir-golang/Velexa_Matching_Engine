@@ -118,6 +118,9 @@ go run .
 | `itchgw/feed_legacy.go` | The old synthetic-depth feed (`ME_ITCH_MODE=legacy`). |
 | `fixgw/reports.go` | DSE-style execution reports: ack + one report per trade to both sides, echoed order fields, DSE reject form, cancel reject, status reply. |
 | `engine/obids.go` | Permanent orderbook ids (`orderbook_ids.json`): a symbol keeps its ITCH id across restarts and new listings get the next free id. |
+| `engine/snapshot.go` | Saving and restoring the live market: `TakeSnapshot` (books in queue order, stops, prices, tape, counters, phase), `Restore`, `FinishStaleDay`, `AttachNotify`, the `OnTrade` trade record and the order-context codec. |
+| `fixgw/persist.go` | The FIX side of persistence: an order's context saved with it (session, echoed fields, OrderID), and the outbox that keeps reports for logged-off brokers and sends them at logon. |
+| `database/marketstate/` | Saved market and trade log: file store (`engine_state.json`, `trades/*.jsonl`) and PostgreSQL store (`engine_state`, `trade_log`), and the `Saver` that writes them every second. |
 | `engine/universe_data.go` | The built-in list of 430 DSE instruments, used when no master is available. |
 | `fixgw/fixacceptor.go` | FIX acceptor: session config, NewOrderSingle/Cancel/Replace handlers, ExecutionReport and OrderCancelReject building, session controls. |
 | `fixgw/msglog.go` | quickfix log that captures FIX messages to an in-memory log and an append-only file. |

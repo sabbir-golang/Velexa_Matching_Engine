@@ -185,14 +185,22 @@ There are no simulated traders: every order comes from a broker over FIX, or fro
 
 ## Persistence
 
-The live engine keeps everything in memory. Books, resting orders, trades and market data are lost on restart, and every instrument restarts from its previous close. What does survive a restart:
+The engine matches in memory and saves the live market every second (`database/marketstate`):
 
-- configuration files edited from the admin console (credentials, broker metadata, the IP allowlist, console users and imported instrument masters)
+- **The snapshot** (`engine.TakeSnapshot`): every resting order in its queue position (per book: bids best to worst, then asks, each level oldest first), with its filled quantity, iceberg reserve, validity and the gateway's context (FIX session, echoed fields, OrderID); parked stops; each instrument's last, open, high, low, previous close, volume and trade count; the trade tape; the order and trade numbers; the session phase and whether the clock is on. It is taken under the engine's read lock only when the market changed (a dirty flag set by the matching loop), and saved to `engine_state` / `engine_state.json`.
+- **The trade log**: `engine.OnTrade` hands every execution, with both sides, to the saver, which writes it to `trade_log` / `trades/*.jsonl` every second. The snapshot is taken before the trades are written, so the log always covers every trade the snapshot shows.
+- **The FIX outbox**: reports for a broker that is logged off wait, in order, and are sent when it logs on again (`fixgw/persist.go`); they are saved with the market.
+
+On start, `Cmd/serve.go` restores the snapshot before the matching loop runs (`engine.Restore`: `Book.Rest` in the saved order keeps time priority, bid/ask and the index are recomputed), re-attaches the restored FIX orders to the acceptor (`AttachNotify`), puts back the outbox, and then starts the clock. A snapshot from an earlier day first runs that day's close (closing prices, expiry of day orders), so the clock opens the new day from the right reference prices. Order and trade numbers continue after the highest in the snapshot, the order log and the trade log. At shutdown the acceptor stops first, then the market is saved once more.
+
+The ITCH journal is not saved: after a restart the feed starts a new session, and its start-of-day snapshot carries the restored book.
+
+Also kept across restarts:
+
+- configuration files edited from the admin console (credentials, broker metadata, the IP allowlist, imported instrument masters)
 - the permanent orderbook ids (`orderbook_ids.json`)
-- the admin audit log
+- console accounts, the audit trail, the daily report figures and the order log (PostgreSQL, or files without a database)
 - the FIX message log
-
-The engine does not use a database.
 
 ## Instrument universe
 

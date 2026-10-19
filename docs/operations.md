@@ -31,7 +31,33 @@ A healthy start logs lines like these:
 Velexa Matching Engine on :8010  (350 instruments from file:…, auto-list=true, phase=Continuous Trading)
 ```
 
-Restarting clears all books, orders and trades (see [Persistence](architecture.md#persistence)). FIX sequence numbers reset on every logon, so brokers can reconnect straight away.
+A restart keeps the market (see [What survives a restart](#what-survives-a-restart)). FIX sequence numbers reset on every logon, so brokers can reconnect straight away.
+
+## What survives a restart
+
+The live market is saved every second and once more when the engine stops, and put back when it starts. The start-up log says what came back:
+
+```text
+[state] restored the market saved 2026-10-19 15:02:11 (400ms ago): 37 resting orders, 4 stops, 11 instruments, 812 trades on the tape, last trade #812, phase Continuous Trading
+[state] 37 restored FIX orders report to their brokers again
+```
+
+| Kept | Notes |
+|---|---|
+| Every resting order, in its queue position | Time priority is unchanged; filled quantity, iceberg reserve, validity, client, account and the order's OrderID (37) are kept. Brokers can cancel and amend them by ClOrdID as before, and get their fills. |
+| Parked stop orders | Still trigger on the last price. |
+| Last price, open, high, low, volume, trade count | Bid and ask follow from the restored book. |
+| The trade tape, and every trade ever | The tape holds the latest 500; the trade log (`trade_log` table or `trades/`) holds all of them with both sides. |
+| Order and trade numbers | Continue; a trade number (880, ITCH match number) or OrderID is never handed out twice. |
+| The session phase and the clock setting | A restart during Pre-Open stays in Pre-Open. If the engine was down over the close, the start runs that day's close first: closing prices, expiry of day orders (reported to the brokers), and the next day opens from the new reference prices. |
+| Reports for brokers that are logged off | Kept in order and sent when the broker logs on again, for up to 7 days. |
+
+- **How much can be lost.** A clean stop (`docker compose stop`, `make docker-up`, an Air reload, `SIGTERM`) loses nothing. A power cut or `kill -9` can lose at most the last second.
+- **The dashboard** shows "market saved" next to the uptime, or how long ago the last save was if saving stalls (for example the database is down; it is retried every second). The status API has `state_saved`, `state_age`, `state_pending_trades` and, for admins, `fix_queued` per broker.
+- **Starting empty on purpose.** Stop the engine and delete the `market` row (`DELETE FROM engine_state WHERE name = 'market'`) or `engine_state.json`. `ME_MARKET_STATE=off` neither saves nor restores.
+- **An unreadable saved market** is set aside (`engine_state.json.bad-<time>`, or the row `market.bad-<time>`) and the engine starts empty, with a log line starting `[state] !!!`. If the database can't be read at all, the engine does not start, so an empty market never overwrites a saved one.
+- **Instruments that are no longer listed**: their saved orders are dropped, and the log says how many.
+- **Orders the order log shows as working but that are not on the restored book** (the market could not be restored, or `ME_MARKET_STATE=off`) are marked Cancelled with the reason "not on the book after an engine restart", with a `[orders]` log line each, so the Order Report and dashboard never show an order working that cannot trade.
 
 ## Ports
 

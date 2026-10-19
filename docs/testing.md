@@ -58,6 +58,10 @@ Status is the result of the run on 17 Oct 2026 (see [Last run](#last-run)). "Aut
 | ENG-14 | Dhaka session clock | Phases at the right times, weekends closed, bad schedules refused | `TestScheduleFollowsTheDhakaClock` | PASS |
 | ENG-15 | Market-event journal | The book can be rebuilt from it; the ring keeps the newest events | `TestJournalRebuildsTheBook`, `TestJournalRingKeepsTheNewestEvents` | PASS |
 | ENG-16 | Instrument universe: file, CSV/JSON, auto-list, listing, order-book IDs across restarts | As documented in [architecture](architecture.md#instrument-universe) | `instruments_test.go`, `obids_test.go` | PASS |
+| ENG-17 | Save and restore a market (two orders at one price, partial fill, iceberg, GTC, stop, a trade, clock off) through JSON into a new engine | Same depth, bid/ask, last/OHLC/volume, change; queue order kept (the older order trades first); order and trade numbers continue; cancel/amend by ClOrdID, the iceberg reserve, the stop and the order's gateway context all work | `TestSnapshotRestoresTheMarket` | PASS |
+| ENG-18 | Restart the next morning (snapshot from yesterday) | Yesterday is closed first: Day orders expire with a report, GTC stays, the next day opens with the close as reference and the day's figures reset — once | `TestStaleSnapshotClosesTheDay` | PASS |
+| ENG-19 | Restart during Pre-Open, the same day | Still Pre-Open, nothing expired | `TestSameDaySnapshotKeepsThePhase` | PASS |
+| ENG-20 | Snapshot edge cases | Unchanged market not saved again; orders of delisted instruments dropped; another layout version refused; trade records name buyer and seller whichever side aggressed | `TestSnapshotOnlyWhenChanged`, `TestRestoreDropsUnlistedInstruments`, `TestRestoreRefusesAnotherVersion`, `TestTradeRecordSidesWhenTheSellerAggresses` | PASS |
 
 ### FIX protocol (`internal/fixgw`)
 
@@ -120,6 +124,10 @@ Other FIX tests: logon passwords never reach the message log (`TestLogonPassword
 | DB-U4 | Database goes away during add, role change, delete | Error "could not be saved"; memory unchanged, so it never disagrees with the database | `TestPGFailedWriteIsRolledBack` | PASS |
 | DB-U5 | First start with an existing `users.json` | Imported with hashes and session tokens (nobody signed out), file renamed, never imported twice | `TestPGImportsUsersJSONOnce` | PASS |
 | DB-U6 | Audit trail in the database | Newest first; per-user prefix lookup (with `_` literal); old jsonl imported; entries fall back to the file when the database is down | `TestDatabaseTrail`, `TestFileTrail` | PASS |
+| DB-U7 | Saved market and trade log (file and PostgreSQL) | Latest state wins; an unreadable or other-version state is reported and set aside; trades listed per day in order, a retried batch adds nothing; the highest trade number is found; a torn last line (crash mid-write) is skipped and the next append still works | `TestFileStore`, `TestPGStore`, `TestFileTradeLogSurvivesATornLine` (`marketstate`) | PASS |
+| DB-U8 | State saver with a failing store | Nothing lost: the snapshot, trades and FIX outbox are written on the next try | `TestSaverRetries` | PASS |
+| ORD-U5 | Start-up after orders were lost (not on the restored book) | Those orders are marked Cancelled with the reason and saved; restored orders and finished orders are left alone | `TestLostOrdersAreClosed` | PASS |
+| ORD-U4 | Order log after a restore | A restored order's later fill updates its existing row (no duplicate) | `TestRestoredOrdersKeepTheirRow` | PASS |
 | DB-01 | System test with `E2E_DB=1` | Accounts and audit rows in PostgreSQL, no `users.json`, everything survives a restart | `tools/e2e.sh` | PASS |
 
 ### Configuration and portability (`internal/config`, `internal/rest/handlers/broker`)
@@ -161,6 +169,12 @@ Other FIX tests: logon passwords never reach the message log (`TestLogonPassword
 | PER-03 | Restart: FIX logon | Same credentials work | PASS |
 | PER-04 | Restart: revoke a broker | Its logon is refused | PASS |
 | PER-05 | Restart: order-book IDs | Unchanged | PASS |
+| PER-06 | Restart: market data | Every instrument's last, open, high, low, change, bid, ask, sizes, volume and trades as before | PASS |
+| PER-07 | Restart: books and tape | Depth per level (price, quantity, order count) and the trade tape as before | PASS |
+| PER-08 | Restart: numbering | Order and trade numbers continue; the next trade is last + 1 | PASS |
+| PER-09 | Restart: log | `[state] restored the market …` | PASS |
+| FIX-U2 | A resting FIX order across a restart | Re-attached; its fill reaches the broker with the same OrderID (37), ClOrdID, account, parties, board and trader | PASS (`TestRestoredOrderReportsToItsBroker`) |
+| FIX-U3 | Fills while the broker is logged off, with a restart in between | Kept, saved, and sent in order at the next logon (cumulative quantities right, distinct trade numbers); then live again | PASS (`TestReportsWaitForALoggedOffBroker`) |
 | LOG-01 | Engine log | No panic, fatal error or data race | PASS |
 
 ### Docker deployment (`make docker-test`)
@@ -185,6 +199,8 @@ Other FIX tests: logon passwords never reach the message log (`TestLogonPassword
 | REP-U1 | A scripted day: accepted, duplicate and band rejects, a trade, an amend, a refused amend, a cancel, a gateway reject, end-of-day expiry | Exact counts per broker and for the exchange; a refused amend is not counted; a trade counts once for the exchange and once per side | `TestDailyReportCounts` | PASS |
 | REP-U2 | Midnight (Dhaka) and a restart | Counts move to the new day; today's saved figures are carried on after a restart | `TestDailyReportRollsOverAndSeeds` | PASS |
 | REP-U3 | Storage (file and PostgreSQL) | Save replaces a day, past days load, `Days` lists newest first; a failed save is retried | `TestFileStore`, `TestPGStore`, `TestSaverRetries` | PASS |
+| OVW-U1 | Dashboard API (`/admin/api/overview`) | Admin: exchange totals, outcomes (filled / working / cancelled / rejected), the trade in one intraday bucket, the instrument's turnover, both brokers, the trade in the feed as buyer ← seller; a user: only their broker's figures, orders and outcomes; a future date refused | `TestOverview` | PASS |
+| OVW-M1 | Dashboard in Chrome at 1440 px (light, dark) and 390 px | Matches the design; no horizontal scroll; no script errors; time labels never overlap | manual run with headless Chrome, 19 Oct 2026 | PASS |
 | REP-U4 | Report API | Exchange totals for an admin, own brokers for a user; CSV and printable page; past days from history; "no activity" for an empty date; bad and future dates refused | `TestDailyReport` | PASS |
 
 ### Order report
@@ -209,7 +225,7 @@ Run these after `make check` passes and before a release, with the real OMS (bro
 | OMS-05 | Market watch / depth in the trader UI | Prices, depth and index update live (ITCH) |
 | OMS-06 | Admin forces Pre-Open, places crossing orders, then Open | Orders rest in Pre-Open; one auction price at the open; blotters updated |
 | OMS-07 | End of day | Day orders show as expired; GTC orders stay |
-| OMS-08 | Restart the engine during the day | The OMS reconnects; credentials still work |
+| OMS-08 | Restart the engine during the day with orders resting | The OMS reconnects; credentials still work; the book, last price, bid/ask and volume are unchanged; working orders can still be cancelled; fills that happened while it was away arrive at logon |
 | OMS-09 | Revoke the broker in the console, force-disconnect its session | The OMS cannot log on again |
 
 ## Last run

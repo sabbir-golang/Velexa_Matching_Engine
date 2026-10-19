@@ -126,6 +126,7 @@ type harness struct {
 	t       *testing.T
 	eng     *engine.Engine
 	port    int
+	target  string // the acceptor's SenderCompID ("" = DSEME)
 	sess    *confSess
 	n       int
 	symN    int
@@ -144,6 +145,10 @@ func freePort(t *testing.T) int {
 }
 
 func (h *harness) newSession(sender string) *confSess {
+	target := h.target
+	if target == "" {
+		target = "DSEME"
+	}
 	cfg := fmt.Sprintf(`[DEFAULT]
 ConnectionType=initiator
 SocketConnectHost=127.0.0.1
@@ -159,8 +164,8 @@ DefaultApplVerID=9
 [SESSION]
 BeginString=FIXT.1.1
 SenderCompID=%s
-TargetCompID=DSEME
-`, h.port, sender)
+TargetCompID=%s
+`, h.port, sender, target)
 	settings, err := quickfix.ParseSettings(strings.NewReader(cfg))
 	if err != nil {
 		h.t.Fatal(err)
@@ -180,7 +185,7 @@ TargetCompID=DSEME
 		h.t.Fatalf("FIX logon for %s did not complete", sender)
 	}
 	return &confSess{app: app, ini: ini,
-		sid: quickfix.SessionID{BeginString: "FIXT.1.1", SenderCompID: sender, TargetCompID: "DSEME"}}
+		sid: quickfix.SessionID{BeginString: "FIXT.1.1", SenderCompID: sender, TargetCompID: target}}
 }
 
 // ---- sending --------------------------------------------------------------------

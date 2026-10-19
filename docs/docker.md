@@ -53,7 +53,7 @@ make docker-up  # back to the production image
 
 - It runs [Air](https://github.com/air-verse/air) on the mounted project folder.
 - It keeps the same ports, `.env`, data folder and database, so the console, FIX and ITCH work as usual.
-- Saving a `.go` file (or a FIX dictionary in `spec/`) rebuilds the engine. The running engine is stopped cleanly (brokers get a FIX Logout, data is saved), and the new one is serving about 2 seconds later. A broker's OMS has to log on again after each restart.
+- Saving a `.go` file (or a FIX dictionary in `spec/`) rebuilds the engine. The running engine is stopped cleanly (brokers get a FIX Logout, the market is saved), and the new one is serving about 2 seconds later with the same books and prices. A broker's OMS has to log on again after each restart; fills that happened meanwhile are sent at its logon.
 - A change that doesn't compile is shown in the log, and the running engine keeps going.
 - The build output and Go caches live in `tmp/` (git-ignored, owned by you).
 
@@ -88,7 +88,8 @@ The new host's IP and user are filled in automatically. Admin and broker passwor
 
 | | Location | Kept across restarts and updates |
 |---|---|---|
-| Accounts, audit trail | PostgreSQL volume `velexa-me_db-data` | yes |
+| Accounts, audit trail, reports, order log | PostgreSQL volume `velexa-me_db-data` | yes |
+| The live market (books, prices, tape, counters, phase), trade log, FIX reports waiting for brokers | PostgreSQL volume (`engine_state`, `trade_log`), saved every second and at stop | yes — see [operations](operations.md#what-survives-a-restart) |
 | Broker credentials, allowlist, order-book IDs, instruments, FIX message log | `data/` on the host (`DOCKER_DATA_DIR`) | yes |
 | Settings and secrets | `.env` (mode 0600, git-ignored) | yes |
 | The engine itself | image `velexa-sim-me:<version>`, rebuilt by `make docker-up` | — |

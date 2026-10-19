@@ -177,9 +177,15 @@ type Engine struct {
 	// — first reply, fills, cancel, amend, expiry, trigger — for the order log.
 	// It runs on the matching goroutine and must not block.
 	OnOrderEvent func(*Order, *ExecReport)
-	journal      *Journal   // public market events, for the ITCH feed
-	obStore      *obIDStore // keeps the ids permanent; nil = position based (tests)
-	Trades       []Trade    // recent ring (newest last)
+	// OnTrade, when set (before Run), sees every execution with both sides,
+	// for the permanent trade log. Same rules as OnOrderEvent.
+	OnTrade      func(TradeRecord)
+	dirty        atomic.Bool // the market changed since the last snapshot (snapshot.go)
+	restoredAuto *bool       // the auto-clock setting of a restored snapshot, for StartClock
+	staleDay     bool        // the restored snapshot is from an earlier day (FinishStaleDay)
+	journal      *Journal    // public market events, for the ITCH feed
+	obStore      *obIDStore  // keeps the ids permanent; nil = position based (tests)
+	Trades       []Trade     // recent ring (newest last)
 	Seq          uint64
 	TradeSeq     uint64
 	orderCount   uint64
@@ -260,14 +266,18 @@ func (e *Engine) Run() {
 				e.replyTo(o, &ExecReport{ClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
 					Status: "REJECTED", Reason: ReasonNotAccepting})
 			}
+			e.MarkDirty()
 			e.Mu.Unlock()
 		case fn := <-e.ctrl:
 			e.Mu.Lock()
 			fn()
+			e.MarkDirty()
 			e.Mu.Unlock()
 		case <-tick.C:
 			e.Mu.Lock()
-			e.sweepExpired()
+			if e.sweepExpired() {
+				e.MarkDirty()
+			}
 			e.recomputeIndex()
 			e.Mu.Unlock()
 			e.broadcastSnapshot()
@@ -594,6 +604,11 @@ func (e *Engine) match(o *Order) *ExecReport {
 		e.TradeSeq++
 		tr := Trade{ID: e.TradeSeq, Symbol: o.Symbol, Price: px, Qty: q, Aggressor: o.Side, Time: time.Now()}
 		e.recordTrade(tr, md)
+		if o.Side == Buy {
+			e.tradeOut(tr, o, front)
+		} else {
+			e.tradeOut(tr, front, o)
+		}
 		fills = append(fills, tr)
 		cumQty += q
 		o.CumQty += q
@@ -1043,6 +1058,7 @@ func (e *Engine) uncross(sym string) {
 		e.TradeSeq++
 		tr := Trade{ID: e.TradeSeq, Symbol: sym, Price: P, Qty: q, Aggressor: Buy, Time: time.Now()}
 		e.recordTrade(tr, md)
+		e.tradeOut(tr, bid.Orders[0], ask.Orders[0])
 		toFill -= q
 		e.statTrade(bid.Orders[0].Actor, q, P)
 		e.statTrade(ask.Orders[0].Actor, q, P)
@@ -1102,15 +1118,18 @@ func (e *Engine) NewOrder(sym string, side Side, typ OrdType, price float64, qty
 }
 
 // sweepExpired cancels resting GTD orders past their Expire time. Runs on the
-// engine tick under the write lock; refreshes tops of books that changed.
-func (e *Engine) sweepExpired() {
+// engine tick under the write lock; refreshes tops of books that changed. It
+// reports whether it removed anything.
+func (e *Engine) sweepExpired() bool {
 	now := time.Now()
+	removedAny := false
 	for _, in := range e.Instr() {
 		b := e.Book(in.Symbol)
 		if b == nil {
 			continue
 		}
 		if removed := b.cancelExpired(now); len(removed) > 0 {
+			removedAny = true
 			for _, o := range removed {
 				e.forget(o)
 				e.emitDelete(o)
@@ -1119,6 +1138,7 @@ func (e *Engine) sweepExpired() {
 			e.refreshTop(in.Symbol)
 		}
 	}
+	return removedAny
 }
 
 // expired tells an order's owner that it expired unexecuted (in full or in part).

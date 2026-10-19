@@ -228,10 +228,16 @@ def main():
     ap.add_argument("--save", help="write the issued broker credentials here (for --after-restart)")
     ap.add_argument("--after-restart", help="only run the persistence checks, with credentials from this file")
     ap.add_argument("--after-restore", help="only check a restored backup, with credentials from this file")
+    ap.add_argument("--dump-market", help="only save the live market (prices, books, counters) to this file")
+    ap.add_argument("--market", help="with --after-restart: the market saved by --dump-market before the restart")
     a = ap.parse_args()
     base = f"http://127.0.0.1:{a.http}"
     adm = Console(base)
     ctx = {}
+    if a.dump_market:
+        with open(a.dump_market, "w") as f:
+            json.dump(market_state(adm), f)
+        return 0
     if a.after_restart:
         return after_restart(a, base, adm, json.load(open(a.after_restart)))
     if a.after_restore:
@@ -457,6 +463,20 @@ def main():
     return report()
 
 
+def market_state(adm):
+    """The live market as the console shows it: every instrument's prices and
+    day figures, the books of the traded ones, and the order/trade counters."""
+    rows = adm.json("/api/market")["rows"]
+    st = adm.json("/api/status")
+    books = {}
+    for r in rows:
+        if r.get("trades") or r.get("bid") or r.get("ask"):
+            b = adm.json(f"/api/book?symbol={r['symbol']}")
+            books[r["symbol"]] = {"bids": b["bids"], "asks": b["asks"], "trades": b["trades"]}
+    return {"rows": {r["symbol"]: r for r in rows}, "books": books,
+            "orders": st["orders"], "trades": st["trades"], "phase": st["phase"]}
+
+
 def after_restart(a, base, adm, creds):
     @case("PER-01", "After a restart: admin can still sign in (stored accounts, session key)")
     def per01():
@@ -484,7 +504,44 @@ def after_restart(a, base, adm, creds):
         f.close()
         assert r and r[-1].get("35") == "5", f"revoked broker still logs on: {r}"
 
-    for c in (per01, per02, per03, per04):
+    cases = [per01, per02, per03, per04]
+    if a.market:
+        before = json.load(open(a.market))
+        now = {}
+
+        @case("PER-06", "After a restart: every instrument's last, open, high, low, bid, ask, volume and trades are as before")
+        def per06():
+            now.update(market_state(adm))
+            keys = ("last", "open", "high", "low", "prev", "change", "change_pct", "bid", "bid_qty", "ask", "ask_qty", "volume", "trades")
+            diff = [f"{s}.{k}: {r.get(k)} -> {now['rows'].get(s, {}).get(k)}"
+                    for s, r in before["rows"].items() for k in keys if now["rows"].get(s, {}).get(k) != r.get(k)]
+            assert not diff, "; ".join(diff[:6])
+            traded = sum(1 for r in before["rows"].values() if r.get("trades"))
+            assert traded, "nothing had traded before the restart: the check proves nothing"
+            return f"{len(before['rows'])} instruments, {traded} traded"
+
+        @case("PER-07", "After a restart: the order books (depth, queue) and the trade tape are as before")
+        def per07():
+            assert now["books"] == before["books"], f"books differ: {sorted(before['books'])} vs {sorted(now['books'])}"
+            levels = sum(len(b["bids"]) + len(b["asks"]) for b in before["books"].values())
+            assert levels, "no resting orders before the restart: the check proves nothing"
+            return f"{levels} price levels, phase {now['phase']}"
+
+        @case("PER-08", "After a restart: order and trade numbers continue (none reused)")
+        def per08():
+            assert now["orders"] >= before["orders"] and now["trades"] == before["trades"], \
+                f"orders {before['orders']} -> {now['orders']}, trades {before['trades']} -> {now['trades']}"
+            sym, b = next((s, b) for s, b in before["books"].items() if b["asks"] or b["bids"])
+            side, lv = ("BUY", b["asks"][0]) if b["asks"] else ("SELL", b["bids"][0])  # trades against the book
+            code, _, body = adm.post("/api/order", {"symbol": sym, "side": side, "type": "LIMIT", "price": lv["price"], "qty": 1})
+            assert code == 200, f"{code} {body[:120]}"
+            rep = json.loads(body)
+            assert rep["order_id"] > before["orders"], f"order number {rep['order_id']} reused (was {before['orders']})"
+            assert rep["fills"] and rep["fills"][0]["id"] == before["trades"] + 1, f"trade number {rep['fills']}"
+            return f"next order #{rep['order_id']}, next trade #{rep['fills'][0]['id']}"
+
+        cases = [per01, per06, per07, per08, per02, per03, per04]
+    for c in cases:
         c()
     return report()
 

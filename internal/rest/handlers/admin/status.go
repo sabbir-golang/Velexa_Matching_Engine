@@ -61,7 +61,21 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 		"sessions":  sessions, "events": events, "scope": "all",
 		"universe": engine.InstrumentStatus(eng),
 	}
+	// The live market is saved every second; the console shows how long ago.
+	out["state_saved"], out["state_age"] = "off", -1.0
+	if h.State != nil {
+		if t := h.State.LastSaved(); !t.IsZero() {
+			out["state_saved"] = t.In(engine.Dhaka).Format("2006-01-02 15:04:05")
+			out["state_age"] = time.Since(t).Seconds()
+		} else {
+			out["state_saved"] = "not yet"
+		}
+		out["state_pending_trades"] = h.State.Pending()
+	}
 	if all {
+		if fixgw.Active != nil {
+			out["fix_queued"] = fixgw.Active.Queued()
+		}
 		out["audit"] = audit.Recent(60)
 	} else {
 		var actors []string

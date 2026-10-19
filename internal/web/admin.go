@@ -1,56 +1,56 @@
 package web
 
-const AdminFontLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">`
+const AdminFontLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">`
 
 const AdminDashboardHTML = `<!doctype html><html><head><meta charset="utf-8">` + ThemeHead + CSRFHead + `
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Matching Engine — Console</title>` + AdminFontLink + `
 <style>
-:root{--bg:#080b11;--side:#0d131c;--panel:#131a24;--panel2:#0f151e;--line:#222b38;--line2:#2b3644;
---ink:#e8eef6;--mut:#7d8a9c;--mut2:#586675;--acc:#4dd0b1;--amber:#eab04d;--grn:#4ade80;--red:#f87171;--blue:#7aa2f7}
+:root{--bg:#0d1210;--side:#101614;--panel:#141b18;--panel2:#111714;--line:#24302a;--line2:#2f3c35;
+--ink:#e5ece8;--mut:#9eaea5;--mut2:#6f7e76;--acc:#3dbd84;--onacc:#06140d;--accSoft:#173328;--amber:#e0a648;--grn:#3dbd84;--red:#ee6a60;--sellSoft:#3a1d1b;--blue:#6ea4e6;--track:#1f2924;--flash:#3a3216}
 *{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--ink);
-font-family:Inter,system-ui,-apple-system,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.4;-webkit-font-smoothing:antialiased}
 .mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
 .app{display:grid;grid-template-columns:238px 1fr;min-height:100vh}
 /* sidebar */
 aside{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;
 position:sticky;top:0;height:100vh}
 .brand{display:flex;align-items:center;gap:11px;padding:18px 20px 16px}
-.logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#4dd0b1,#2f9e86);
-display:flex;align-items:center;justify-content:center;color:#04231f;font-weight:800;font-size:15px}
-.brand b{font-size:14.5px;font-weight:700;letter-spacing:-.01em}
+.logo{width:32px;height:32px;border-radius:8px;background:var(--acc);
+display:flex;align-items:center;justify-content:center;color:var(--panel);font-weight:700;font-size:15px}
+.brand b{font-size:14px;font-weight:600}
 .brand small{display:block;color:var(--mut);font-size:11px;font-weight:500;font-family:"IBM Plex Mono",monospace}
 nav{flex:1;padding:8px 12px;overflow-y:auto}
-.navgrp{color:var(--mut2);font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:16px 10px 7px}
-.navitem{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:var(--mut);
-cursor:pointer;font-weight:500;font-size:13.5px;margin:1px 0;transition:background .12s,color .12s;border-left:2px solid transparent}
-.navitem:hover{background:#141c27;color:var(--ink)}
-.navitem.on{background:#152232;color:var(--ink);border-left-color:var(--acc)}
+.navgrp{color:var(--mut2);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:14px 8px 6px}
+.navitem{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;color:var(--mut);
+cursor:pointer;font-weight:500;font-size:14px;margin:1px 0;transition:background .12s,color .12s}
+.navitem:hover{background:var(--track);color:var(--ink)}
+.navitem.on{background:var(--accSoft);color:var(--acc);font-weight:600}
 .navitem svg{width:17px;height:17px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.8}
 .navitem .badge{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--acc);font-weight:600}
 .sidefoot{padding:14px 16px;border-top:1px solid var(--line)}
 .enpill{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);margin-bottom:10px}
-.enpill .d{width:8px;height:8px;border-radius:50%;background:var(--grn);box-shadow:0 0 8px var(--grn)}
+.enpill .d{width:7px;height:7px;border-radius:50%;background:var(--acc)}
 .outbtn{display:block;text-align:center;color:var(--mut);text-decoration:none;font-size:12.5px;font-weight:600;
 border:1px solid var(--line);border-radius:9px;padding:8px}
 button.outbtn{width:100%;background:none;font-family:inherit;cursor:pointer}
 .outbtn:hover{border-color:var(--line2);color:var(--ink)}
 /* main */
 main{min-width:0}
-.top{display:flex;align-items:center;gap:14px;padding:20px 30px;border-bottom:1px solid var(--line)}
-.top h1{font-size:19px;margin:0;font-weight:700;letter-spacing:-.02em}
-.top .sub{color:var(--mut);font-size:12.5px;margin-top:2px}
+.top{display:flex;align-items:flex-end;flex-wrap:wrap;gap:10px 14px;padding:24px 32px 4px}
+.top h1{font-size:24px;margin:0;font-weight:600;letter-spacing:-.01em}
+.top .sub{color:var(--mut);font-size:14px;margin-top:4px}
 .top .sp{flex:1}
 .hamb{display:none;background:none;border:1px solid var(--line);border-radius:9px;padding:8px 9px;color:var(--ink);cursor:pointer}
 .hamb:hover{border-color:var(--acc)}
 .backdrop{display:none}
-.live{display:flex;align-items:center;gap:8px;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--mut);
-border:1px solid var(--line);border-radius:20px;padding:6px 13px}
-.live .d{width:7px;height:7px;border-radius:50%;background:var(--grn);animation:pulse 2s infinite}
+.live{display:flex;align-items:center;gap:6px;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--mut);
+border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:5px 12px}
+.live .d{width:7px;height:7px;border-radius:50%;background:var(--acc);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-.wrap{padding:22px 34px 70px;width:100%}
+.wrap{padding:20px 32px 48px;width:100%}
 .filterbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:14px}
-.filterbar .fi{padding:9px 12px;background:#0b1119;border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:13px;outline:none;min-width:180px}
+.filterbar .fi{padding:9px 12px;background:var(--panel);border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:13px;outline:none;min-width:180px}
 .filterbar .fi:focus{border-color:var(--acc)}
 .filterbar select.fi{min-width:150px;cursor:pointer}
 .filterbar .cnt{margin-left:auto;color:var(--mut);font-size:12px;font-family:"IBM Plex Mono",monospace}
@@ -59,14 +59,14 @@ h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--mut)
 h2:first-child{margin-top:4px}
 /* kpi */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:13px}
-.kpi{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:17px 18px;position:relative;overflow:hidden}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:17px 18px;position:relative;overflow:hidden}
 .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--acc);opacity:.6}
 .kpi.amber::after{background:var(--amber)}.kpi.grn::after{background:var(--grn)}.kpi.blue::after{background:var(--blue)}
 .kpi .v{font-size:26px;font-weight:700;font-family:"IBM Plex Mono",monospace;line-height:1;letter-spacing:-.02em}
 .kpi .l{color:var(--mut);font-size:12px;margin-top:9px;font-weight:500}
 .grn-t{color:var(--grn)}.amber-t{color:var(--amber)}
 /* panel + table */
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;overflow:hidden}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .panel.pad{padding:20px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--line)}
@@ -91,23 +91,23 @@ td.right,th.right{text-align:right}
  .wrap{padding:20px 18px 60px}.top{padding:16px 18px}
 }
 .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.btn{background:#1a2431;border:1px solid var(--line);color:var(--ink);padding:9px 15px;border-radius:9px;
-font-size:13px;font-weight:600;cursor:pointer;transition:border .12s,background .12s;font-family:inherit}
-.btn:hover{border-color:var(--acc)}
-.btn.acc{background:var(--acc);color:#04231f;border-color:var(--acc)}
+.btn{background:var(--panel);border:1px solid var(--line);color:var(--ink);padding:8px 14px;border-radius:6px;
+font-size:13px;font-weight:500;cursor:pointer;transition:border .12s,background .12s;font-family:inherit}
+.btn:hover{border-color:var(--mut2)}
+.btn.acc{background:var(--acc);color:var(--onacc);border-color:var(--acc)}
 .btn.acc:hover{filter:brightness(1.07)}
 .btn.sm{padding:5px 11px;font-size:12px}
 .btn.ghost{background:transparent}
 .btn.danger{color:var(--red)}.btn.danger:hover{border-color:var(--red)}
-input.f{padding:10px 12px;background:#0b1119;border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:13px;outline:none;width:100%;transition:border .15s}
+input.f{padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:13px;outline:none;width:100%;transition:border .15s}
 input.f:focus,select.f:focus{border-color:var(--acc)}
-select.f{padding:10px 36px 10px 12px;background:#0b1119 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237d8a9c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:13px;font-family:inherit;outline:none;width:100%;appearance:none;-webkit-appearance:none;cursor:pointer;color-scheme:dark;transition:border .15s}
-select.f option{background:#131a24;color:var(--ink)}
+select.f{padding:10px 36px 10px 12px;background:var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237d8a9c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:13px;font-family:inherit;outline:none;width:100%;appearance:none;-webkit-appearance:none;cursor:pointer;color-scheme:dark;transition:border .15s}
+select.f option{background:var(--panel);color:var(--ink)}
 label.fl{display:block;font-size:11px;color:var(--mut);margin:0 0 6px;font-weight:600}
 .field{margin-bottom:14px}
 .note{color:var(--mut);font-size:12.5px;margin:0 0 16px;line-height:1.6}
 .note a{color:var(--acc)}
-.reveal{background:#0e2019;border:1px solid #1c4d3f;border-radius:12px;padding:16px 18px;margin-top:16px;display:none}
+.reveal{background:var(--accSoft);border:1px solid var(--acc);border-radius:12px;padding:16px 18px;margin-top:16px;display:none}
 .reveal.on{display:block}
 .reveal .hd{color:var(--grn);font-weight:700;font-size:13px;display:flex;align-items:center;gap:8px}
 .reveal .kv{display:grid;grid-template-columns:160px 1fr;gap:7px 14px;font-family:"IBM Plex Mono",monospace;font-size:13px;margin:12px 0 14px}
@@ -128,14 +128,14 @@ body.iframeview .wrap{padding-bottom:12px}
 .exp-menu{display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:240px;background:var(--panel);border:1px solid var(--line2);border-radius:11px;box-shadow:0 14px 40px rgba(0,0,0,.5);z-index:30;padding:6px}
 .exp-menu.on{display:block}
 .exp-menu button{display:flex;flex-direction:column;align-items:flex-start;width:100%;background:none;border:0;color:var(--ink);padding:8px 11px;border-radius:8px;cursor:pointer;text-align:left;font-size:13px}
-.exp-menu button:hover{background:#1a2431}
+.exp-menu button:hover{background:var(--track)}
 .exp-menu button span{color:var(--mut);font-size:11.5px;margin-top:1px}
 .exp-note{border-top:1px solid var(--line);margin-top:4px;padding:8px 11px 4px;color:var(--mut);font-size:11.5px}
 .in-grid{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px;align-items:start;margin-top:16px}
 @media(max-width:1100px){.in-grid{grid-template-columns:1fr}}
 .card-hd{display:flex;align-items:center;gap:12px;padding:15px 18px;flex-wrap:wrap}
 .card-hd h3{margin:0;font-size:15px;letter-spacing:-.01em}.card-hd .sp{flex:1}
-.in-search{display:flex;align-items:center;gap:8px;background:#0b1119;border:1px solid var(--line);border-radius:9px;padding:0 11px;min-width:230px}
+.in-search{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:0 11px;min-width:230px}
 .in-search svg{width:15px;height:15px;stroke:var(--mut);fill:none;stroke-width:2;flex:none}
 .in-search input{background:none;border:0;outline:0;color:var(--ink);font-size:13px;padding:9px 0;width:100%}
 .in-search:focus-within{border-color:var(--acc)}
@@ -143,7 +143,7 @@ input.f::placeholder{text-transform:none}
 .in-chips{display:flex;gap:6px;flex-wrap:wrap;padding:12px 18px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .in-chips .btn.sm{padding:4px 11px;font-size:12px;font-weight:600}
 .btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;vertical-align:-3px;margin-right:5px}
-.code-tag{font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:#1a2431;border:1px solid var(--line);border-radius:5px;padding:2px 7px}
+.code-tag{font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:2px 7px}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:20px}
 .pill .d{width:6px;height:6px;border-radius:50%;background:currentColor}
 .pill.active{background:rgba(74,222,128,.13);color:var(--grn)}.pill.halted{background:rgba(248,113,113,.13);color:var(--red)}
@@ -201,6 +201,63 @@ input.f::placeholder{text-transform:none}
 .rolebadge .rl.admin{color:var(--acc);border-color:var(--acc)}
 .pwlink{display:block;text-align:center;color:var(--mut);font-size:12px;margin-bottom:8px;cursor:pointer;background:none;border:none;width:100%}
 .pwlink:hover{color:var(--ink)}
+/* dashboard (overview) */
+.dbtools{display:none;align-items:center;gap:8px;flex-wrap:wrap}body.v-dash .dbtools{display:flex}
+.dbbtn{font:500 13px "IBM Plex Sans",sans-serif;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer}
+.dbbtn:hover{border-color:var(--mut2)}input.dbbtn{padding:6px 10px;color-scheme:dark}[data-theme="light"] input.dbbtn{color-scheme:light}
+.db{display:flex;flex-direction:column;gap:20px}
+.dbc{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0}
+.dbc.p{padding:18px 20px}.dbc.t{padding:18px 0 6px}
+.cap{font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--mut);text-transform:uppercase}
+.dbm{font-family:"IBM Plex Mono",monospace}
+.faint{color:var(--mut2)}
+.dbrow{display:flex;flex-wrap:wrap;gap:12px}.dbrow>.w2{flex:2 1 560px}.dbrow>.w1{flex:1 1 320px}
+.sess{display:flex;flex-direction:column;gap:14px}
+.sess .hd{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:12px}
+.sess .ph{font-size:18px;font-weight:600}
+.tl{position:relative;display:flex;height:12px;gap:2px}.tl .sg{opacity:.35}.tl .sg.cur{opacity:.6}
+.tl .mk{position:absolute;top:-4px;bottom:-4px;width:3px;margin-left:-1px;border-radius:2px;background:var(--ink);transition:left .8s}
+.tlx{position:relative;height:14px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--mut2)}.tlx span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.tlx span:first-child{transform:none}.tlx span:last-child{transform:translateX(-100%)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--mut)}.legend span{display:flex;align-items:center;gap:6px}.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.dbk{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.dbk>div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.dbk .l{color:var(--mut);font-size:13px}.dbk .v{font-family:"IBM Plex Mono",monospace;font-size:30px;font-weight:500;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dbk .s{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--mut2)}.dbk .s b{font-weight:500}
+.seg{display:flex;gap:2px;background:var(--track);border-radius:7px;padding:2px}
+.seg button{font:500 12px "IBM Plex Sans",sans-serif;border:0;border-radius:5px;padding:5px 12px;cursor:pointer;background:transparent;color:var(--ink)}.seg button.on{background:var(--panel)}
+.seg.sm button{padding:4px 9px}
+.chart{display:flex;align-items:flex-end;gap:3px;height:190px;border-bottom:1px solid var(--line)}
+.chart>div{flex:1;min-width:0;height:100%;display:flex;align-items:flex-end}.chart>div>i{display:block;width:100%;border-radius:3px 3px 0 0;background:var(--acc)}
+.chart>div.fut>i{background:var(--track)}.chart>div.cur>i{opacity:.55}
+.chx{position:relative;height:14px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--mut2);margin-top:-8px}.chx span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.chx span:first-child{transform:none}.chx span:last-child{transform:translateX(-100%)}
+.oc .big{font-family:"IBM Plex Mono",monospace;font-size:34px;font-weight:500;letter-spacing:-.02em}
+.stack{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;background:var(--track)}
+.ocl{display:grid;grid-template-columns:12px 1fr auto 52px;align-items:center;gap:8px;font-size:13px}.ocl i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.bs{display:flex;height:6px;border-radius:3px;overflow:hidden;gap:2px}
+.it{overflow-x:auto}.it .g{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr 1fr 1fr .6fr 1fr 1fr;gap:6px;align-items:center;padding:9px 20px;border-bottom:1px solid var(--line);min-width:640px}
+.it .h{letter-spacing:.03em}.it .r{font-size:12.5px}
+.it .r small{display:block;font-size:11px;opacity:.85}
+.it .h{padding:8px 20px;font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--mut2)}.it .h span{cursor:pointer;user-select:none}.it .h span:hover{color:var(--ink)}
+.it .r{font-family:"IBM Plex Mono",monospace;font-size:13px;transition:background .6s}.it .r.fl{background:var(--flash)}
+.it .r b{font-family:"IBM Plex Sans",sans-serif;font-weight:600}.it .rt{text-align:right}
+.bar{flex:1;max-width:80px;height:4px;background:var(--track);border-radius:2px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
+.feedr{display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:8px 20px;border-top:1px solid var(--line);font-size:13px}
+.feedr .x{font-family:"IBM Plex Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.feedr .y{font-size:12px;color:var(--mut2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{font-size:10px;font-weight:600;letter-spacing:.06em;padding:2px 6px;border-radius:4px;background:var(--track);color:var(--mut)}
+.tag.TRADE,.tag.FILLED{color:var(--acc);background:var(--accSoft)}.tag.NEW,.tag.PARTIAL,.tag.STOP{color:var(--blue)}.tag.CANCEL,.tag.EXPIRED{color:var(--amber)}
+.tag.REJECT{color:var(--red);background:var(--sellSoft)}
+.brk{display:grid;grid-template-columns:minmax(0,1fr) 120px 96px;gap:14px;align-items:center;padding:9px 20px;border-top:1px solid var(--line);font-size:13px}
+.brk .n{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.brk .bb{height:6px;background:var(--track);border-radius:3px;overflow:hidden}.brk .bb i{display:block;height:100%;background:var(--blue)}
+.lst{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:12px 20px;border-top:1px solid var(--line)}
+.upc{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--acc);background:var(--accSoft);padding:3px 8px;border-radius:10px}.upc i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.upc.dn{color:var(--red);background:var(--sellSoft)}
+.dbempty{padding:16px 20px;color:var(--mut2);border-top:1px solid var(--line)}
+.dbfoot{margin:0;font-size:12px;color:var(--mut2)}
+.dbmore{background:none;border:0;color:var(--acc);font:500 12px "IBM Plex Sans",sans-serif;cursor:pointer;padding:10px 20px}
+@media(max-width:820px){.dbrow>.w2,.dbrow>.w1{flex-basis:100%}.brk{grid-template-columns:minmax(0,1fr) 70px 86px}}
 body.role-user [data-admin-only]{display:none!important}
 ` + adminLightCSS + adminThemeBtnCSS + `</style></head><body>
 <div class="app">
@@ -238,26 +295,83 @@ body.role-user [data-admin-only]{display:none!important}
    <div><h1 id="pageTitle">Dashboard</h1><div class="sub" id="pageSub">Live engine status</div></div>
    <span class="sp"></span>
    <span class="live"><span class="d"></span><span id="up">—</span></span>
+   <div class="dbtools">
+    <input type="date" class="dbbtn" id="ov_date" onchange="ovLoad()" aria-label="Day" title="Show another day">
+    <button class="dbbtn" id="ov_today" onclick="ovToday()" style="display:none">Today</button>
+    <button class="dbbtn" id="ov_pause" onclick="ovPause()">Pause live</button>
+    <button class="dbbtn" onclick="repCSV()">Download CSV</button>
+    <button class="dbbtn" onclick="repPrint()">Print</button>
+   </div>
    ` + ThemeButton + `
   </div>
   <div class="wrap">
 
    <section class="view on" id="view-dash">
-    <div class="kpis" id="kpis"></div>
-    <h2>Daily report <span class="muted" id="rep_note" style="font-weight:500;font-size:12px"></span></h2>
-    <div class="repbar">
-     <input type="date" class="f" id="rep_date" onchange="loadReport()" aria-label="Report date">
-     <button class="btn sm ghost" onclick="repToday()">Today</button>
-     <span style="flex:1"></span>
-     <button class="btn sm" onclick="repCSV()">Download CSV</button>
-     <button class="btn sm" onclick="repPrint()">Print</button>
+    <div class="db">
+     <section class="dbc p sess">
+      <div class="hd">
+       <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span class="cap">Market session</span><span class="ph" id="ov_phase">&mdash;</span><span class="dbm muted" id="ov_clock"></span></div>
+       <span class="muted" id="ov_note"></span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+       <div class="tl" id="ov_tl"></div>
+       <div class="tlx" id="ov_tlx"></div>
+      </div>
+      <div class="legend" id="ov_legend"></div>
+     </section>
+
+     <section class="dbk">
+      <div><span class="l">Turnover</span><span class="v" id="k_to">&mdash;</span><div class="s"><span class="dbm" id="k_to_s"></span><b id="k_to_d"></b></div></div>
+      <div><span class="l">Volume (shares)</span><span class="v" id="k_vol">&mdash;</span><div class="s"><span id="k_vol_s"></span><b id="k_vol_d"></b></div></div>
+      <div><span class="l">Trades executed</span><span class="v" id="k_tr">&mdash;</span><div class="s"><span id="k_tr_s"></span><b id="k_tr_d"></b></div></div>
+      <div><span class="l">Orders received</span><span class="v" id="k_or">&mdash;</span><div class="s"><span id="k_or_s"></span><b id="k_or_d"></b></div></div>
+     </section>
+
+     <section class="dbrow">
+      <div class="dbc p w2" style="display:flex;flex-direction:column;gap:16px">
+       <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px">
+        <div style="display:flex;flex-direction:column;gap:2px"><span class="cap" id="ch_cap">Intraday</span><span class="faint" style="font-size:13px" id="ch_peak"></span></div>
+        <div class="seg" id="ch_seg"><button data-m="turnover" class="on">Turnover</button><button data-m="trades">Trades</button><button data-m="volume">Volume</button></div>
+       </div>
+       <div class="chart" id="ch_bars"></div>
+       <div class="chx" id="ch_x"></div>
+      </div>
+      <div class="dbc p w1 oc" style="display:flex;flex-direction:column;gap:16px">
+       <span class="cap">Order outcomes</span>
+       <div style="display:flex;align-items:baseline;gap:10px"><span class="big" id="oc_rate">&mdash;</span><span class="muted">of orders filled</span></div>
+       <div class="stack" id="oc_stack"></div>
+       <div style="display:flex;flex-direction:column;gap:8px" id="oc_list"></div>
+       <div style="border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--acc);font-weight:500" id="oc_buy">Buy</span><span class="faint" id="oc_amend"></span><span style="color:var(--red);font-weight:500" id="oc_sell">Sell</span></div>
+        <div class="bs"><div id="oc_buybar" style="background:var(--acc);width:50%"></div><div style="flex:1;background:var(--red)"></div></div>
+       </div>
+      </div>
+     </section>
+
+     <section class="dbrow">
+      <div class="dbc t w2" style="display:flex;flex-direction:column;gap:10px">
+       <div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 20px"><span class="cap">Instruments</span><span class="faint" style="font-size:12px">As on the DSE share price page · change = LTP − YCP · click a column to sort</span></div>
+       <div class="it"><div class="g h" id="it_h"></div><div id="it_rows"></div></div>
+       <button class="dbmore" id="it_more" onclick="_ovAll=!_ovAll;ovRender()" style="display:none"></button>
+      </div>
+      <div class="dbc t w1" style="display:flex;flex-direction:column;gap:12px;padding-bottom:8px">
+       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0 20px;flex-wrap:wrap">
+        <span class="cap">Recent activity</span>
+        <div class="seg sm" id="fd_seg"><button data-f="all" class="on">All</button><button data-f="trade">Trades</button><button data-f="order">Orders</button><button data-f="session">Sessions</button></div>
+       </div>
+       <div id="fd_rows"></div>
+      </div>
+     </section>
+
+     <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:12px">
+      <div class="dbc t" style="display:flex;flex-direction:column;gap:10px"><span class="cap" style="padding:0 20px" id="br_cap">Brokers by turnover</span><div id="br_rows"></div></div>
+      <div class="dbc t" style="display:flex;flex-direction:column;gap:10px">
+       <div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 20px"><span class="cap">Connectivity</span><span class="muted" style="font-size:13px"><b class="dbm" style="color:var(--ink)" id="cn_sess">0</b> live FIX sessions</span></div>
+       <div id="cn_rows"></div>
+      </div>
+     </section>
+     <p class="dbfoot" id="db_foot"></p>
     </div>
-    <div class="kpis rep" id="report"></div>
-    <h2>Listeners</h2>
-    <div class="panel"><table><tbody id="listeners"></tbody></table></div>
-    <h2>Recent activity</h2>
-    <div class="filterbar"><input class="fi" id="f_dash" placeholder="Filter by broker or event…" oninput="applyFilters()"></div>
-    <div class="panel"><table><thead><tr><th>Time</th><th>Broker</th><th>Event</th></tr></thead><tbody id="miniEvents"></tbody></table></div>
    </section>
 
    <section class="view" id="view-sessions">
@@ -473,6 +587,8 @@ function show(v){
  document.getElementById("view-"+v).classList.add("on");
  document.getElementById("pageTitle").innerHTML=titles[v][0];document.getElementById("pageSub").innerHTML=titles[v][1];
  document.body.classList.toggle("iframeview",v=="trade");
+ document.body.className=document.body.className.replace(/\bv-\w+/g,"").trim()+" v-"+v;
+ if(v=="dash"){ovSub();ovLoad()}
  if(v=="trade"){var t=document.getElementById("tradeIframe");if(!t.getAttribute("src"))t.src="/?embed=1"}
  if(v=="users"){loadUsers()}
  if(v=="msglog"){loadMsgLog()}
@@ -504,29 +620,120 @@ function flt(id){var e=document.getElementById(id);return e?e.value.trim().toLow
 function hit(txt,f){return !f||String(txt).toLowerCase().indexOf(f)>=0}
 function setc(id,t){var e=document.getElementById(id);if(e)e.textContent=t}
 var _s=null,_b=null;
-// Daily report: today's figures are live, other dates come from the saved history.
-var REP=[["orders","Orders received",""],["buy_orders","Buy orders","blue"],["sell_orders","Sell orders","blue"],
- ["accepted","Accepted","grn"],["rejected","Rejected","red"],["cancelled","Cancelled","amber"],["amended","Amended","amber"],
- ["expired","Expired","amber"],["trades","Trades executed","grn"],["volume","Volume (shares)",""],["turnover","Turnover (Tk)",""]];
-function repDate(){return document.getElementById("rep_date").value||""}
-function repQ(){var d=repDate();return d?"date="+encodeURIComponent(d):""}
-function repToday(){document.getElementById("rep_date").value="";loadReport()}
+// Dashboard: /admin/api/overview — the session clock, the day's totals, the
+// intraday chart, order outcomes, instruments, activity, brokers, listeners.
+var OV=null,_ovPaused=false,_ovMetric="turnover",_ovSort=["turnover",-1],_ovFilter="all",_ovAll=false,_ovLast={},_ovFlash={};
+function ovDate(){return document.getElementById("ov_date").value||""}
+function repQ(){var d=ovDate();return d?"date="+encodeURIComponent(d):""}
 function repCSV(){window.location.href="/admin/api/report/daily?format=csv&"+repQ()}
 function repPrint(){window.open("/admin/report/daily?"+repQ(),"_blank")}
-function loadReport(){j("report/daily?"+repQ()).then(function(r){
- var box=document.getElementById("report");
- if(!r.ok){box.innerHTML="<div class='panel pad16 muted'>"+esc(r.error||"No report for this date")+"</div>";window._repLive=false;return}
- var el=document.getElementById("rep_date");
- if(r.today){el.max=r.date;if(!el.value)el.value=r.date}
- window._repLive=!!r.live;
- var t=r.totals||{};
- document.getElementById("rep_note").textContent="· "+r.date+" · "+(r.scope=="exchange"?"whole exchange":"your brokers")+(r.live?" · live":" · final");
- if(!r.has_data){box.innerHTML="<div class='panel pad16 muted' style='grid-column:1/-1'>No trading activity was recorded on "+esc(r.date)+".</div>";return}
- box.innerHTML=REP.map(function(m){var v=t[m[0]]||0;
-  var txt=m[0]=="turnover"?Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):Number(v).toLocaleString();
-  var sub=m[0]=="rejected"&&t.orders?"<div class=sub>"+esc(t.reject_rate)+"% of orders</div>":(m[0]=="trades"&&t.trades?"<div class=sub>avg "+esc(t.avg_trade_size)+" shares @ "+esc(t.avg_price)+"</div>":"");
-  return "<div class='kpi "+m[2]+"'><div class=v>"+esc(txt)+"</div><div class=l>"+esc(m[1])+"</div>"+sub+"</div>"}).join("");
-})}
+function ovToday(){document.getElementById("ov_date").value="";ovLoad()}
+function ovPause(){_ovPaused=!_ovPaused;setc("ov_pause",_ovPaused?"Resume live":"Pause live");if(!_ovPaused)ovLoad()}
+function ovLoad(){j("overview?"+repQ()).then(function(d){
+ if(!d.ok){toast(d.error||"The dashboard could not be loaded",true);return}
+ var el=document.getElementById("ov_date");
+ if(d.today){el.max=d.date;if(!el.value)el.value=d.date}
+ document.getElementById("ov_today").style.display=d.today?"none":"";
+ OV=d;ovRender()})}
+function nf(v,dg){return Number(v||0).toLocaleString("en-US",{minimumFractionDigits:dg||0,maximumFractionDigits:dg||0})}
+// Taka in the Bangladeshi way: crore (10 million) and lakh (100 thousand).
+function tk(v){v=Number(v||0);if(v>=1e7)return (v/1e7).toFixed(2)+" Cr";if(v>=1e5)return (v/1e5).toFixed(2)+" Lakh";return nf(v)}
+function mins(hm){var p=String(hm||"0:0").split(":");return (+p[0])*60+(+p[1])}
+function hm(m){m=Math.round(m);return ("0"+Math.floor(m/60)).slice(-2)+":"+("0"+(m%60)).slice(-2)}
+function dhakaNow(){var t=new Date().toLocaleTimeString("en-GB",{timeZone:"Asia/Dhaka",hour12:false});return t.length>=8?t.slice(0,8):(OV&&OV.now)||""}
+function ovSub(){if(!OV)return;var s=(OV.scope=="own"?"Your brokers ("+(OV.my_brokers||0)+")":"Whole exchange")+" · "+OV.weekday+(OV.today?"":" · final");
+ if(document.getElementById("view-dash").classList.contains("on"))document.getElementById("pageSub").textContent=s}
+function ovSession(){if(!OV)return;var d=OV,sc=d.schedule,pre=mins(sc.pre_open),op=mins(sc.open),cl=mins(sc.close),po=mins(sc.post_close);
+ var t=dhakaNow(),m=mins(t)+(+(t.split(":")[2]||0))/60,note="";
+ if(!d.today){setc("ov_phase","Day's totals");setc("ov_clock","");note="Trading day "+d.date+(d.has_data?"":" · nothing recorded")}
+ else{setc("ov_phase",d.phase);setc("ov_clock",t);
+  if(!d.trading_day)note="No DSE trading today (weekend)";
+  else if(!d.auto_clock)note="Phases changed by hand (clock off)";
+  else if(m<pre)note="Pre-open at "+sc.pre_open;
+  else if(m<op)note="Opens in "+Math.ceil(op-m)+"m";
+  else if(m<cl){var l=cl-m;note="Closes in "+Math.floor(l/60)+"h "+Math.floor(l%60)+"m"}
+  else if(m<po)note="Post-close until "+sc.post_close;
+  else note="Trading ended at "+sc.close}
+ setc("ov_note",note);
+ var cur=!d.today?"":(m>=pre&&m<op?"pre":m>=op&&m<cl?"cont":m>=cl&&m<po?"post":"");
+ var seg=function(k,w,c,r){return "<div class='sg"+(cur==k?" cur":"")+"' style='flex:"+w+";background:"+c+";border-radius:"+r+"'></div>"};
+ var pos=Math.max(0,Math.min(100,(m-pre)/(po-pre)*100));
+ document.getElementById("ov_tl").innerHTML=seg("pre",op-pre,"var(--mut2)","4px 0 0 4px")+seg("cont",cl-op,"var(--acc)","0")+seg("post",po-cl,"var(--mut2)","0 4px 4px 0")+
+  (d.today&&d.trading_day?"<div class=mk style='left:"+pos.toFixed(2)+"%'></div>":"");
+ var tw=document.getElementById("ov_tl").clientWidth||800,tg=Math.max(20,(po-pre)*46/tw); // keep labels about 46px apart
+ var ticks=[[pre,sc.pre_open]];for(var h=Math.floor(pre/60)+1;h*60<po;h++){if(h*60-ticks[ticks.length-1][0]>=tg&&po-h*60>=tg)ticks.push([h*60,hm(h*60)])}ticks.push([po,sc.post_close]);
+ document.getElementById("ov_tlx").innerHTML=ticks.map(function(x){return "<span style='left:"+((x[0]-pre)/(po-pre)*100).toFixed(2)+"%'>"+esc(x[1])+"</span>"}).join("");
+ document.getElementById("ov_legend").innerHTML="<span><i style='background:var(--mut2);opacity:.5'></i>Pre-open "+esc(sc.pre_open)+"–"+esc(sc.open)+"</span><span><i style='background:var(--acc);opacity:.5'></i>Continuous trading "+esc(sc.open)+"–"+esc(sc.close)+"</span><span><i style='background:var(--mut2);opacity:.5'></i>Post-close "+esc(sc.close)+"–"+esc(sc.post_close)+"</span>"}
+function ovDelta(id,cur,prev,key){var e=document.getElementById(id);if(!prev||!prev.totals){e.textContent="";return}
+ var pv=key=="orders"?(prev.totals.buy_orders+prev.totals.sell_orders):prev.totals[key];if(!pv){e.textContent="";return}
+ var dd=cur/pv-1,lbl=prev.date.slice(8)+" "+["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+prev.date.slice(5,7)-1];
+ e.textContent=(dd>=0?"▲ ":"▼ ")+Math.abs(dd*100).toFixed(1)+"% vs "+lbl;e.style.color=dd>=0?"var(--acc)":"var(--red)";e.title=lbl+": "+nf(pv,key=="turnover"?2:0)+" (whole day)"}
+function ovRender(){if(!OV)return;var d=OV,t=d.totals||{},orders=(t.buy_orders||0)+(t.sell_orders||0);
+ ovSub();ovSession();
+ // KPIs
+ setc("k_to","Tk "+tk(t.turnover));setc("k_to_s","Tk "+nf(t.turnover,2));ovDelta("k_to_d",t.turnover,d.prev,"turnover");
+ setc("k_vol",nf(t.volume));setc("k_vol_s",t.trades?"avg "+nf(t.volume/t.trades)+" shares / trade":"no trades yet");ovDelta("k_vol_d",t.volume,d.prev,"volume");
+ // the rate over the time trading actually happened: first trade to the last (or to now while the market is open)
+ var span=0,live=d.today&&/Pre-Open|Continuous/.test(d.phase);
+ if(d.first_trade){span=(live?mins(dhakaNow())+(+dhakaNow().slice(6,8)||0)/60:mins(d.last_trade)+(+d.last_trade.slice(6,8))/60)-(mins(d.first_trade)+(+d.first_trade.slice(6,8))/60);span=Math.max(1,span)}
+ var rate=t.trades&&span?t.trades/span:0;
+ setc("k_tr",nf(t.trades));setc("k_tr_s",!rate?"no trades yet":rate>=1?rate.toFixed(1)+" per minute":(rate*60).toFixed(1)+" per hour");
+ document.getElementById("k_tr_s").title=d.first_trade?"from "+d.first_trade+" to "+(live?"now":d.last_trade):"";ovDelta("k_tr_d",t.trades,d.prev,"trades");
+ setc("k_or",nf(orders));setc("k_or_s","across "+nf(d.instruments_listed)+" instruments");ovDelta("k_or_d",orders,d.prev,"orders");
+ // intraday chart
+ var B=d.buckets||[],mk=_ovMetric,max=1;B.forEach(function(b){if(b[mk]>max)max=b[mk]});
+ setc("ch_cap","Intraday · "+d.bucket_minutes+"-min buckets");
+ var fmtv=function(v){return mk=="turnover"?"Tk "+tk(v):nf(v)+(mk=="trades"?" trades":" shares")};
+ var peak=0;B.forEach(function(b){if(b[mk]>peak)peak=b[mk]});setc("ch_peak",peak?"Peak "+fmtv(peak):"No trades yet");
+ document.getElementById("ch_bars").innerHTML=B.map(function(b,i){var fut=d.today&&i>d.now_bucket,cur=d.today&&i==d.now_bucket;
+  var h=fut?2:Math.max(b[mk]?3:1,b[mk]/max*100);
+  return "<div class='"+(fut?"fut":cur?"cur":"")+"' title='"+esc(b.start+" · "+fmtv(b[mk]))+"'><i style='height:"+h.toFixed(1)+"%'></i></div>"}).join("");
+ var xs=[],n=B.length,end=mins(d.buckets_end),beg=n?mins(B[0].start):0,span=Math.max(1,end-beg);
+ var gap=Math.max(span*0.07,span*46/(document.getElementById("ch_bars").clientWidth||600)); // labels closer than this would overlap
+ B.forEach(function(b){var m=mins(b.start);if((m%60==0||m==beg)&&(!xs.length||m-xs[xs.length-1][0]>=gap))xs.push([m,b.start])});
+ while(xs.length&&end-xs[xs.length-1][0]<gap)xs.pop();xs.push([end,d.buckets_end]);
+ document.getElementById("ch_x").innerHTML=xs.map(function(x){return "<span style='left:"+((x[0]-beg)/span*100).toFixed(2)+"%'>"+esc(x[1])+"</span>"}).join("");
+ // order outcomes
+ var o=d.outcomes||{},R=0,OC=[["Filled","filled","var(--acc)"],["Working","working","var(--blue)"],["Cancelled","cancelled","var(--amber)"],["Rejected","rejected","var(--red)"],["Expired","expired","var(--mut2)"]];
+ OC.forEach(function(x){R+=o[x[1]]||0});var pc=function(v){return R?(v/R*100):0};
+ setc("oc_rate",R?pc(o.filled).toFixed(1)+"%":"—");
+ document.getElementById("oc_stack").innerHTML=OC.map(function(x){return o[x[1]]?"<div style='width:"+pc(o[x[1]]).toFixed(2)+"%;background:"+x[2]+"'></div>":""}).join("");
+ document.getElementById("oc_list").innerHTML=OC.map(function(x){return "<div class=ocl><i style='background:"+x[2]+"'></i><span class=muted>"+x[0]+"</span><span class=dbm>"+nf(o[x[1]])+"</span><span class='dbm faint' style='text-align:right'>"+pc(o[x[1]]).toFixed(1)+"%</span></div>"}).join("");
+ var bp=orders?Math.round(t.buy_orders/orders*100):50;
+ setc("oc_buy","Buy "+(orders?bp+"%":"—"));setc("oc_sell","Sell "+(orders?(100-bp)+"%":"—"));setc("oc_amend",nf(t.amended)+" amended");
+ document.getElementById("oc_buybar").style.width=bp+"%";
+ // instruments
+ // the DSE "Latest Share Price" columns; CHANGE = LTP - YCP in taka, with the percentage under it
+ var cols=[["symbol","Trading code",""],["last","LTP","rt"],["high","High","rt"],["low","Low","rt"],["ycp","YCP","rt"],["change","Change","rt"],["trades","Trade","rt"],["turnover","Value (mn)","rt"],["volume","Volume","rt"]];
+ document.getElementById("it_h").innerHTML=cols.map(function(c){return "<span class='"+c[2]+"' onclick=\"ovSortBy('"+c[0]+"')\">"+c[1].toUpperCase()+(_ovSort[0]==c[0]?(_ovSort[1]>0?" ↑":" ↓"):"")+"</span>"}).join("");
+ var rows=(d.instruments||[]).slice(),k=_ovSort[0],dir=_ovSort[1];
+ rows.sort(function(a,b){var x=a[k],y=b[k];if(k=="symbol")return String(x).localeCompare(String(y))*dir;
+  if(x==null&&y==null)return a.symbol.localeCompare(b.symbol);if(x==null)return 1;if(y==null)return -1; // values a day lacks go last
+  return (x-y)*dir||a.symbol.localeCompare(b.symbol)});
+ var stamp=Date.now();rows.forEach(function(r){var key=r.last+"/"+r.trades,prev=_ovLast[r.symbol];if(prev!==undefined&&prev!==key)_ovFlash[r.symbol]=stamp+900;_ovLast[r.symbol]=key});
+ var lim=_ovAll?rows.length:12,shown=rows.slice(0,lim),px=function(v){return v==null?"<span class=faint>—</span>":nf(v,2)};
+ document.getElementById("it_rows").innerHTML=shown.map(function(r){var c=r.change,col=c==null||c==0?"var(--mut2)":c>0?"var(--acc)":"var(--red)";
+  var chg=c==null?"—":(c>0?"+":"")+nf(c,2)+"<small>"+(r.change_pct>0?"+":"")+Number(r.change_pct||0).toFixed(2)+"%</small>";
+  return "<div class='g r"+(_ovFlash[r.symbol]>stamp?" fl":"")+"'><b>"+esc(r.symbol)+"</b><span class=rt>"+nf(r.last,2)+"</span><span class=rt>"+px(r.high)+"</span><span class=rt>"+px(r.low)+"</span><span class='rt muted'>"+px(r.ycp)+"</span><span class=rt style='color:"+col+"'>"+chg+"</span><span class='rt muted'>"+nf(r.trades)+"</span><span class=rt title='Tk "+nf(r.turnover,2)+"'>"+(r.turnover/1e6).toFixed(3)+"</span><span class='rt muted'>"+nf(r.volume)+"</span></div>"}).join("")||"<div class=dbempty>No instruments"+(d.today?" listed.":" traded on this day.")+"</div>";
+ setTimeout(function(){document.querySelectorAll("#it_rows .r.fl").forEach(function(e){e.classList.remove("fl")})},900);
+ var mb=document.getElementById("it_more");mb.style.display=rows.length>12?"":"none";mb.textContent=_ovAll?"Show the top 12":"Show all "+rows.length+" instruments";
+ // activity
+ var F=(d.feed||[]).filter(function(e){return _ovFilter=="all"||e.kind==_ovFilter}).slice(0,10);
+ document.getElementById("fd_rows").innerHTML=F.map(function(e){return "<div class=feedr><span class='dbm faint' style='font-size:12px'>"+esc(e.time)+"</span><div style='display:flex;flex-direction:column;min-width:0'><span class=x title='"+esc(e.text)+"'>"+esc(e.text)+"</span><span class=y>"+esc(e.broker)+"</span></div><span class='tag "+esc(e.tag)+"'>"+esc(e.tag)+"</span></div>"}).join("")||"<div class=dbempty>No activity yet.</div>";
+ // brokers
+ var BR=(d.brokers||[]).slice(0,8),maxB=0;BR.forEach(function(b){if(b.turnover>maxB)maxB=b.turnover});
+ setc("br_cap",d.scope=="own"?"Your brokers by turnover":"Brokers by turnover");
+ document.getElementById("br_rows").innerHTML=BR.map(function(b){var meta=nf(b.orders)+" order"+(b.orders==1?"":"s")+" · "+nf(b.trades)+" fill"+(b.trades==1?"":"s")+(b.fix&&d.today?" · "+(b.online?"<span style='color:var(--acc)'>online</span>":"offline"):"");
+  return "<div class=brk><div style='display:flex;flex-direction:column;min-width:0'><span class=n title='"+esc(b.id)+"'>"+esc(b.name)+"</span><span class=faint style='font-size:12px'>"+meta+"</span></div><div class=bb><i style='width:"+(maxB?b.turnover/maxB*100:0).toFixed(1)+"%'></i></div><span class=dbm style='text-align:right'>"+tk(b.turnover)+"</span></div>"}).join("")||"<div class=dbempty>No broker activity"+(d.today?" yet.":" on this day.")+"</div>";
+ // connectivity
+ setc("cn_sess",d.sessions||0);
+ document.getElementById("cn_rows").innerHTML=(d.listeners||[]).map(function(l){return "<div class=lst><div style='display:flex;flex-direction:column'><span class=dbm style='font-size:13px'>"+esc(l.name)+"</span><span class=faint style='font-size:12px'>"+esc(l.desc)+"</span></div><span class='upc"+(l.up?"":" dn")+"'><i></i>"+(l.up?"UP":"DOWN")+"</span></div>"}).join("");
+ var saved=_s&&_s.state_saved&&_s.state_saved!="off"&&_s.state_saved!="not yet"?" · Market saved "+_s.state_saved.slice(11):"";
+ document.getElementById("db_foot").textContent="Turnover in taka (Cr = crore, Lakh = 100,000); the instrument table's value is in million taka, as on the DSE. A broker's turnover counts its buys and sells."+(d.today?" Updates every 3 s"+(_ovPaused?" (paused)":"")+saved+".":"")}
+function ovSortBy(k){_ovSort=[k,_ovSort[0]==k?-_ovSort[1]:(k=="symbol"?1:-1)];ovRender()}
+document.getElementById("ch_seg").onclick=function(e){var b=e.target.closest("button");if(!b)return;_ovMetric=b.dataset.m;this.querySelectorAll("button").forEach(function(x){x.classList.toggle("on",x==b)});ovRender()};
+var _ovRT;window.addEventListener("resize",function(){clearTimeout(_ovRT);_ovRT=setTimeout(ovRender,150)}); // label spacing follows the width
+document.getElementById("fd_seg").onclick=function(e){var b=e.target.closest("button");if(!b)return;_ovFilter=b.dataset.f;this.querySelectorAll("button").forEach(function(x){x.classList.toggle("on",x==b)});ovRender()};
 // Order report: one row per order; filters are sent to the server, downloads get every match.
 function orQuery(){var g=function(i){return document.getElementById(i).value.trim()};
  var p=[["date",g("or_date")],["broker",g("or_broker")],["symbol",g("or_symbol")],["side",g("or_side")],["status",g("or_status")],["q",g("or_q")]];
@@ -557,23 +764,12 @@ document.addEventListener("click",function(ev){var tr=ev.target.closest&&ev.targ
 function refresh(){j("status").then(function(d){_s=d;renderStatus(d)})}
 function renderStatus(d){
   if(!d)return;
-  document.getElementById("up").textContent="uptime "+d.uptime;
+  var sv="";if(d.state_saved=="off")sv=" · market not saved";else if(d.state_age>=0)sv=d.state_age>10?" · ! market last saved "+Math.round(d.state_age)+" s ago":" · market saved";
+  var q=0;for(var qb in (d.fix_queued||{}))q+=d.fix_queued[qb];if(q)sv+=" · "+q+" report"+(q>1?"s":"")+" waiting for logged-off brokers";
+  document.getElementById("up").textContent="uptime "+d.uptime+sv;
+  document.getElementById("up").title=d.state_saved&&d.state_saved!="off"?"order books, prices and trades last saved "+d.state_saved:"";
   document.getElementById("enText").textContent=d.running?"engine live":"engine halted";
-  function kpi(v,l,cls){return "<div class='kpi "+(cls||"")+"'><div class='v'>"+v+"</div><div class=l>"+l+"</div></div>"}
-  var k="";
-  k+=kpi("<span class='"+(d.running?"grn-t":"amber-t")+"'>"+(d.running?"LIVE":"HALT")+"</span>","engine","grn");
-  if(d.scope=="own"){ // a user's own dashboard: only their brokers' figures
-   k+=kpi(esc(d.phase),"session phase","blue");k+=kpi(d.my_brokers||0,"my brokers");k+=kpi((d.sessions||[]).length,"my connected sessions","amber");
-   k+=kpi(d.orders||0,"my orders");k+=kpi(d.trades||0,"my trades","grn");k+=kpi(Number(d.volume||0).toLocaleString(),"my traded volume");
-  }else{
-   k+=kpi(esc(d.phase),"session phase","blue");k+=kpi(d.instruments,"instruments");k+=kpi(d.orders,"orders");
-   k+=kpi(d.trades,"trades matched","grn");k+=kpi((d.sessions||[]).length,"live sessions","amber");
-  }
-  document.getElementById("kpis").innerHTML=k;
   document.getElementById("navSess").textContent=(d.sessions||[]).length||"";
-  var L=d.listeners||{},lr="";Object.keys(L).sort().forEach(function(n){
-   lr+="<tr><td class=mono>"+esc(n)+"</td><td class=right><span class='chip "+(L[n]?"up":"down")+"'><span class=d></span>"+(L[n]?"UP":"DOWN")+"</span></td></tr>"});
-  document.getElementById("listeners").innerHTML=lr;
   var fs=flt("f_sess"),ss="",sc=0;(d.sessions||[]).forEach(function(s){if(!hit(s.broker,fs))return;sc++;
    ss+="<tr><td class=mono>"+esc(s.broker)+"</td><td class='mono muted'>"+esc(s.since)+"</td><td class=mono>"+(s.seq_sender||0)+" / "+(s.seq_target||0)+"</td><td class=right>"+
      "<button class='btn sm ghost' onclick=\"sess("+jsa(s.broker)+",'reset')\">Reset seq</button> <button class='btn sm danger' onclick=\"sess("+jsa(s.broker)+",'disconnect')\">Disconnect</button></td></tr>"});
@@ -588,12 +784,9 @@ function renderStatus(d){
   document.getElementById("authState").innerHTML=
     "<tr><td>FIX logon authentication</td><td class=right><span class='chip "+(d.fix_auth?"up":"down")+"'><span class=d></span>"+(d.fix_auth?"ENFORCED":(d.fix_auth_mode=="auto"?"OPEN (until a broker is added)":"OPEN"))+"</span></td></tr>"+
     "<tr><td>ITCH feed authentication</td><td class=right><span class='chip "+(d.itch_auth?"up":"down")+"'><span class=d></span>"+(d.itch_auth?"ENFORCED":"OPEN")+"</span></td></tr>";
-  var fe=flt("f_ev"),fd=flt("f_dash"),ev="",ec=0,mini="",mc=0;(d.events||[]).forEach(function(e){var t=(e.time||"").replace("T"," ").slice(0,19);
-   var row="<td class=mono>"+esc(t)+"</td><td class=mono>"+esc(e.broker)+"</td><td><span class='chip "+esc(e.kind)+"'>"+esc(e.kind)+"</span></td>";
-   if(hit(e.broker+" "+e.kind+" "+e.detail,fe)){ev+="<tr>"+row+"<td class=muted>"+esc(e.detail)+"</td></tr>";ec++}
-   if(hit(e.broker+" "+e.kind,fd)&&mc<14){mini+="<tr>"+row+"</tr>";mc++}});
+  var fe=flt("f_ev"),ev="",ec=0;(d.events||[]).forEach(function(e){var t=(e.time||"").replace("T"," ").slice(0,19);
+   if(hit(e.broker+" "+e.kind+" "+e.detail,fe)){ev+="<tr><td class=mono>"+esc(t)+"</td><td class=mono>"+esc(e.broker)+"</td><td><span class='chip "+esc(e.kind)+"'>"+esc(e.kind)+"</span></td><td class=muted>"+esc(e.detail)+"</td></tr>";ec++}});
   document.getElementById("events").innerHTML=ev||"<tr><td colspan=4 class='pad16 muted'>No matching events.</td></tr>";
-  document.getElementById("miniEvents").innerHTML=mini||"<tr><td colspan=3 class='pad16 muted'>No activity.</td></tr>";
   setc("ev_cnt",ec+" events");
   var fa=flt("f_audit"),ad="",ac=0;(d.audit||[]).forEach(function(a){if(!hit(a.actor+" "+a.action+" "+a.target,fa))return;ac++;var t=(a.time||"").replace("T"," ").slice(0,19);
    var cls=a.action.indexOf("ISSUE")==0?"LOGON":(a.action.indexOf("REVOKE")==0?"REJECT":"LOGOUT");
@@ -780,6 +973,8 @@ function delUser(u){if(!confirm("Delete user "+u+"?"))return;jpost("user/delete"
 function changeMyPassword(){var o=prompt("Current password:");if(!o)return;var n=prompt("New password (min 8 characters):");if(!n)return;
  jpost("me/password",{Old:o,New:n}).then(function(x){if(!x.ok)toast(x.error||"Failed",true);else toast("Password changed")})}
 loadMe();refresh();loadBrokers();setInterval(refresh,3000);
-loadReport();setInterval(function(){if(window._repLive&&document.getElementById("view-dash").classList.contains("on"))loadReport()},5000);
+document.body.classList.add("v-dash");ovLoad();
+setInterval(function(){if(!_ovPaused&&OV&&OV.today&&document.getElementById("view-dash").classList.contains("on"))ovLoad()},3000);
+setInterval(function(){if(OV&&OV.today&&document.getElementById("view-dash").classList.contains("on"))ovSession()},1000);
 setInterval(function(){if(window._orLive&&document.getElementById("view-orders").classList.contains("on")&&!document.querySelector("#orders tr.det"))loadOrders()},5000);
 </script></body></html>`

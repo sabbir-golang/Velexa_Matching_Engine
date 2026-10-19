@@ -2,6 +2,7 @@
 package deps
 
 import (
+	"velexa-sim-me/internal/database/marketstate"
 	"velexa-sim-me/internal/database/orderlog"
 	"velexa-sim-me/internal/database/reports"
 	"velexa-sim-me/internal/database/users"
@@ -17,4 +18,5 @@ type Deps struct {
 	Users   *users.Store       // console accounts and their roles
 	Reports reports.Store      // saved daily report figures (past days)
 	Orders  *orderlog.Recorder // the order log (order report); nil in tests that do not need it
+	State   *marketstate.Saver // saves the live market every second; nil when off or in tests
 }

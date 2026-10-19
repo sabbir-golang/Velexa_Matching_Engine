@@ -16,6 +16,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -60,7 +61,27 @@ type orderCtx struct {
 	restrictions string // tag 529
 	senderSub    string // tag 50 on the request, echoed as 57
 	parties      []party
-	orderID      string // DSE-style OrderID, fixed by the first report
+
+	mu      sync.Mutex // guards orderID: the sender sets it, the state saver reads it
+	orderID string     // DSE-style OrderID, fixed by the first report
+}
+
+// fixOrderID returns the order's OrderID (37), fixing it on first use: the
+// Dhaka date of at followed by the engine's order number.
+func (c *orderCtx) fixOrderID(id uint64, at time.Time) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.orderID == "" {
+		c.orderID = at.In(dhakaTZ).Format("20060102") + strconv.FormatUint(id, 10)
+	}
+	return c.orderID
+}
+
+// getOrderID is the OrderID once fixed ("" before the first report).
+func (c *orderCtx) getOrderID() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.orderID
 }
 
 func partiesTemplate() quickfix.GroupTemplate {
@@ -106,9 +127,10 @@ func newOrderCtx(m *quickfix.Message, sid quickfix.SessionID) *orderCtx {
 // outItem is one queued outbound message: an execution report to expand, or a
 // ready-made message.
 type outItem struct {
-	rep *engine.ExecReport
-	msg *quickfix.Message
-	sid quickfix.SessionID
+	rep   *engine.ExecReport
+	msg   *quickfix.Message
+	sid   quickfix.SessionID
+	drain string // a broker logged on (or its queue was restored): send what waits for it
 }
 
 var execBase = strconv.FormatInt(time.Now().Unix(), 16)
@@ -128,6 +150,10 @@ func (fa *Acceptor) startSender() {
 }
 
 func (fa *Acceptor) sendNow(it outItem) {
+	if it.drain != "" {
+		fa.drainOutbox(it.drain)
+		return
+	}
 	if it.msg != nil {
 		if err := quickfix.SendToTarget(it.msg, it.sid); err != nil {
 			log.Printf("[FIX] send failed: %v", err)
@@ -138,11 +164,34 @@ func (fa *Acceptor) sendNow(it outItem) {
 	if ctx == nil {
 		return
 	}
-	for _, m := range fa.reports(it.rep, ctx) {
-		if err := quickfix.SendToTarget(m, ctx.sid); err != nil {
-			log.Printf("[FIX] send exec report failed: %v", err)
+	// A broker that is logged off gets the report when it logs on again; so
+	// does one whose earlier reports are still queued (they go first).
+	if fa.holdFor(ctx.sid.TargetCompID) {
+		fa.hold(it.rep, ctx, time.Now())
+		return
+	}
+	if at := time.Now(); !fa.sendReport(it.rep, ctx, time.Time{}) {
+		fa.hold(it.rep, ctx, at) // it went away just now
+	}
+}
+
+// sendReport sends the execution reports for one engine report (at: when it
+// happened, zero for now). It reports false when the broker could not be
+// reached before anything was sent.
+func (fa *Acceptor) sendReport(rep *engine.ExecReport, ctx *orderCtx, at time.Time) bool {
+	sid := ctx.sid
+	if live, ok := fa.sessionID(sid.TargetCompID); ok {
+		sid = live
+	}
+	for i, m := range fa.reportsAt(rep, ctx, at) {
+		if err := quickfix.SendToTarget(m, sid); err != nil {
+			log.Printf("[FIX] send exec report to %s failed: %v", sid.TargetCompID, err)
+			if i == 0 {
+				return false
+			}
 		}
 	}
+	return true
 }
 
 // deliver queues a report from the engine (it is the orders' Notify; it must not block for long).
@@ -205,10 +254,7 @@ func (fa *Acceptor) erBase(rep *engine.ExecReport, ctx *orderCtx, execType, ordS
 	}
 	oid := "NONE"
 	if rep.OrderID != 0 {
-		if ctx.orderID == "" {
-			ctx.orderID = time.Now().In(dhakaTZ).Format("20060102") + strconv.FormatUint(rep.OrderID, 10)
-		}
-		oid = ctx.orderID
+		oid = ctx.fixOrderID(rep.OrderID, time.Now())
 	}
 	b := &m.Body
 	b.SetString(tOrderID, oid)
@@ -282,6 +328,22 @@ func workingStatus(cum, ordQty int64) string {
 
 // reports expands one engine report into the execution reports the DSE would send.
 func (fa *Acceptor) reports(rep *engine.ExecReport, ctx *orderCtx) []*quickfix.Message {
+	return fa.reportsAt(rep, ctx, time.Time{})
+}
+
+// reportsAt is reports for a report made at a given time (a queued report sent
+// later keeps its own transact, trade and settlement dates); zero is now.
+func (fa *Acceptor) reportsAt(rep *engine.ExecReport, ctx *orderCtx, at time.Time) []*quickfix.Message {
+	out := fa.expand(rep, ctx, at)
+	if !at.IsZero() {
+		for _, m := range out {
+			m.Body.SetString(tTransactTime, at.UTC().Format("20060102-15:04:05.000"))
+		}
+	}
+	return out
+}
+
+func (fa *Acceptor) expand(rep *engine.ExecReport, ctx *orderCtx, at time.Time) []*quickfix.Message {
 	ordQty := rep.OrderQty
 	if ordQty <= 0 {
 		ordQty = rep.FilledQty + rep.LeavesQty
@@ -335,7 +397,10 @@ func (fa *Acceptor) reports(rep *engine.ExecReport, ctx *orderCtx) []*quickfix.M
 	default:
 		out = append(out, fa.erBase(rep, ctx, "0", workingStatus(cum, ordQty), cum, ordQty-cum, avg()))
 	}
-	now := time.Now().In(dhakaTZ)
+	if at.IsZero() {
+		at = time.Now()
+	}
+	now := at.In(dhakaTZ)
 	aggr := "N"
 	if rep.Aggressor {
 		aggr = "Y"
@@ -379,8 +444,8 @@ func cxlRejectFor(rep *engine.ExecReport, cl, orig, respTo string) *quickfix.Mes
 	oid, status, text := "NONE", "8", "(226): Invalid order number"
 	if rep.Reason != "" {
 		text = dseText(rep.Reason)
-		if ctx, ok := rep.Ctx.(*orderCtx); ok && ctx.orderID != "" {
-			oid, status = ctx.orderID, "0"
+		if ctx, ok := rep.Ctx.(*orderCtx); ok && ctx.getOrderID() != "" {
+			oid, status = ctx.getOrderID(), "0"
 		}
 	}
 	m.Body.SetString(tOrderID, oid)

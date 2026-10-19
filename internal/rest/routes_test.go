@@ -17,6 +17,7 @@ import (
 // wantRoutes is every URL the engine served before the handlers were reorganised
 // into internal/rest. A route that is dropped or renamed fails here.
 var wantRoutes = []string{
+	"/admin/api/overview",
 	"/admin/api/report/daily",
 	"/admin/api/report/orders",
 	"/admin/report/daily",

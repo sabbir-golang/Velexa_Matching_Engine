@@ -102,3 +102,87 @@ func TestOrderLogPostgres(t *testing.T) {
 	pool, _ := dbtest.Open(t)
 	checkLifecycle(t, NewPGStore(pool))
 }
+
+// Orders restored with the market after a restart keep their row: a fill
+// after the restart updates it instead of adding a second one.
+func TestRestoredOrdersKeepTheirRow(t *testing.T) {
+	st := NewFileStore(filepath.Join(t.TempDir(), "orders"))
+	e, rec := newEngine(t, st)
+	info := engine.OrderInfo{Client: "00018"}
+	place(e, "FIX:AAA", "B1", engine.Buy, 9.8, 100, info)
+	if err := rec.flush(); err != nil {
+		t.Fatal(err)
+	}
+	snap := e.TakeSnapshot(true)
+
+	rec2, err := NewRecorder(st) // the restart
+	if err != nil {
+		t.Fatal(err)
+	}
+	e2 := engine.NewEngine([]engine.Instrument{{Symbol: "GP", Name: "Grameenphone", Prev: 10}}, engine.NewBus())
+	e2.OnOrderEvent = rec2.Observe
+	r, err := e2.Restore(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := rec2.Adopt(r.Restored); n != 1 {
+		t.Fatalf("adopted %d of %d", n, len(r.Restored))
+	}
+	go e2.Run()
+	place(e2, "USER:alice", "S1", engine.Sell, 9.8, 30, engine.OrderInfo{})
+	_, recs := rec2.Today()
+	if len(recs) != 2 {
+		t.Fatalf("%d records after the fill, want 2 (B1 and S1): %+v", len(recs), recs)
+	}
+	if b1 := byCl(recs)["B1"]; b1.Status != "Partial" || b1.Filled != 30 || b1.Client != "00018" {
+		t.Fatalf("B1 after a fill following the restart: %+v", b1)
+	}
+}
+
+// An order the log shows as working, but that did not come back with the
+// market, is closed at start-up instead of showing as working forever.
+func TestLostOrdersAreClosed(t *testing.T) {
+	st := NewFileStore(filepath.Join(t.TempDir(), "orders"))
+	e, rec := newEngine(t, st)
+	place(e, "FIX:AAA", "KEEP", engine.Buy, 9.8, 100, engine.OrderInfo{})
+	place(e, "FIX:AAA", "LOST", engine.Buy, 9.7, 100, engine.OrderInfo{})
+	place(e, "FIX:AAA", "DONE", engine.Sell, 50, 10, engine.OrderInfo{}) // rejected: stays as it is
+	if err := rec.flush(); err != nil {
+		t.Fatal(err)
+	}
+	snap := e.TakeSnapshot(true)
+	keep := snap.Orders[:0]
+	for _, o := range snap.Orders {
+		if o.ClOrdID != "LOST" { // LOST did not survive the restart
+			keep = append(keep, o)
+		}
+	}
+	snap.Orders = keep
+
+	rec2, err := NewRecorder(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e2 := engine.NewEngine([]engine.Instrument{{Symbol: "GP", Name: "Grameenphone", Prev: 10}}, engine.NewBus())
+	r, err := e2.Restore(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec2.Adopt(r.Restored)
+	lost := rec2.CloseLost("not on the book after an engine restart")
+	if len(lost) != 1 || lost[0].ClOrdID != "LOST" {
+		t.Fatalf("closed %+v, want only LOST", lost)
+	}
+	_, recs := rec2.Today()
+	m := byCl(recs)
+	if m["LOST"].Status != "Cancelled" || m["LOST"].Reason == "" || m["KEEP"].Status != "New" || m["DONE"].Status != "Rejected" {
+		t.Fatalf("after start-up: LOST %+v KEEP %+v DONE %+v", m["LOST"], m["KEEP"], m["DONE"])
+	}
+	if err := rec2.flush(); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := st.List(engine.ReportDay(time.Now()))
+	if byCl(saved)["LOST"].Status != "Cancelled" {
+		t.Fatal("the closed order was not saved")
+	}
+}

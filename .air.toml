@@ -21,7 +21,7 @@ tmp_dir = "tmp"
   time = true
 
 [misc]
-  clean_on_exit = true
+  clean_on_exit = false # tmp/ also holds the Go caches, which are read-only: leave it in place
 
 [screen]
   clear_on_rebuild = false

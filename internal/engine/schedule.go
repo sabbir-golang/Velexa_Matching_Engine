@@ -120,11 +120,24 @@ func (e *Engine) ScheduleText() string {
 	return e.schedule.String()
 }
 
+// SessionSchedule is the trading day the clock follows (before StartClock: the
+// configured one).
+func (e *Engine) SessionSchedule() Schedule {
+	if e.schedule == (Schedule{}) {
+		return ScheduleFromEnv()
+	}
+	return e.schedule
+}
+
 // AutoClock reports whether the schedule drives the phases.
 func (e *Engine) AutoClock() bool { return autoClock.Load() }
 
 // SetAutoClock switches the schedule on or off.
-func (e *Engine) SetAutoClock(on bool) { autoClock.Store(on) }
+func (e *Engine) SetAutoClock(on bool) {
+	if autoClock.Swap(on) != on {
+		e.MarkDirty()
+	}
+}
 
 // ForcePhase moves the market to phase by hand; it switches the clock off so the
 // schedule does not move it back.
@@ -167,6 +180,9 @@ func (e *Engine) StartClock(sc Schedule) {
 	e.schedule = sc
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("ME_SESSION_AUTO")), "off") {
 		log.Printf("[session] clock off (ME_SESSION_AUTO=off): phases change only by hand")
+		e.SetAutoClock(false)
+	} else if e.restoredAuto != nil && !*e.restoredAuto {
+		log.Printf("[session] clock off (it was switched off before the restart): phases change only by hand")
 		e.SetAutoClock(false)
 	} else {
 		e.SetAutoClock(true)

@@ -73,13 +73,19 @@ fi
 
 echo; echo "== restart and persistence"
 OB_BEFORE=$(md5sum "$WORK/data/orderbook_ids.json" | cut -d' ' -f1)
+python3 -I "$ROOT/tools/e2e_test.py" "${ARGS[@]}" --dump-market "$WORK/market.json" || rc=$?
 stop
 start
-python3 -I "$ROOT/tools/e2e_test.py" "${ARGS[@]}" --after-restart "$WORK/creds.json" || rc=$?
+python3 -I "$ROOT/tools/e2e_test.py" "${ARGS[@]}" --after-restart "$WORK/creds.json" --market "$WORK/market.json" || rc=$?
 if [ "$OB_BEFORE" = "$(md5sum "$WORK/data/orderbook_ids.json" | cut -d' ' -f1)" ]; then
   echo "PER-05   PASS  Order book IDs are unchanged across the restart"
 else
   echo "PER-05   FAIL  Order book IDs changed across the restart"; rc=1
+fi
+if grep -q "\[state\] restored the market" "$WORK/engine.log"; then
+  echo "PER-09   PASS  $(grep -o '\[state\] restored the market.*' "$WORK/engine.log" | tail -1 | cut -c1-150)"
+else
+  echo "PER-09   FAIL  the engine log does not show the market being restored"; rc=1
 fi
 if [ -n "$DBC" ]; then
   q() { docker exec "$DBC" psql -U postgres -d velexa_me -tAc "$1"; }

@@ -3,9 +3,12 @@ package cmd
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 	"velexa-sim-me/internal/database/audit"
 	"velexa-sim-me/internal/database/brokers"
 	"velexa-sim-me/internal/database/db"
+	"velexa-sim-me/internal/database/marketstate"
 	"velexa-sim-me/internal/database/orderlog"
 	"velexa-sim-me/internal/database/reports"
 	"velexa-sim-me/internal/database/users"
@@ -49,9 +53,8 @@ func Serve() {
 	bus := engine.NewBus()
 	eng := engine.NewEngine(engine.LoadUniverse(), bus)
 	eng.LoadOrderBookIDs(config.EnvOr("ME_OBID_FILE", config.StateFile("orderbook_ids.json")))
-	st := openStores(eng) // before Run: the order log hooks into the engine
+	st := openStores(eng) // before Run: restores the saved market; the order and trade logs hook into the engine
 	go eng.Run()
-	eng.StartClock(engine.ScheduleFromEnv()) // DSE trading day on the Dhaka clock (ME_SESSION_AUTO=off to drive it by hand)
 
 	// FIX acceptor — brokers' fix_initiator_go connect here (real FIX round-trip)
 	fixPort := os.Getenv("FIX_PORT")
@@ -65,7 +68,11 @@ func Serve() {
 	fa, err := fixgw.Start(eng, fixPort, fixSender)
 	if err != nil {
 		log.Printf("[FIX] acceptor start failed: %v (HTTP still serving)", err)
+		fa = nil
 	}
+	st.startState(eng, fa)                   // restored FIX orders report again; saving starts
+	eng.FinishStaleDay()                     // a market saved on an earlier day closes that day first
+	eng.StartClock(engine.ScheduleFromEnv()) // DSE trading day on the Dhaka clock (ME_SESSION_AUTO=off to drive it by hand)
 	brokers.Itch = brokers.LoadItch()
 
 	srv := newServer(eng, bus, st)
@@ -77,7 +84,8 @@ func Serve() {
 	if err := srv.Run(ctx, ":"+port); err != nil {
 		log.Fatalf("[http] %v", err)
 	}
-	// SIGTERM (docker stop, systemctl stop): log brokers out and close the database.
+	// SIGTERM (docker stop, systemctl stop): log brokers out, save the market
+	// once more and close the database.
 	if fa != nil {
 		fa.Stop()
 	}
@@ -99,7 +107,7 @@ func newServer(eng *engine.Engine, bus *engine.Bus, st *stores) *rest.Server {
 	}
 	config.SessionKey() // create the session key now, not on the first sign-in
 	return rest.NewServer(&deps.Deps{Eng: eng, Bus: bus, Itch: itch, Users: st.accounts,
-		Reports: st.daily.store, Orders: st.orders})
+		Reports: st.daily.store, Orders: st.orders, State: st.state.saver})
 }
 
 // stores are the engine's saved data: accounts and audit trail, the daily
@@ -109,6 +117,7 @@ type stores struct {
 	daily      dailyReports
 	orders     *orderlog.Recorder
 	stopOrders func()
+	state      marketState
 	pool       *pgxpool.Pool
 }
 
@@ -131,6 +140,17 @@ func openStores(eng *engine.Engine) *stores {
 	}
 	eng.OnOrderEvent = rec.Observe
 	eng.SetMinSeq(rec.MaxSeq()) // a restart never reuses today's OrderIDs
+	st.state = openMarketState(eng, st.pool)
+	if n := len(st.state.restored); n > 0 {
+		log.Printf("[orders] %d of %d restored orders continue their order-log rows", rec.Adopt(st.state.restored), n)
+	}
+	st.state.restored = nil
+	if lost := rec.CloseLost("not on the book after an engine restart"); len(lost) > 0 {
+		for _, l := range lost {
+			log.Printf("[orders] %s %s %s %s %d: working in the order log but not on the book after the restart — marked cancelled",
+				l.Actor, l.OrderID, l.Side, l.Symbol, l.Qty)
+		}
+	}
 	stopc, done := make(chan struct{}), make(chan struct{})
 	go func() { rec.Run(time.Second, stopc, log.Printf); close(done) }()
 	st.orders, st.stopOrders = rec, func() { close(stopc); <-done }
@@ -139,11 +159,105 @@ func openStores(eng *engine.Engine) *stores {
 
 // close saves what is still pending and closes the database.
 func (st *stores) close() {
+	st.state.stop()
 	st.stopOrders()
 	st.daily.stop()
 	if st.pool != nil {
 		st.pool.Close()
 	}
+}
+
+// marketState saves the live market — books, prices, the tape, counters, the
+// FIX outbox — every second and restores it on start (marketstate).
+type marketState struct {
+	store    marketstate.Store
+	saver    *marketstate.Saver
+	restored []*engine.Order // restored working orders, for the order log
+	outbox   []byte          // the saved FIX outbox, until the acceptor takes it
+	stop     func()
+}
+
+// openMarketState restores the saved market into eng and attaches the trade
+// log. Call it before eng.Run. An unreadable saved state is set aside and the
+// engine starts with an empty market; a database error stops the start, so an
+// empty market never overwrites a saved one.
+func openMarketState(eng *engine.Engine, pool *pgxpool.Pool) marketState {
+	ms := marketState{stop: func() {}}
+	if strings.EqualFold(config.EnvOr("ME_MARKET_STATE", "on"), "off") {
+		log.Printf("[state] ME_MARKET_STATE=off: the market is not saved or restored")
+		return ms
+	}
+	if pool != nil {
+		ms.store = marketstate.NewPGStore(pool)
+	} else {
+		ms.store = marketstate.NewFileStore(config.StateDir(), config.EnvOr("ME_TRADELOG_DIR", config.StateFile("trades")))
+	}
+	snap, err := marketstate.LoadSnapshot(ms.store)
+	if errors.Is(err, marketstate.ErrCorrupt) {
+		where, aerr := ms.store.SetAside(marketstate.Market)
+		log.Printf("[state] !!! %v — kept as %s (%v); starting with an empty market", err, where, aerr)
+		snap, err = nil, nil
+	}
+	if err != nil {
+		log.Fatalf("[state] could not read the saved market: %v", err)
+	}
+	if snap != nil {
+		r, err := eng.Restore(snap)
+		if err != nil {
+			log.Fatalf("[state] could not restore the saved market: %v", err)
+		}
+		ms.restored = r.Restored
+		last := "none"
+		if snap.TradeSeq > 0 {
+			last = fmt.Sprintf("#%d", snap.TradeSeq)
+		}
+		log.Printf("[state] restored the market saved %s (%s ago): %d resting orders, %d stops, %d instruments, %d trades on the tape, last trade %s, phase %s",
+			snap.Taken.In(engine.Dhaka).Format("2006-01-02 15:04:05"), time.Since(snap.Taken).Round(100*time.Millisecond),
+			r.Orders, r.Stops, r.Markets, r.Trades, last, snap.Phase)
+		if r.Dropped > 0 {
+			log.Printf("[state] %d saved orders were for instruments that are no longer listed and were dropped", r.Dropped)
+		}
+	} else {
+		log.Printf("[state] no saved market: starting empty")
+	}
+	if n, err := ms.store.MaxTradeID(); err != nil {
+		log.Fatalf("[state] could not read the trade log: %v", err)
+	} else {
+		eng.SetMinTradeSeq(n) // trade numbers (880, ITCH match numbers) never repeat
+	}
+	if ms.outbox, err = ms.store.LoadState(marketstate.Outbox); err != nil {
+		log.Fatalf("[state] could not read the saved FIX outbox: %v", err)
+	}
+	ms.saver = marketstate.NewSaver(eng, ms.store)
+	if err := ms.saver.SeedToday(); err != nil {
+		log.Fatalf("[state] could not read today's trades: %v", err)
+	}
+	eng.OnTrade = ms.saver.OnTrade
+	return ms
+}
+
+// startState re-attaches the restored FIX orders and queued reports to the
+// acceptor and starts saving. Call it once the engine runs.
+func (st *stores) startState(eng *engine.Engine, fa *fixgw.Acceptor) {
+	ms := &st.state
+	if ms.saver == nil {
+		return
+	}
+	if fa != nil {
+		if n := fa.AttachRestored(); n > 0 {
+			log.Printf("[state] %d restored FIX orders report to their brokers again", n)
+		}
+		if n, err := fa.RestoreOutbox(ms.outbox); err != nil {
+			log.Printf("[state] !!! the saved FIX outbox is unreadable: %v", err)
+		} else if n > 0 {
+			log.Printf("[state] %d FIX report(s) wait for their brokers to log on: %v", n, fa.Queued())
+		}
+		ms.saver.Outbox = fa.OutboxState
+	}
+	ms.outbox = nil
+	stopc, done := make(chan struct{}), make(chan struct{})
+	go func() { ms.saver.Run(time.Second, stopc, log.Printf); close(done) }()
+	ms.stop = func() { close(stopc); <-done }
 }
 
 type dailyReports struct {

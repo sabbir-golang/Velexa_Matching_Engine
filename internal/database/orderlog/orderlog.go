@@ -100,6 +100,85 @@ func (r *Recorder) MaxSeq() uint64 {
 	return n
 }
 
+// Adopt links orders restored after a restart to their existing records, so
+// their fills, amends and expiry update the same row of the report. It
+// returns how many it found. Call it before the engine runs.
+func (r *Recorder) Adopt(orders []*engine.Order) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	type id struct {
+		actor string
+		seq   uint64
+	}
+	byID := map[id]*Record{}
+	for _, rec := range r.today {
+		byID[id{rec.Actor, rec.Seq}] = rec
+	}
+	loaded := map[string]bool{r.day: true}
+	n := 0
+	for _, o := range orders {
+		if o.ID == 0 {
+			continue
+		}
+		k := id{o.Actor, o.ID}
+		rec := byID[k]
+		if rec == nil { // an order from an earlier day (GTC, GTD): its record is in that day's log
+			for _, day := range []string{engine.ReportDay(o.Time), engine.ReportDay(time.Now().AddDate(0, 0, -1))} {
+				if loaded[day] {
+					continue
+				}
+				loaded[day] = true
+				recs, err := r.store.List(day)
+				if err != nil {
+					continue
+				}
+				for i := range recs {
+					rc := recs[i]
+					if _, ok := byID[id{rc.Actor, rc.Seq}]; !ok {
+						byID[id{rc.Actor, rc.Seq}] = &rc
+					}
+				}
+			}
+			rec = byID[k]
+		}
+		if rec != nil {
+			r.byOrder[o] = rec
+			n++
+		}
+	}
+	return n
+}
+
+// CloseLost marks today's orders that the log still shows as working but that
+// did not come back with the market after a restart (the market was not
+// saved, or could not be restored) as cancelled with reason, so the report
+// never shows an order working that is not on the book. Call it after Adopt.
+func (r *Recorder) CloseLost(reason string) []Record {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	live := map[*Record]bool{}
+	for _, rec := range r.byOrder {
+		live[rec] = true
+	}
+	now := time.Now()
+	var out []Record
+	for _, rec := range r.today {
+		switch rec.Status {
+		case "New", "Partial", "Pending":
+		default:
+			continue
+		}
+		if live[rec] {
+			continue
+		}
+		rec.Status, rec.Reason, rec.Updated = "Cancelled", reason, now
+		r.dirty[rec.Key] = rec
+		out = append(out, *rec)
+	}
+	sortNewestFirst(out)
+	return out
+}
+
 // statusText maps an engine status to the report's wording.
 func statusText(rep *engine.ExecReport, cum int64) string {
 	switch rep.Status {

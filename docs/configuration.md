@@ -23,6 +23,8 @@ Defaults below are the values compiled into the code. "Deployment-specific defau
 | `ME_DB_MAX_CONNS` | `10` | Size of the PostgreSQL connection pool. | `config/database.go` |
 | `ME_USERS_FILE` | `<state dir>/users.json` | Console accounts and roles (PBKDF2 password hashes, mode 0600) when no database is configured. With `ME_DB_URL`, imported into the database once on first start, then renamed `.imported-…`. | `database/users/backend_file.go` |
 | `ME_ORDERLOG_DIR` | `<state dir>/orders` | The order report without a database: one `orders-YYYY-MM-DD.json` per day. With `ME_DB_URL` it is the `order_log` table. | `Cmd/serve.go` (`openStores`) |
+| `ME_MARKET_STATE` | `on` | The live market — every resting order in its queue position, parked stops, each instrument's last/open/high/low/volume/trades, the trade tape, order and trade numbers, the session phase — is saved every second and at shutdown, and restored on start. `off` starts every run with an empty market and saves nothing (tests). See [operations](operations.md#what-survives-a-restart). | `Cmd/serve.go` (`openMarketState`), `database/marketstate` |
+| `ME_TRADELOG_DIR` | `<state dir>/trades` | The permanent trade log without a database: one `trades-YYYY-MM-DD.jsonl` per day, a line per execution with both sides. With `ME_DB_URL` it is the `trade_log` table. | `Cmd/serve.go` (`openMarketState`) |
 | `ME_REPORT_FILE` | `<state dir>/daily_report.json` | Daily report figures when no database is configured (the last 400 days). With `ME_DB_URL` they are in the `daily_stats` table. | `Cmd/serve.go` (`openReports`) |
 | `ME_RATE_LIMIT` | `off` | `on` turns on the sign-in lockout (5 failures lock an IP or a username for 15 minutes, also on the change-password form) and the sign-up quota (5 attempts per IP per hour). | `config/admin.go` (`RateLimit`) |
 | `ME_REGISTRATION` | `on` | Set `off` to close self-registration on the welcome page. | `config/admin.go` (`RegistrationOpen`) |
@@ -93,6 +95,9 @@ With no variables set, the engine runs standalone on one machine:
 | `session.key` | `ME_ADMIN_SECRET` | 32 random bytes | Key that signs session cookies, created on first start. Mode `0600`. Deleting it signs everyone out. Git-ignored. |
 | `initial-admin-password` | — | `username password` | Written next to `users.json` only when the first admin was created with a random password (no `ME_ADMIN_PASS`). Mode `0600`. Delete it after signing in. |
 | `admin_audit.jsonl` | `ME_AUDIT_FILE` | JSON lines: `{time, actor, action, target}` | Audit trail without a database (the newest 300 entries are kept in memory); with a database, only a fallback for failed inserts. Mode `0600`. Git-ignored. |
+| `engine_state.json` | — (in `ME_STATE_DIR`) | JSON: the engine snapshot (`version`, `taken`, `phase`, `auto_clock`, `seq`, `trade_seq`, `orders`, `stops`, `markets`, `trades`) | The live market, saved every second when it changed and at shutdown, without a database. Written to a temporary file, flushed to disk and renamed, so a crash leaves the old or the new one. An unreadable file is renamed `engine_state.json.bad-<time>` and the engine starts with an empty market. Mode `0600`. |
+| `fix_outbox.json` | — (in `ME_STATE_DIR`) | JSON array of queued reports | Execution reports waiting for brokers that are logged off, saved with the market. Mode `0600`. |
+| `trades/trades-YYYY-MM-DD.jsonl` | `ME_TRADELOG_DIR` | JSON lines: `{id, symbol, price, qty, aggressor, time, buy:{actor, order_id, cl_ord_id}, sell:{…}}` | Every execution, never trimmed, without a database. Flushed to disk every second. |
 | `fix_messages.log` | `ME_FIX_MSGLOG_FILE` | Text lines: `YYYY-MM-DD HH:MM:SS.mmm DIR SESSION RAW`, with FIX SOH shown as `\|` | Every FIX message in and out except heartbeats. Logon passwords (tags 554 and 925) are replaced with `***` before anything is stored; an older log is scrubbed once at startup. Mode `0600`. The last 4000 lines are reloaded at startup. Git-ignored. |
 | `spec/FIXT11.xml`, `spec/FIX50SP2.xml` | `ME_FIX_SPEC_DIR` | QuickFIX XML data dictionaries | Transport and application dictionaries for FIX 5.0 SP2 validation. |
 <!-- /AUTO:config-files -->
@@ -145,7 +150,7 @@ Rows with `is_index: true`, or with `status` `halted` or `delisted`, are skipped
 
 ## Database
 
-With `ME_DB_URL` set, console accounts and the audit trail live in PostgreSQL. Broker credentials, the allowlist, order-book IDs and the FIX message log stay in files.
+With `ME_DB_URL` set, console accounts, the audit trail, the reports, the saved market and the trade log live in PostgreSQL. Broker credentials, the allowlist, order-book IDs and the FIX message log stay in files.
 
 | Table | Holds |
 |---|---|
@@ -153,6 +158,8 @@ With `ME_DB_URL` set, console accounts and the audit trail live in PostgreSQL. B
 | `audit_log` | One row per audited action: `id`, `at`, `actor` (`name (ip)`), `action`, `target`. Indexed by time and by actor. |
 | `daily_stats` | Daily report figures: one row per trading day (Dhaka date) and order source (`FIX:<CompID>`, `USER:<name>`, `*` for the exchange) with `buy_orders`, `sell_orders`, `accepted`, `rejected`, `cancelled`, `amended`, `expired`, `trades`, `volume`, `turnover`. Saved every 5 s and at shutdown; today's figures are carried on after a restart. |
 | `order_log` | The order report: one row per order and day with who sent it (`actor`), OrderID, ClOrdID, client, BO account, trader, board, symbol, side, type, validity, quantity, price, filled, average price, status and reject reason. Updated as the order changes; saved every second and at shutdown. On restart the engine continues order numbers after the day's highest, so an OrderID is never handed out twice. |
+| `engine_state` | Saved states, one row each (`name`, `saved_at`, `payload` jsonb): `market` is the engine snapshot (resting orders in queue order, stops, prices and day figures, the tape, order and trade numbers, phase), saved every second when it changed and at shutdown; `fix_outbox` holds reports waiting for brokers that are logged off. An unreadable state is renamed `market.bad-<time>` and the engine starts with an empty market. |
+| `trade_log` | Every execution, never trimmed: `trade_id` (FIX 880 / ITCH match number, primary key), `day`, `at`, `symbol`, `price`, `qty`, `aggressor`, and for each side the actor, engine order number and ClOrdID. Written every second. On start the engine continues trade numbers after the highest here. |
 | `schema_migrations` | Which schema migrations (`internal/database/db/migrations/*.sql`) have been applied. |
 
 - **Start-up.** The engine connects (retrying for 30 s), creates the database if it doesn't exist (the user needs `CREATEDB`, otherwise create it by hand), applies new migrations under an advisory lock, and loads the accounts. If any of that fails it stops with the reason instead of falling back to files, so the data never splits.

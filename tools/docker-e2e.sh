@@ -6,6 +6,8 @@
 # then removes everything. Your .env, data/ and running containers are not touched.
 #   make docker-test
 set -euo pipefail
+# The test's own .env must win: compose lets exported variables override it.
+for v in $(compgen -e | grep -E '^(DOCKER_|ME_|DB_)' || true); do unset "$v"; done
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 P=velexa-me-e2e
 # Inside the project: a snap-installed Docker cannot see /tmp.
@@ -48,6 +50,7 @@ echo; echo "== system test against the containers"
 python3 -I "$ROOT/tools/e2e_test.py" "${ARGS[@]}" --load 1000 --save "$WORK/creds.json" || rc=$?
 
 echo; echo "== restart the engine container"
+python3 -I "$ROOT/tools/e2e_test.py" "${ARGS[@]}" --dump-market "$WORK/market.json" || rc=$?
 t0=$(date +%s)
 "${DC[@]}" stop engine >/dev/null
 dt=$(( $(date +%s) - t0 ))
@@ -58,7 +61,7 @@ else
 fi
 "${DC[@]}" start engine >/dev/null
 "${DC[@]}" up -d --wait engine >/dev/null 2>&1
-python3 -I "$ROOT/tools/e2e_test.py" "${ARGS[@]}" --after-restart "$WORK/creds.json" || rc=$?
+python3 -I "$ROOT/tools/e2e_test.py" "${ARGS[@]}" --after-restart "$WORK/creds.json" --market "$WORK/market.json" || rc=$?
 
 echo; echo "== backup, wipe everything, restore (moving to a new server)"
 export COMPOSE_PROJECT_NAME=$P COMPOSE_FILE="$ROOT/docker-compose.yml" COMPOSE_ENV_FILES="$WORK/.env" \

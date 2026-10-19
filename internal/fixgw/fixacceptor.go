@@ -65,6 +65,9 @@ type Acceptor struct {
 	sids     map[string]quickfix.SessionID // broker → live SessionID (for control ops)
 	seqs     map[string]*seqPair           // broker → last-seen sequence numbers
 	events   []SessEvent                   // recent logon/logout/reject ring (newest last)
+
+	obOnce sync.Once
+	ob     *outbox // reports waiting for brokers that are logged off (persist.go)
 }
 
 // seqPair is the last-observed FIX sequence numbers for a session (from tag 34).
@@ -252,6 +255,7 @@ func (fa *Acceptor) OnLogon(sid quickfix.SessionID) {
 	// numbers from FromAdmin/ToAdmin; OnLogout clears them.
 	fa.sessMu.Unlock()
 	fa.record(sid.TargetCompID, "LOGON", "session established")
+	fa.queueDrain(sid.TargetCompID) // reports kept while it was away go first
 }
 
 func (fa *Acceptor) OnLogout(sid quickfix.SessionID) {

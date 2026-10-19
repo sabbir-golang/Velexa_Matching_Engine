@@ -11,7 +11,7 @@ import (
 func TestMigrationsApplyOnceAndInOrder(t *testing.T) {
 	pool, dsn := dbtest.Open(t) // Open created the database and migrated it
 	ctx := context.Background()
-	want := 3 // the number of files in migrations/
+	want := 4 // the number of files in migrations/
 	if v := db.SchemaVersion(ctx, pool); v != want {
 		t.Fatalf("schema version %d, want %d", v, want)
 	}
@@ -23,7 +23,7 @@ func TestMigrationsApplyOnceAndInOrder(t *testing.T) {
 	if n != want {
 		t.Fatalf("%d migration rows after a second run, want %d", n, want)
 	}
-	for _, table := range []string{"users", "audit_log", "daily_stats", "order_log"} {
+	for _, table := range []string{"users", "audit_log", "daily_stats", "order_log", "engine_state", "trade_log"} {
 		var ok bool
 		pool.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", table).Scan(&ok)
 		if !ok {
