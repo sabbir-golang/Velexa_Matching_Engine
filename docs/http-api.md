@@ -24,7 +24,8 @@ Unless a route says otherwise:
 | any | `/api/status` | none | Engine counters: phase, index, instrument/order/trade counts, universe source. |
 | any | `/api/market` | none | Full market watch: index, phase and one row per instrument. |
 | any | `/api/book` | none | Order book (10 levels per side), market data and last 30 trades for `?symbol=`. |
-| POST | `/api/order` | any role | Submits an order in the signed-in user's name and returns its execution report. |
+| POST | `/api/order` | any role | Submits an order in the signed-in user's name and returns its execution report. JSON `{symbol, side, type, price, qty, cl_ord_id, tif}`; `tif` is `DAY` (default), `IOC`, `FOK` or `GTC`. |
+| POST | `/api/order/cancel` | any role | `{cl_ord_id}`: cancels one of the signed-in user's own working orders (`{ok, report}`, or `{ok:false, error}`). |
 | GET | `/api/session` | none | Current trading phase. |
 | POST | `/api/session/preopen` | admin role | Switches to the Pre-Open call auction. |
 | POST | `/api/session/open` | admin role | Switches to Continuous Trading, running the opening auction first. |
@@ -48,6 +49,8 @@ Unless a route says otherwise:
 | POST | `/admin/api/instruments/reload` | admin login | Reloads the security master from the configured sources. |
 | POST | `/admin/api/instruments/import` | admin role | Imports a security master from the request body. |
 | GET | `/admin/api/overview` | any role (a user: own brokers only) | Everything the console dashboard shows for `?date=YYYY-MM-DD` (default today). |
+| GET | `/admin/api/report/order-history` | any role (a user: own brokers only) | `?date=&order_id=&broker_id=` (as the order report gives them): the order's fills from the trade log, `{ok, fills[{time, trade_id, qty, price, side, against}]}`. |
+| GET | `/admin/api/diagnostics` | admin role | `{runtime{uptime, version, go, goroutines, heap_mb, sys_mb, gc_runs, cpus}, engine{phase, auto_clock, instruments, resting_orders, orders, trades}, config[[name, value]]}`; with `?test=1` also `checks[{name, ok, result}]` and `tested_at`: read-only checks of the books, listeners, report store and market saving. |
 | GET | `/admin/api/report/daily` | any role (a user: own brokers only) | Daily trading report for `?date=YYYY-MM-DD` (default today): JSON, or CSV with `&format=csv`. |
 | GET | `/admin/report/daily` | any role (a user: own brokers only) | The same report as a printable page. |
 | GET | `/admin/api/report/orders` | any role (a user: own brokers only) | Every order of a day with its latest state; filters; Excel (`format=xlsx`) or CSV (`format=csv`) download. |
@@ -120,10 +123,10 @@ curl -s -X POST localhost:8010/api/order -H 'Content-Type: application/json' \
 | `type` | string | `MARKET` or `market` means a market order; anything else means a limit order. A `price` of 0 or less also makes it a market order. |
 | `price` | number | Limit price, rounded to 2 decimals. |
 | `qty` | integer | Must be greater than 0. |
-| `actor` | string | Free-text owner tag; defaults to `API`. |
-| `cl_ord_id` | string | Client order ID. Needed if the order should later be cancellable (only FIX can cancel). |
+| `tif` | string | Time in force: `DAY` (default), `IOC`, `FOK` or `GTC`. |
+| `cl_ord_id` | string | Client order ID. Needed to cancel the order later with `POST /api/order/cancel`. |
 
-Orders sent here always have time-in-force DAY. They skip the tick-size and price-band checks, which apply only to FIX orders (see [Pre-trade checks](architecture.md#pre-trade-checks-fix-orders-only)). Stop orders, icebergs, cancel and replace are available only over FIX.
+The order's owner is the signed-in user (`USER:<username>`). It skips the tick-size and price-band checks, which apply only to FIX orders (see [Pre-trade checks](architecture.md#pre-trade-checks-fix-orders-only)). Stop orders, icebergs and replace are available only over FIX.
 
 The response is an `ExecReport`, returned with HTTP 200 whatever the order status:
 
@@ -140,7 +143,7 @@ Errors that come back as plain text instead of a report:
 
 | Status | Body | Cause |
 |---|---|---|
-| 405 | `POST only` | Any method other than POST. |
+| 405 | `{"ok":false,"error":"POST only"}` (JSON) | Any method other than POST. |
 | 400 | `malformed order JSON` | The body isn't valid JSON. |
 | 400 | `invalid quantity …` | `qty` is 0 or less. |
 | 400 | `unknown symbol …` | The symbol isn't listed and can't be auto-listed. |
@@ -207,7 +210,7 @@ curl -s -b jar localhost:8010/admin/api/status
 
 | Route | Input | Output and effect |
 |---|---|---|
-| `/admin/api/status` | none | `phase`, `instruments`, `orders`, `trades`, `running`, `auto_clock`, `schedule`, `fix_auth` (whether FIX logons are checked right now), `fix_auth_mode` (`on`, `off` or `auto`), `itch_auth`, `uptime`; `listeners` (TCP checks on `127.0.0.1` of `FIX_PORT`, `ITCH_PORT`, `PORT`, and `ME_FIXS_PORT` when set); the port numbers are fixed in code); `sessions` (connected FIX brokers with logon time and last sequence numbers); `events` (last 50 logon, logout and reject events); `audit` (last 60 entries); `universe`. |
+| `/admin/api/status` | none | `phase`, `instruments`, `orders`, `trades`, `running`, `auto_clock`, `schedule`, `fix_auth` (whether FIX logons are checked right now), `fix_auth_mode` (`on`, `off` or `auto`), `itch_auth`, `uptime`; `listeners` (TCP checks on `127.0.0.1` of `FIX_PORT`, `ITCH_PORT`, `PORT`, and `ME_FIXS_PORT` when set); the port numbers are fixed in code); `sessions` (connected FIX brokers with logon time and last sequence numbers); `events` (last 50 logon, logout and reject events); `audit` (last 60 entries); `universe`; `fix_port`, `fix_sender`, `fix_begin` (the FIX acceptor). |
 | `/admin/api/brokers` | none | `brokers` (records from `broker_meta.json`, newest first, each with its `owner`), `fix_total`, `itch_total`, `scope` (`all` for an admin, `own` for a user, who gets only their brokers). |
 | `/admin/api/broker/detail` | `?sender=` | Company and contact, **FIX and ITCH passwords**, the linked ITCH user, `endpoints` (onboarding values: `ext_addr` where brokers connect, `ext_tls`, `pub_host`, `int_ip`/`int_port`, `itch_ip`/`itch_port`, `target`, `begin`, `applver`; from the `ME_PUB_*`, `ME_INT_*`, `ME_ITCH_*`, `ME_FIXS_PORT` variables, else this PC's LAN IP and the real ports) and active flags. |
 | `/admin/api/broker/add` | JSON `{Sender, Company, Contact, FixPass, ItchUser, ItchPass}`; only `Sender` is required | Refuses a SenderCompID or ITCH username that is already registered. The broker belongs to the user who adds it (an admin's belong to the exchange). Stores FIX and ITCH credentials and the metadata, and writes the audit action `ISSUE`. Missing passwords are generated (`FIX-<12 hex>` and `ITCH-<12 hex>`). A missing ITCH user defaults to the first 6 characters of the SenderCompID. Returns the issued credentials. |
@@ -216,7 +219,7 @@ curl -s -b jar localhost:8010/admin/api/status
 | `/admin/api/allowlist` | none | `{"list": [{ip, label}], "count"}` |
 | `/admin/api/allowlist/add` | JSON `{IP, Label}` | Validates the IP, writes `fix_allow.json`, and writes the audit action `ALLOW+`. Doesn't reload nginx (see [operations](operations.md#external-fix-gateway-port-5443)). |
 | `/admin/api/allowlist/del` | JSON `{IP}` | Removes the IP and writes the audit action `ALLOW-`. |
-| `/admin/api/trading-session` | POST `?action=preopen`, `open`, `close`, `postclose`, `endofday` (force a phase; switches the clock to manual), `auto_on` or `auto_off` | Returns `phase`, `auto_clock` and `schedule`. |
+| `/admin/api/trading-session` | POST `?action=preopen`, `open`, `close`, `postclose`, `endofday` (force a phase; switches the clock to manual), `auto_on` or `auto_off`; optional `&note=` (up to 200 characters) | Returns `phase`, `auto_clock` and `schedule`. Every change is in the audit trail as `SESSION <ACTION>` with the new phase and the note. |
 | `/admin/api/session` | POST `?broker=` and `?action=disconnect` or `reset` | `disconnect` sends a FIX Logout (35=5) and unregisters the session. `reset` resets the session's sequence numbers. Writes an audit entry. |
 | `/admin/api/fixlog` | `?broker=` (exact, case-insensitive), `?clordid=` (substring), `?limit=` (1 to 1000, default 250) | `{"messages": [{time, session, dir, msg_type, clordid, raw}]}`, newest first, from the 4000-message in-memory log. |
 | `/admin/api/instruments` | none | `count`, `source`, `file`, `exchange_url`, `auto_list`, `auto_listed` (symbols opened on the fly), `symbols`, `rows` (per instrument: `symbol`, `name`, `asset_class`, `board`, `sector`, `lot`, `isin`, `tick`, `prev`, `last`, `volume`, `status`), `summary` (`total`, `main_equity`, `bonds`, `pending`), `classes` (asset-class counts), `note`. |

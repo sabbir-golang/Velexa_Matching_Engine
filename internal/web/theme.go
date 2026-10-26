@@ -17,12 +17,8 @@ const ThemeButton = `<button class="theme-btn" id="themeBtn" type="button" aria-
 	`<svg class="sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>` +
 	`<svg class="moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>`
 
-const adminLightCSS = `:root[data-theme="light"]{--bg:#f4f5f2;--side:#fbfbf9;--panel:#fff;--panel2:#f8f9f6;--line:#e2e6e0;--line2:#d3d9d1;--ink:#15201a;--mut:#56645c;--mut2:#87938c;--acc:#14804f;--onacc:#fff;--accSoft:#e2f1e8;--amber:#a86d12;--grn:#14804f;--red:#c23f37;--sellSoft:#f8e4e2;--blue:#2c66a8;--track:#e9ece7;--flash:#fdf3d6;color-scheme:light}
-[data-theme="light"] .btn.acc{background:var(--acc)}
-[data-theme="light"] .exp-menu{box-shadow:0 14px 40px rgba(20,30,50,.15)}
-[data-theme="light"] .viewframe{background:#fff;box-shadow:0 6px 20px rgba(20,30,50,.1)}
-[data-theme="light"] .guide{color:#3d4a5c}[data-theme="light"] .guide .st .n{background:#e3ebfb;color:#2c4a8a}
-[data-theme="light"] .modal{background:rgba(20,28,40,.45)}[data-theme="light"] .mcard{box-shadow:0 30px 80px rgba(20,30,50,.25)}
+const adminLightCSS = `:root[data-theme="light"]{--bg:#f4f5f2;--side:#fbfbf9;--panel:#fff;--panel2:#f8f9f6;--line:#e2e6e0;--line2:#d3d9d1;--ink:#15201a;--mut:#56645c;--mut2:#87938c;--acc:#14804f;--onacc:#fff;--accSoft:#e2f1e8;--amber:#a86d12;--amberSoft:#f7ecd8;--grn:#14804f;--red:#c23f37;--sellSoft:#f8e4e2;--blue:#2c66a8;--blueSoft:#e3ecf7;--track:#e9ece7;--flash:#fdf3d6;--scrim:rgba(16,24,20,.45);color-scheme:light}
+[data-theme="light"] .menu-pop{box-shadow:0 12px 32px rgba(20,30,50,.15)}
 [data-theme="light"] aside.open{box-shadow:0 0 50px rgba(20,30,50,.25)}
 `
 

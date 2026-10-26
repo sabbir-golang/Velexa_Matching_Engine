@@ -90,6 +90,7 @@ For a real deployment, see [configuration](docs/configuration.md) and [operation
 
 | Doc | Covers |
 |---|---|
+| [API guide](docs/api-guide.md) | Start here: a simple guide to the HTTP, FIX and ITCH APIs, with examples |
 | [Architecture](docs/architecture.md) | Components, order lifecycle, matching rules, sessions, pre-trade checks, persistence, instrument universe |
 | [Configuration](docs/configuration.md) | Every environment variable and data file, directory layout, security notes |
 | [HTTP API](docs/http-api.md) | Every route, request and response, WebSocket and SSE streams, admin API |

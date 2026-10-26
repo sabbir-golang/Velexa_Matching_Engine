@@ -30,6 +30,10 @@ services:
       args:
         VERSION: ${ME_VERSION:-dev}
     image: velexa-sim-me:${ME_VERSION:-dev}
+    # Build on every "docker compose up", so it always runs the code in this
+    # folder (an existing image would otherwise be reused as it is). Docker's
+    # build cache makes it quick when nothing changed.
+    pull_policy: build
     restart: unless-stopped
     depends_on:
       db:

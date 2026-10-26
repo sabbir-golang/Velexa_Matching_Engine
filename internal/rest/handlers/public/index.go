@@ -52,7 +52,7 @@ func (h *Handler) Welcome(w http.ResponseWriter, r *http.Request) {
 	case "reg_name":
 		msg = "Username must be 3-32 characters: letters, digits, . _ -"
 	case "reg_weak":
-		msg = "Password must be 10-128 characters, must not contain the username, and must use at least 3 of: lower-case, upper-case, digits, symbols."
+		msg = "Password must be 10-128 characters and use at least 3 of: lower-case, upper-case, digits, symbols."
 	case "reg_fullname":
 		msg = "Enter your full name."
 	case "reg_email":

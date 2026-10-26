@@ -95,7 +95,7 @@ const (
 // Errors returned by Store methods; their text is shown to the operator.
 var (
 	ErrInvalidUsername = errors.New("username must be 3-32 characters: letters, digits, . _ -")
-	ErrWeakPassword    = fmt.Errorf("password must be %d-%d characters, must not contain the username, and must use at least 3 of: lower-case letters, upper-case letters, digits, symbols", minPasswordLen, maxPasswordLen)
+	ErrWeakPassword    = fmt.Errorf("password must be %d-%d characters and use at least 3 of: lower-case letters, upper-case letters, digits, symbols", minPasswordLen, maxPasswordLen)
 	ErrReservedName    = errors.New("that username is reserved")
 	ErrWrongPassword   = errors.New("current password is incorrect")
 	ErrInvalidRole     = errors.New("role must be admin or user")
@@ -593,13 +593,11 @@ func (s *Store) reserved(name string) bool {
 	return false
 }
 
-// CheckPassword applies the password rules: 10-128 characters, not containing
-// the username, and at least three of lower-case, upper-case, digits, symbols.
+// CheckPassword applies the password rules: 10-128 characters and at least
+// three of lower-case, upper-case, digits, symbols. (The username may be part
+// of the password.)
 func CheckPassword(username, password string) error {
 	if n := utf8.RuneCountInString(password); n < minPasswordLen || n > maxPasswordLen {
-		return ErrWeakPassword
-	}
-	if name := key(username); name != "" && strings.Contains(strings.ToLower(password), name) {
 		return ErrWeakPassword
 	}
 	var lower, upper, digit, other int

@@ -90,7 +90,7 @@ func TestValidation(t *testing.T) {
 		{strings.Repeat("x", 33), "LongEnough12", RoleUser, ErrInvalidUsername},
 		{"okname", "short", RoleUser, ErrWeakPassword},
 		{"okname", "alllowercase", RoleUser, ErrWeakPassword},
-		{"okname", "xxOKNAMExx1", RoleUser, ErrWeakPassword},
+		{"okname", "NoDigitsHere", RoleUser, ErrWeakPassword}, // two classes
 		{"okname", "LongEnough12", Role("root"), ErrInvalidRole},
 		{"root", "LongEnough12", RoleUser, ErrExists},
 		{"ROOT", "LongEnough12", RoleUser, ErrExists},
@@ -240,7 +240,7 @@ func TestPasswordPolicy(t *testing.T) {
 		"lower-case-12":                       true,
 		"UPPER LOWER x":                       true,  // upper, lower, space
 		"Pr" + strings.Repeat("x", 126) + "1": false, // 129 characters
-		"MyBobby-Pass1":                       false, // contains the username
+		"MyBobby-Pass1":                       true,  // the username may be part of it
 	} {
 		if err := CheckPassword("bobby", pw); (err == nil) != ok {
 			t.Errorf("CheckPassword(%q) = %v, want ok=%v", pw, err, ok)

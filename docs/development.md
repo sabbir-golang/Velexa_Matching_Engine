@@ -130,7 +130,7 @@ go run .
 | `database/brokers/meta.go` | Broker metadata store (`broker_meta.json`): links each broker FIX CompID to its ITCH user and company. |
 | `config/config.go` | `EnvOr`, data-file locations (`StateFile`, `SpecDir`) and the database and service endpoint settings. |
 | `web/terminal.go` | The `/` trade terminal page. |
-| `web/admin.go` | The admin login page and the console. |
+| `web/admin.go` | The console page (`/admin`, `/user`), put together from `admin_css.go` (the design's tokens and components), `admin_body.go` (sidebar, header and one section per page) and `admin_script.go` (navigation, dialogs, status poll and one block per page). |
 | `refdata/dse.go` | DSE reference table: asset class, category, sector and ISIN per ticker. |
 <!-- /AUTO:source-index -->
 

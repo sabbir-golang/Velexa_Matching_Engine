@@ -2,7 +2,9 @@ package admin
 
 import (
 	"net/http"
+	"strings"
 
+	"velexa-sim-me/internal/database/audit"
 	"velexa-sim-me/internal/engine"
 	"velexa-sim-me/internal/rest/middleware"
 	"velexa-sim-me/internal/utils"
@@ -38,6 +40,18 @@ func (h *Handler) TradingSession(w http.ResponseWriter, r *http.Request) {
 		eng.SetAutoClock(true)
 	case "auto_off":
 		eng.SetAutoClock(false)
+	default:
+		action = "" // nothing changed: nothing to record
+	}
+	if action != "" { // the console's reason, if any, goes into the audit trail with the new phase
+		target := eng.CurrentPhase()
+		if note := strings.TrimSpace(r.URL.Query().Get("note")); note != "" {
+			if len(note) > 200 {
+				note = note[:200]
+			}
+			target += " · " + note
+		}
+		audit.Record(middleware.ActorOf(r), "SESSION "+strings.ToUpper(action), target)
 	}
 	utils.WriteJSON(w, map[string]any{"ok": true, "phase": eng.CurrentPhase(), "auto_clock": eng.AutoClock(), "schedule": eng.ScheduleText()})
 }

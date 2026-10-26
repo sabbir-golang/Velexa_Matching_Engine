@@ -1,0 +1,584 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Velexa Order Journey</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a trading-desk schematic. Wide diagram on the left, the step card on the right; stacks on narrow screens. */
+:root{
+  --bg:#f3f5f8; --surf:#ffffff; --surf2:#e9edf3; --ink:#142030; --muted:#5b6878; --line:#c7cfdb;
+  --ord:#2563d9; --rep:#0e8a63; --mkt:#b8660f; --sav:#6b7686; --bad:#c83a2f; --hl:#142030;
+  --ord-soft:#2563d91f; --rep-soft:#0e8a631f; --mkt-soft:#b8660f22; --bad-soft:#c83a2f1c;
+  --f-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0d131a; --surf:#151e29; --surf2:#1c2734; --ink:#e4ebf3; --muted:#93a1b2; --line:#2f3d4e;
+  --ord:#6b9dff; --rep:#34c493; --mkt:#f0a24a; --sav:#93a1b2; --bad:#ff7466; --hl:#e4ebf3;
+  --ord-soft:#6b9dff26; --rep-soft:#34c49326; --mkt-soft:#f0a24a26; --bad-soft:#ff746626; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d131a; --surf:#151e29; --surf2:#1c2734; --ink:#e4ebf3; --muted:#93a1b2; --line:#2f3d4e;
+  --ord:#6b9dff; --rep:#34c493; --mkt:#f0a24a; --sav:#93a1b2; --bad:#ff7466; --hl:#e4ebf3;
+  --ord-soft:#6b9dff26; --rep-soft:#34c49326; --mkt-soft:#f0a24a26; --bad-soft:#ff746626; color-scheme:dark}
+
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--f-body)}
+.wrap{max-width:1440px;margin:0 auto;padding-block:28px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:28px}
+header{display:grid;gap:8px;max-width:780px}
+.eyebrow{font:600 12px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+h1{font:800 clamp(28px,4.2vw,44px)/1.05 var(--f-display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h2{font:700 20px/1.2 var(--f-display);margin:0;text-wrap:balance}
+.lead{margin:0;color:var(--muted);max-width:68ch}
+
+.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.tab{font:500 14px/1 var(--f-body);color:var(--ink);background:var(--surf);border:1px solid var(--line);border-radius:999px;padding:10px 16px;cursor:pointer}
+.tab:hover{border-color:var(--muted)}
+.tab[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tab .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:1px}
+
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:start}
+@media (max-width:1100px){.stage{grid-template-columns:minmax(0,1fr)}}
+.diagram{background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:12px;min-width:0}
+.scroll{overflow-x:auto}
+.scroll svg{display:block;width:100%;min-width:820px;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:6px 20px;padding:10px 6px 2px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.legend i{display:inline-block;width:22px;height:3px;border-radius:2px}
+
+/* SVG */
+.region{fill:none;stroke:var(--line);stroke-dasharray:4 5}
+.region-eng{fill:var(--surf2);stroke:var(--line)}
+.rlabel{font:600 11px var(--f-mono);letter-spacing:.12em;fill:var(--muted)}
+.node .box{fill:var(--surf);stroke:var(--line);stroke-width:1.2;transition:stroke .25s,fill .25s}
+.node .inner{fill:var(--surf2);stroke:none}
+.node.on .box{stroke:var(--hl);stroke-width:2.4}
+.node.bad .box{stroke:var(--bad);stroke-width:2.6;fill:var(--bad-soft)}
+.t-title{font:600 13.5px var(--f-body);fill:var(--ink)}
+.t-sub{font:400 11.5px var(--f-body);fill:var(--muted)}
+.t-mono{font:400 11px var(--f-mono);fill:var(--muted)}
+.t-head{font:600 11px var(--f-mono);letter-spacing:.06em;fill:var(--muted)}
+.edge{fill:none;stroke-width:1.6;opacity:.55;transition:opacity .25s,stroke-width .25s}
+.edge.ord{stroke:var(--ord)} .edge.rep{stroke:var(--rep)} .edge.mkt{stroke:var(--mkt)} .edge.sav{stroke:var(--sav)}
+.edge.lit{opacity:1;stroke-width:2.6}
+.edge.run{stroke-dasharray:7 6;animation:flow .6s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-13}}
+.ah-ord{fill:var(--ord)} .ah-rep{fill:var(--rep)} .ah-mkt{fill:var(--mkt)} .ah-sav{fill:var(--sav)}
+.elab{font:600 10.5px var(--f-mono)}
+.elab.ord{fill:var(--ord)} .elab.rep{fill:var(--rep)} .elab.mkt{fill:var(--mkt)} .elab.sav{fill:var(--sav)}
+.bk{font:400 12px var(--f-mono);fill:var(--ink)}
+.bk.bid{fill:var(--rep)} .bk.ask{fill:var(--bad)}
+.bk.hit{font-weight:600;text-decoration:line-through}
+.bk.new{font-weight:600;fill:var(--ord)}
+.bk-status{font:600 11.5px var(--f-mono);fill:var(--ord)}
+.pkt circle{stroke:var(--surf);stroke-width:2}
+.pkt rect{stroke:none}
+.pkt text{font:600 10.5px var(--f-mono);fill:#fff}
+.pkt.ord circle,.pkt.ord rect{fill:var(--ord)} .pkt.rep circle,.pkt.rep rect{fill:var(--rep)}
+.pkt.mkt circle,.pkt.mkt rect{fill:var(--mkt)} .pkt.sav circle,.pkt.sav rect{fill:var(--sav)}
+.pkt.bad circle,.pkt.bad rect{fill:var(--bad)}
+:root[data-theme="dark"] .pkt text{fill:#0d131a}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .pkt text{fill:#0d131a}}
+
+/* Step card */
+.panel{display:grid;gap:14px;min-width:0}
+.card{background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:10px;min-width:0}
+.stepno{font:600 12px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.card p{margin:0}
+.code{font:400 12.5px/1.5 var(--f-mono);background:var(--surf2);border-radius:8px;padding:10px 12px;margin:0;white-space:pre-wrap;word-break:break-word;color:var(--ink)}
+.code.bad{background:var(--bad-soft);color:var(--bad)}
+.who{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:500 12px/1 var(--f-body);padding:6px 9px;border-radius:999px;background:var(--surf2);color:var(--ink)}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{font:600 14px/1 var(--f-body);background:var(--surf);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;min-width:44px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--ord);border-color:var(--ord);color:#fff;min-width:96px}
+:root[data-theme="dark"] .btn.primary{color:#0d131a}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn.primary{color:#0d131a}}
+.speed{margin-left:auto;display:flex;gap:4px;align-items:center;font-size:13px;color:var(--muted)}
+.speed select{font:500 13px var(--f-body);background:var(--surf);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+button:focus-visible,select:focus-visible,.steps button:focus-visible{outline:2px solid var(--ord);outline-offset:2px}
+.progress{height:4px;background:var(--surf2);border-radius:2px;overflow:hidden}
+.progress div{height:100%;width:0;background:var(--ord);transition:width .3s}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:2px;counter-reset:s}
+.steps li{counter-increment:s}
+.steps button{all:unset;box-sizing:border-box;width:100%;display:grid;grid-template-columns:26px 1fr;gap:8px;align-items:baseline;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13.5px;color:var(--muted)}
+.steps button::before{content:counter(s);font:600 11px var(--f-mono);color:var(--muted);text-align:right}
+.steps button:hover{background:var(--surf2)}
+.steps li.done button{color:var(--ink)}
+.steps li.cur button{background:var(--surf2);color:var(--ink);font-weight:600}
+.steps li.cur button::before{color:var(--ord)}
+.steps li.badstep button::before{color:var(--bad)}
+
+/* Lower sections */
+section{display:grid;gap:14px}
+.roads{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:900px){.roads{grid-template-columns:minmax(0,1fr)}}
+.road{background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:10px;align-content:start}
+.road h3{margin:0;font:700 16px/1.2 var(--f-display);display:flex;align-items:center;gap:10px}
+.road h3 i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.road p{margin:0;color:var(--muted);font-size:14px}
+.chain{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+.chain b{font-weight:500;background:var(--surf2);padding:5px 9px;border-radius:7px}
+.chain em{font:600 11px var(--f-mono);font-style:normal;color:var(--muted)}
+.tablewrap{overflow-x:auto;background:var(--surf);border:1px solid var(--line);border-radius:14px}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+td.port{font-family:var(--f-mono);font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums}
+td.side{font:600 11px var(--f-mono);letter-spacing:.06em;color:var(--muted);white-space:nowrap}
+.note{color:var(--muted);font-size:13.5px;margin:0;max-width:90ch}
+@media (prefers-reduced-motion: reduce){.edge.run{animation:none}.progress div{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Velexa OMS × DSE Matching Engine</div>
+    <h1>How an order travels, from click to trade</h1>
+    <p class="lead">Pick a story below and press Play. Each dot is a real message moving between the real parts of the system: the trader's screen, the broker's OMS, the FIX link, the exchange's matching engine and the market feed.</p>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="Choose a story" id="tabs"></div>
+
+  <div class="stage">
+    <div class="diagram">
+      <div class="scroll">
+<svg id="svg" viewBox="0 0 1232 620" role="img" aria-label="Orders go from the trader screen through the OMS API, Kafka and the FIX Initiator to the matching engine; reports come back the same way; prices go from the engine through the ITCH Engine to the screens.">
+  <defs>
+    <marker id="ah-ord" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-ord" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="ah-rep" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-rep" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="ah-mkt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-mkt" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="ah-sav" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-sav" d="M0 0L10 5L0 10z"/></marker>
+  </defs>
+
+  <!-- regions -->
+  <rect class="region" x="8" y="16" width="800" height="596" rx="16"/>
+  <text class="rlabel" x="24" y="40">BROKER SIDE · VELEXA OMS</text>
+  <rect class="region-eng" x="830" y="16" width="394" height="596" rx="16"/>
+  <text class="rlabel" x="848" y="40">EXCHANGE SIDE · DSE MATCHING ENGINE</text>
+
+  <!-- broker side nodes -->
+  <g class="node" id="n-trader">
+    <rect class="box" x="20" y="60" width="170" height="420" rx="12"/>
+    <text class="t-title" x="105" y="86" text-anchor="middle">Trader screen</text>
+    <text class="t-sub" x="105" y="103" text-anchor="middle">Velexa frontend</text>
+    <rect class="inner" x="34" y="115" width="142" height="80" rx="8"/>
+    <text class="t-sub" x="105" y="138" text-anchor="middle">Order ticket</text>
+    <text class="t-sub" x="105" y="156" text-anchor="middle">Blotter</text>
+    <text class="t-sub" x="105" y="174" text-anchor="middle">Cash · portfolio</text>
+    <rect class="inner" x="34" y="418" width="142" height="52" rx="8"/>
+    <text class="t-sub" x="105" y="440" text-anchor="middle">Market watch</text>
+    <text class="t-sub" x="105" y="457" text-anchor="middle">Depth · index · news</text>
+  </g>
+  <g class="node" id="n-oms">
+    <rect class="box" x="280" y="60" width="200" height="210" rx="12"/>
+    <text class="t-title" x="380" y="86" text-anchor="middle">OMS API</text>
+    <text class="t-mono" x="380" y="103" text-anchor="middle">:8007</text>
+    <rect class="inner" x="294" y="115" width="172" height="142" rx="8"/>
+    <text class="t-head" x="306" y="134">RISK CHECKS</text>
+    <text class="t-sub" x="306" y="154">Kill switch, max qty/value</text>
+    <text class="t-sub" x="306" y="172">Fat-finger, price band</text>
+    <text class="t-sub" x="306" y="190">Trading hours, restricted</text>
+    <text class="t-sub" x="306" y="208">Buying power (cash)</text>
+    <text class="t-sub" x="306" y="226">Short-sell, credit limit</text>
+    <text class="t-sub" x="306" y="244">House › branch › client</text>
+  </g>
+  <g class="node" id="n-redis">
+    <rect class="box" x="280" y="330" width="95" height="60" rx="10"/>
+    <text class="t-title" x="327" y="355" text-anchor="middle">Redis</text>
+    <text class="t-sub" x="327" y="372" text-anchor="middle">limits cache</text>
+  </g>
+  <g class="node" id="n-pg">
+    <rect class="box" x="385" y="330" width="95" height="60" rx="10"/>
+    <text class="t-title" x="432" y="355" text-anchor="middle">Postgres</text>
+    <text class="t-sub" x="432" y="372" text-anchor="middle">orders · cash</text>
+  </g>
+  <g class="node" id="n-kafka">
+    <rect class="box" x="570" y="40" width="170" height="60" rx="10"/>
+    <text class="t-title" x="655" y="65" text-anchor="middle">Kafka</text>
+    <text class="t-sub" x="655" y="83" text-anchor="middle">order queue</text>
+  </g>
+  <g class="node" id="n-fixi">
+    <rect class="box" x="570" y="160" width="170" height="80" rx="10"/>
+    <text class="t-title" x="655" y="188" text-anchor="middle">FIX Initiator</text>
+    <text class="t-mono" x="655" y="206" text-anchor="middle">:8003</text>
+    <text class="t-sub" x="655" y="224" text-anchor="middle">broker FIX sessions</text>
+  </g>
+  <g class="node" id="n-itche">
+    <rect class="box" x="570" y="425" width="170" height="75" rx="10"/>
+    <text class="t-title" x="655" y="452" text-anchor="middle">ITCH Engine</text>
+    <text class="t-mono" x="655" y="470" text-anchor="middle">:8002 · ws :9001</text>
+    <text class="t-sub" x="655" y="487" text-anchor="middle">reads the market feed</text>
+  </g>
+  <g class="node" id="n-mongo">
+    <rect class="box" x="570" y="535" width="170" height="55" rx="10"/>
+    <text class="t-title" x="655" y="559" text-anchor="middle">MongoDB</text>
+    <text class="t-sub" x="655" y="576" text-anchor="middle">prices · history</text>
+  </g>
+
+  <!-- exchange side nodes -->
+  <g class="node" id="n-acc">
+    <rect class="box" x="850" y="66" width="150" height="64" rx="10"/>
+    <text class="t-title" x="925" y="92" text-anchor="middle">FIX gateway</text>
+    <text class="t-mono" x="925" y="110" text-anchor="middle">port 5001</text>
+  </g>
+  <g class="node" id="n-con">
+    <rect class="box" x="1040" y="66" width="160" height="64" rx="10"/>
+    <text class="t-title" x="1120" y="92" text-anchor="middle">Web console</text>
+    <text class="t-mono" x="1120" y="110" text-anchor="middle">:8010 admin · API</text>
+  </g>
+  <g class="node" id="n-chk">
+    <rect class="box" x="850" y="165" width="150" height="80" rx="10"/>
+    <text class="t-title" x="925" y="190" text-anchor="middle">Exchange checks</text>
+    <text class="t-sub" x="925" y="208" text-anchor="middle">market open? listed?</text>
+    <text class="t-sub" x="925" y="225" text-anchor="middle">tick · band · lot</text>
+  </g>
+  <g class="node" id="n-book">
+    <rect class="box" x="850" y="285" width="350" height="130" rx="10"/>
+    <text class="t-title" x="1025" y="304" text-anchor="middle">Order book &amp; matching · GP</text>
+    <text class="t-head" x="935" y="326" text-anchor="middle">BUY (bids)</text>
+    <text class="t-head" x="1115" y="326" text-anchor="middle">SELL (asks)</text>
+    <line x1="1025" y1="314" x2="1025" y2="390" stroke="var(--line)"/>
+    <text class="bk bid" id="bk-b0" x="935" y="346" text-anchor="middle">286.40 × 200</text>
+    <text class="bk bid" id="bk-b1" x="935" y="365" text-anchor="middle">286.30 × 500</text>
+    <text class="bk bid" id="bk-b2" x="935" y="384" text-anchor="middle">286.20 × 150</text>
+    <text class="bk ask" id="bk-a0" x="1115" y="346" text-anchor="middle">286.50 × 100</text>
+    <text class="bk ask" id="bk-a1" x="1115" y="365" text-anchor="middle">286.60 × 300</text>
+    <text class="bk ask" id="bk-a2" x="1115" y="384" text-anchor="middle">286.70 × 250</text>
+    <text class="bk-status" id="bk-st" x="1025" y="406" text-anchor="middle"></text>
+  </g>
+  <g class="node" id="n-itchf">
+    <rect class="box" x="850" y="445" width="150" height="60" rx="10"/>
+    <text class="t-title" x="925" y="470" text-anchor="middle">ITCH feeds</text>
+    <text class="t-mono" x="925" y="488" text-anchor="middle">5501 · 5502 · 5503</text>
+  </g>
+  <g class="node" id="n-saver">
+    <rect class="box" x="1040" y="445" width="160" height="60" rx="10"/>
+    <text class="t-title" x="1120" y="470" text-anchor="middle">Saver</text>
+    <text class="t-sub" x="1120" y="488" text-anchor="middle">every 1 second</text>
+  </g>
+  <g class="node" id="n-edb">
+    <rect class="box" x="1040" y="535" width="160" height="55" rx="10"/>
+    <text class="t-title" x="1120" y="559" text-anchor="middle">Postgres</text>
+    <text class="t-sub" x="1120" y="576" text-anchor="middle">trade log · market state</text>
+  </g>
+  <text class="t-sub" x="925" y="552" text-anchor="middle">Matching rule:</text>
+  <text class="t-sub" x="925" y="570" text-anchor="middle">best price first,</text>
+  <text class="t-sub" x="925" y="588" text-anchor="middle">then first come</text>
+
+  <!-- edges -->
+  <path id="e1" class="edge ord" d="M190 135 H280" marker-end="url(#ah-ord)"/>
+  <path id="e9" class="edge rep" d="M280 180 H190" marker-end="url(#ah-rep)"/>
+  <path id="e2" class="edge ord" d="M327 270 V330" marker-start="url(#ah-ord)" marker-end="url(#ah-ord)"/>
+  <path id="e8" class="edge rep" d="M432 270 V330" marker-end="url(#ah-rep)"/>
+  <path id="e3" class="edge ord" d="M480 95 H525 V70 H570" marker-end="url(#ah-ord)"/>
+  <path id="e4" class="edge ord" d="M655 100 V160" marker-end="url(#ah-ord)"/>
+  <path id="e5" class="edge ord" d="M740 180 H795 V88 H850" marker-end="url(#ah-ord)"/>
+  <path id="e6" class="edge rep" d="M850 112 H810 V212 H740" marker-end="url(#ah-rep)"/>
+  <path id="e7" class="edge rep" d="M570 215 H480" marker-end="url(#ah-rep)"/>
+  <path id="e10" class="edge mkt" d="M850 475 H740" marker-end="url(#ah-mkt)"/>
+  <path id="e11" class="edge mkt" d="M655 500 V535" marker-end="url(#ah-mkt)"/>
+  <path id="e12" class="edge mkt" d="M570 450 H190" marker-end="url(#ah-mkt)"/>
+  <path id="i1" class="edge ord" d="M925 130 V165" marker-end="url(#ah-ord)"/>
+  <path id="i2" class="edge ord" d="M925 245 V285" marker-end="url(#ah-ord)"/>
+  <path id="i3" class="edge rep" d="M1015 285 V98 H1000" marker-end="url(#ah-rep)"/>
+  <path id="i4" class="edge mkt" d="M925 415 V445" marker-end="url(#ah-mkt)"/>
+  <path id="i5" class="edge sav" d="M1120 415 V445" marker-end="url(#ah-sav)"/>
+  <path id="i6" class="edge sav" d="M1120 505 V535" marker-end="url(#ah-sav)"/>
+
+  <!-- edge labels -->
+  <text class="elab ord" x="235" y="127" text-anchor="middle">order</text>
+  <text class="elab rep" x="235" y="196" text-anchor="middle">updates</text>
+  <text class="elab ord" x="320" y="304" text-anchor="end">limits</text>
+  <text class="elab rep" x="439" y="304">save</text>
+  <text class="elab ord" x="502" y="87" text-anchor="middle">queue</text>
+  <text class="elab ord" x="662" y="134">consume</text>
+  <text class="elab ord" x="822" y="80" text-anchor="middle">35=D</text>
+  <text class="elab rep" x="775" y="228" text-anchor="middle">35=8</text>
+  <text class="elab rep" x="525" y="207" text-anchor="middle">WebSocket</text>
+  <text class="elab mkt" x="795" y="466" text-anchor="middle">ITCH</text>
+  <text class="elab mkt" x="662" y="522">store</text>
+  <text class="elab mkt" x="380" y="442" text-anchor="middle">WebSocket :9001 · prices</text>
+  <text class="elab rep" x="1021" y="200">reports</text>
+  <text class="elab mkt" x="932" y="434">events</text>
+  <text class="elab sav" x="1127" y="434">trades</text>
+
+  <g id="pk"></g>
+</svg>
+      </div>
+      <div class="legend" aria-label="Legend">
+        <span><i style="background:var(--ord)"></i>Orders going out</span>
+        <span><i style="background:var(--rep)"></i>Reports coming back</span>
+        <span><i style="background:var(--mkt)"></i>Market data (prices)</span>
+        <span><i style="background:var(--sav)"></i>Saving</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="card" aria-live="polite">
+        <div class="stepno"><span id="st-no">Step 1 of 13</span><span id="st-story">Buy order that trades</span></div>
+        <div class="progress"><div id="st-bar"></div></div>
+        <h2 id="st-title">Trader places a buy order</h2>
+        <p id="st-desc">Rahim wants 100 GP shares at 286.50 Tk. He fills in the order ticket and clicks Buy. The screen sends the order to the OMS API over a live WebSocket connection.</p>
+        <pre class="code" id="st-code">BUY 100 GP @ 286.50</pre>
+        <div class="who" id="st-who"></div>
+        <div class="controls">
+          <button class="btn" id="b-restart" type="button" aria-label="Start again" title="Start again">⟲</button>
+          <button class="btn" id="b-back" type="button" aria-label="Previous step" title="Previous step">◀</button>
+          <button class="btn primary" id="b-play" type="button">▶ Play</button>
+          <button class="btn" id="b-next" type="button" aria-label="Next step" title="Next step">▶</button>
+          <label class="speed" for="speed">Speed
+            <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+          </label>
+        </div>
+      </div>
+      <div class="card">
+        <div class="stepno"><span>All steps</span><span>click to jump</span></div>
+        <ol class="steps" id="steps"></ol>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <h2>The three roads</h2>
+    <div class="roads">
+      <div class="road">
+        <h3><i style="background:var(--ord)"></i>Orders go out</h3>
+        <div class="chain"><b>Trader screen</b><em>WebSocket</em><b>OMS API</b><em>Kafka</em><b>FIX Initiator</b><em>FIX 35=D</em><b>Matching engine</b></div>
+        <p>The OMS checks the broker's risk limits and the client's money first. Only orders that pass leave the broker.</p>
+      </div>
+      <div class="road">
+        <h3><i style="background:var(--rep)"></i>Reports come back</h3>
+        <div class="chain"><b>Matching engine</b><em>FIX 35=8</em><b>FIX Initiator</b><em>WebSocket</em><b>OMS API</b><em>WebSocket</em><b>Trader screen</b></div>
+        <p>One report for every change: accepted, each trade, cancelled, rejected, expired. The OMS updates the order, cash and portfolio.</p>
+      </div>
+      <div class="road">
+        <h3><i style="background:var(--mkt)"></i>Prices go to everyone</h3>
+        <div class="chain"><b>Matching engine</b><em>ITCH</em><b>ITCH Engine</b><em>WebSocket :9001</em><b>Every trader screen</b></div>
+        <p>Every order added, traded or removed is published. The ITCH Engine stores prices in MongoDB and streams them straight to the screens.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Who's who</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Side</th><th>Part</th><th>What it does</th><th>Port</th></tr></thead>
+        <tbody>
+          <tr><td class="side">BROKER</td><td>Trader screen</td><td>Where traders place orders and watch the market.</td><td class="port">browser</td></tr>
+          <tr><td class="side">BROKER</td><td>OMS API</td><td>Receives orders, runs the risk checks, keeps orders, cash and positions up to date, pushes updates to screens.</td><td class="port">8007</td></tr>
+          <tr><td class="side">BROKER</td><td>Redis</td><td>Fast copy of limits, cash and positions, so the risk check takes milliseconds.</td><td class="port">6380</td></tr>
+          <tr><td class="side">BROKER</td><td>Postgres (OMS)</td><td>Orders, executions, positions and cash, one database per broker.</td><td class="port">5434</td></tr>
+          <tr><td class="side">BROKER</td><td>Kafka</td><td>Queue that carries orders from the OMS API to the FIX Initiator in order.</td><td class="port">9094</td></tr>
+          <tr><td class="side">BROKER</td><td>FIX Initiator</td><td>Holds each broker's FIX session with the exchange; sends orders, receives reports.</td><td class="port">8003</td></tr>
+          <tr><td class="side">BROKER</td><td>ITCH Engine</td><td>Reads the exchange's market feeds, stores prices, streams them to the screens.</td><td class="port">8002 · 9001</td></tr>
+          <tr><td class="side">BROKER</td><td>MongoDB</td><td>Market prices and history.</td><td class="port">27018</td></tr>
+          <tr><td class="side">EXCHANGE</td><td>DSE Matching Engine</td><td>Checks exchange rules, matches buyers with sellers, sends reports, publishes the market, saves every trade.</td><td class="port">FIX 5001 · ITCH 5501–5503 · 8010</td></tr>
+          <tr><td class="side">EXCHANGE</td><td>Postgres (engine)</td><td>Trade log, order report and the saved market, written every second.</td><td class="port">inside Docker</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Dealers can also place orders from the Broker Admin Terminal (port 8089). Those orders enter the OMS API and take the same road. Port numbers are those of the local Docker setup.</p>
+  </section>
+</div>
+
+<script>
+(function(){
+"use strict";
+var FAM={e1:"ord",e2:"ord",e3:"ord",e4:"ord",e5:"ord",i1:"ord",i2:"ord",e6:"rep",e7:"rep",e8:"rep",e9:"rep",i3:"rep",e10:"mkt",e11:"mkt",e12:"mkt",i4:"mkt",i5:"sav",i6:"sav"};
+var NAMES={trader:"Trader screen",oms:"OMS API",redis:"Redis",pg:"Postgres (OMS)",kafka:"Kafka",fixi:"FIX Initiator",itche:"ITCH Engine",mongo:"MongoDB",acc:"FIX gateway",con:"Web console",chk:"Exchange checks",book:"Order book",itchf:"ITCH feeds",saver:"Saver",edb:"Postgres (engine)"};
+var BASE={b:[[286.4,200],[286.3,500],[286.2,150]],a:[[286.5,100],[286.6,300],[286.7,250]]};
+
+var STORIES=[
+{id:"fill",name:"Buy order that trades",color:"var(--rep)",steps:[
+ {n:["trader"],t:"Trader places a buy order",d:"Rahim wants 100 GP shares at 286.50 Tk. He fills in the order ticket and clicks Buy. The screen sends the order to the OMS API over a live WebSocket connection.",c:"BUY 100 GP @ 286.50",m:[{e:"e1",k:"BUY 100 GP"}]},
+ {n:["oms","redis"],t:"The OMS checks the risk",d:"Before anything leaves the broker, the OMS API checks the order against the limits the broker set: kill switch, maximum quantity and value, fat-finger and price band, trading hours, restricted list. Then the money: does the client have enough buying power? The limits come from Redis, so this takes milliseconds.",c:"needs 100 × 286.50 = 28,650 Tk\nclient has 50,000 Tk  ✓ pass",m:[{e:"e2",r:1,k:"limits?"},{e:"e2",k:"OK"}]},
+ {n:["oms","kafka","pg"],t:"The OMS queues the order",d:"The OMS saves the order in its Postgres database, shows the trader “order submitted”, and puts the order on the Kafka queue. The queue keeps orders in line even when many arrive at once.",c:"Kafka topic: topic_oms_order_event",m:[[{e:"e3",k:"order"},{e:"e8",k:"saved"}]]},
+ {n:["kafka","fixi"],t:"The FIX Initiator picks it up",d:"The FIX Initiator holds the broker's FIX connection to the exchange. It takes the order from the queue and writes it as a FIX “New Order” message (35=D).",m:[{e:"e4",k:"order"}]},
+ {n:["fixi","acc"],t:"The order goes to the exchange",d:"The order crosses from the broker to the exchange over the FIX connection, into the matching engine's FIX gateway on port 5001.",c:"35=D  11=ORD-1001  55=GP  54=1 (buy)\n38=100  40=2 (limit)  44=286.50  59=0 (day)",m:[{e:"e5",k:"35=D"}]},
+ {n:["acc","chk"],t:"The exchange checks the order",d:"The engine checks the exchange's own rules: is the market open, is GP listed and trading, is 286.50 a whole tick (0.10), is it inside today's price band, is the quantity whole lots, is the order ID new?",c:"phase Continuous Trading ✓   tick 0.10 ✓\nband 261.52 – 311.68 ✓   lot ✓",m:[{e:"i1",k:"check"}]},
+ {n:["chk","book"],t:"Matching",d:"The order meets the order book. The best seller asks 286.50 for 100 shares, exactly the buyer's price. Best price comes first, then the oldest order at that price. A trade happens: 100 GP at 286.50.",c:"TRADE #42   100 GP @ 286.50",m:[{e:"i2",k:"BUY 100"}],book:"match"},
+ {n:["book","acc","fixi"],t:"The engine sends the reports",d:"The engine sends Execution Reports back over FIX: first “accepted” (150=0), then one report per trade (150=F) with the price, quantity and trade number. The seller's broker gets its own fill report at the same moment.",c:"35=8  150=F (trade)  39=2 (filled)\n31=286.50  32=100  880=42",m:[{e:"i3",k:"35=8"},{e:"e6",k:"35=8 filled"}]},
+ {n:["book","itchf","saver","edb"],t:"The engine publishes and saves the trade",d:"At the same time the engine publishes the trade on the ITCH market feed (an “order executed” message) and saves it. The trade log and the whole market are written to its database every second, so nothing is lost on a restart.",c:"ITCH  E  order executed  qty 100  match 42",m:[[{e:"i4",k:"E"},{e:"i5",k:"trade"}],{e:"i6",k:"saved"}]},
+ {n:["fixi","oms"],t:"The report reaches the OMS",d:"The FIX Initiator reads the report and passes it to the OMS API over a WebSocket.",m:[{e:"e7",k:"filled"}]},
+ {n:["oms","pg","redis"],t:"The OMS updates the accounts",d:"The OMS marks the order Filled, adds 100 GP to the client's portfolio and takes 28,650 Tk from the cash balance. It saves this in Postgres and refreshes Redis, so the next risk check sees the new balance.",c:"position GP  +100\ncash        −28,650.00 Tk",m:[[{e:"e8",k:"filled"},{e:"e2",k:"refresh"}]]},
+ {n:["oms","trader"],t:"The trader sees the fill",d:"The OMS pushes the update to the trader's screen. The blotter shows Filled, and buying power and portfolio change straight away.",c:"ORD-1001  GP  BUY 100 @ 286.50  FILLED",m:[{e:"e9",k:"FILLED"}]},
+ {n:["itchf","itche","mongo","trader"],t:"Everyone sees the new price",d:"The ITCH Engine reads the market feed, stores the price in MongoDB, and streams it to every trader's screen over WebSocket (port 9001). Market watch shows GP at 286.50; depth and time-and-sales update too.",c:"GP  LTP 286.50  ▲ 0.10  volume 100",m:[{e:"e10",k:"ITCH"},[{e:"e11",k:"store"},{e:"e12",k:"GP 286.50"}]]}
+]},
+{id:"rest",name:"Order waits, then is cancelled",color:"var(--ord)",steps:[
+ {n:["trader","oms","redis"],t:"Trader places a buy order",d:"Rahim wants 100 GP but only at 286.40, lower than anyone is selling for. The OMS checks the risk as usual and the order passes.",c:"BUY 100 GP @ 286.40",m:[{e:"e1",k:"BUY 100 GP"},{e:"e2",r:1,k:"limits?"},{e:"e2",k:"OK"}]},
+ {n:["oms","kafka","fixi","acc"],t:"Off to the exchange",d:"The order goes on the Kafka queue, the FIX Initiator turns it into a FIX New Order (35=D) and sends it to the engine.",c:"35=D  55=GP  54=1  38=100  44=286.40",m:[{e:"e3",k:"order"},{e:"e4",k:"order"},{e:"e5",k:"35=D"}]},
+ {n:["acc","chk","book"],t:"No seller at that price: the order waits",d:"The checks pass, but the cheapest seller wants 286.50. Nothing trades, so the order joins the book, behind the 200 shares that were already waiting at 286.40. First come, first served.",c:"bids 286.40: 200 (older) + 100 (Rahim)",m:[{e:"i1",k:"check"},{e:"i2",k:"BUY 100"}],book:"rest"},
+ {n:["book","acc","fixi","itchf","itche"],t:"Accepted, and shown to the market",d:"The engine reports “accepted, waiting” (150=0). The ITCH feed tells everyone a new buy order was added to the book, so every screen's depth now shows 300 at 286.40.",c:"35=8  150=0 (new)  39=0  151=100 waiting\nITCH  A  add order  B 100 @ 286.40",m:[[{e:"i3",k:"35=8"},{e:"i4",k:"A"}],[{e:"e6",k:"35=8 new"},{e:"e10",k:"A add"}]]},
+ {n:["fixi","oms","trader"],t:"The trader sees the open order",d:"The report reaches the OMS, which marks the order Open and holds the money for it. The blotter shows the order working; the depth shows the new bid.",c:"ORD-1002  GP  BUY 100 @ 286.40  OPEN",m:[[{e:"e7",k:"new"},{e:"e12",k:"bid 286.40"}],{e:"e9",k:"OPEN"}]},
+ {n:["trader","oms","kafka","fixi"],t:"Trader clicks Cancel",d:"Rahim changes his mind. The cancel request takes the same road as an order: screen, OMS API, Kafka, FIX Initiator.",c:"CANCEL ORD-1002",m:[{e:"e1",k:"cancel"},{e:"e3",k:"cancel"},{e:"e4",k:"cancel"}]},
+ {n:["fixi","acc","book"],t:"The engine removes the order",d:"The FIX Initiator sends a Cancel Request (35=F). The engine finds the order by its ID, checks it belongs to this broker, and takes it out of the book.",c:"35=F  41=ORD-1002 (order to cancel)  11=CXL-1002",m:[{e:"e5",k:"35=F"},{e:"i1",k:"cancel"},{e:"i2",k:"cancel"}],book:"cancel"},
+ {n:["book","acc","itchf","itche","fixi"],t:"Cancelled, and removed from every screen",d:"The engine reports “cancelled” (150=4) to the broker, and the ITCH feed sends “order deleted”, so the bid disappears from everyone's depth.",c:"35=8  150=4 (cancelled)  39=4\nITCH  D  order delete",m:[[{e:"i3",k:"35=8"},{e:"i4",k:"D"}],[{e:"e6",k:"35=8 cancelled"},{e:"e10",k:"D delete"}]]},
+ {n:["oms","pg","trader"],t:"Money released",d:"The OMS marks the order Cancelled, releases the money it was holding, and updates the screen.",c:"ORD-1002  CANCELLED   28,640 Tk released",m:[{e:"e7",k:"cancelled"},[{e:"e8",k:"save"},{e:"e9",k:"CANCELLED"}]]}
+]},
+{id:"omsrej",name:"Blocked by the broker's risk check",color:"var(--bad)",steps:[
+ {n:["trader"],t:"Trader tries a big order",d:"Rahim tries to buy 1,000 GP at 286.50. That costs 286,500 Tk.",c:"BUY 1,000 GP @ 286.50",m:[{e:"e1",k:"BUY 1,000 GP"}]},
+ {n:["oms","redis"],bad:["oms"],t:"Not enough buying power",d:"The OMS API checks the client's cash in Redis. The client has 50,000 Tk, far less than 286,500 Tk. The order is refused right here.",c:"needs 286,500 Tk\nclient has 50,000 Tk  ✗ refused",bc:1,m:[{e:"e2",r:1,k:"limits?"},{e:"e2",k:"too low",bad:1}]},
+ {n:["oms","trader"],bad:["oms"],t:"The trader sees the rejection",d:"The OMS sends the rejection back to the screen with the reason. The order never left the broker: the exchange never saw it, and nothing was sent over FIX.",c:"REJECTED: insufficient buying power",bc:1,m:[{e:"e9",k:"REJECTED",bad:1}]}
+]},
+{id:"exrej",name:"Rejected by the exchange",color:"var(--mkt)",steps:[
+ {n:["trader","oms","redis"],t:"Trader places an order with a bad price",d:"Rahim types 286.53. The broker's risk checks pass: there is enough money and the price is near the market.",c:"BUY 100 GP @ 286.53",m:[{e:"e1",k:"BUY @ 286.53"},{e:"e2",r:1,k:"limits?"},{e:"e2",k:"OK"}]},
+ {n:["oms","kafka","fixi","acc"],t:"Off to the exchange",d:"The order goes through Kafka and the FIX Initiator to the engine's FIX gateway as a New Order (35=D).",c:"35=D  55=GP  54=1  38=100  44=286.53",m:[{e:"e3",k:"order"},{e:"e4",k:"order"},{e:"e5",k:"35=D"}]},
+ {n:["acc","chk"],bad:["chk"],t:"The exchange refuses it",d:"GP moves in steps of 0.10 Tk (its tick size). 286.53 is not a whole step, so the engine rejects the order before it reaches the book.",c:"off-tick: 286.5300 is not a multiple of tick 0.10",bc:1,m:[{e:"i1",k:"check"}],book:"never"},
+ {n:["acc","fixi"],bad:["chk"],t:"The rejection is reported",d:"The engine sends an Execution Report with 150=8 (rejected) and the reason in tag 58.",c:"35=8  150=8 (rejected)  39=8  37=NONE\n58=off-tick: 286.5300 is not a multiple of tick 0.10",bc:1,m:[{e:"e6",k:"35=8 rejected",bad:1}]},
+ {n:["fixi","oms","pg","trader"],t:"The trader sees why",d:"The OMS marks the order Rejected, releases the money it was holding, and shows the reason on the screen. Rahim can fix the price to 286.50 and send it again.",c:"REJECTED: off-tick (use 286.50)",bc:1,m:[{e:"e7",k:"rejected",bad:1},[{e:"e8",k:"save"},{e:"e9",k:"REJECTED",bad:1}]]}
+]}
+];
+
+var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+var svg=document.getElementById("svg"),pk=document.getElementById("pk");
+var story=0,step=0,playing=false,run=0,speed=1;
+var $=function(id){return document.getElementById(id)};
+
+function wait(ms,tok){return new Promise(function(res){setTimeout(function(){res(tok===run)},ms)})}
+
+function fmt(r){return r[0].toFixed(2)+" × "+r[1]}
+function renderBook(b,a,st,marks){
+  marks=marks||{};
+  for(var i=0;i<3;i++){
+    var eb=$("bk-b"+i),ea=$("bk-a"+i);
+    eb.textContent=b[i]?fmt(b[i]):"";ea.textContent=a[i]?fmt(a[i]):"";
+    eb.setAttribute("class","bk bid"+(marks["b"+i]?" "+marks["b"+i]:""));
+    ea.setAttribute("class","bk ask"+(marks["a"+i]?" "+marks["a"+i]:""));
+  }
+  var s=$("bk-st");s.textContent=st||"";s.style.fill=marks.bad?"var(--bad)":"";
+}
+function bookFinal(k){
+  if(k==="match")renderBook(BASE.b,[[286.6,300],[286.7,250],[286.8,400]],"TRADE 100 GP @ 286.50",{});
+  else if(k==="rest")renderBook([[286.4,300],[286.3,500],[286.2,150]],BASE.a,"+100 waits behind 200 at 286.40",{b0:"new"});
+  else if(k==="never")renderBook(BASE.b,BASE.a,"rejected: never reaches the book",{bad:1});
+  else if(k==="cancel")renderBook(BASE.b,BASE.a,"order removed from the book",{});
+  else renderBook(BASE.b,BASE.a,"",{});
+}
+async function bookAnim(k,tok){
+  if(reduce){bookFinal(k);return}
+  if(k==="match"){
+    renderBook(BASE.b,BASE.a,"BUY 100 @ 286.50 arrives",{});
+    if(!await wait(900/speed,tok))return;
+    renderBook(BASE.b,BASE.a,"matches the best ask 286.50",{a0:"hit"});
+    if(!await wait(1100/speed,tok))return;
+  }else if(k==="rest"){
+    renderBook(BASE.b,BASE.a,"BUY 100 @ 286.40: no seller that low",{});
+    if(!await wait(1300/speed,tok))return;
+  }else if(k==="cancel"){
+    renderBook([[286.4,300],[286.3,500],[286.2,150]],BASE.a,"cancel ORD-1002",{b0:"hit"});
+    if(!await wait(1100/speed,tok))return;
+  }
+  bookFinal(k);
+}
+
+function clearEdges(){
+  svg.querySelectorAll(".edge").forEach(function(p){p.classList.remove("lit","run")});
+  svg.querySelectorAll(".node").forEach(function(g){g.classList.remove("on","bad")});
+  pk.textContent="";
+}
+
+function packet(mv,tok){
+  return new Promise(function(res){
+    var path=$(mv.e),fam=mv.bad?"bad":FAM[mv.e];
+    path.classList.add("lit");
+    if(reduce){res();return}
+    path.classList.add("run");
+    var len=path.getTotalLength(),dur=Math.max(650,len*5)/speed;
+    var g=document.createElementNS("http://www.w3.org/2000/svg","g");g.setAttribute("class","pkt "+fam);
+    var label=mv.k||"",w=label.length*6.6+14;
+    var rect=document.createElementNS(g.namespaceURI,"rect");rect.setAttribute("width",w);rect.setAttribute("height",18);rect.setAttribute("rx",9);
+    var tx=document.createElementNS(g.namespaceURI,"text");tx.textContent=label;tx.setAttribute("text-anchor","middle");
+    var c=document.createElementNS(g.namespaceURI,"circle");c.setAttribute("r",6);
+    if(label){g.appendChild(rect);g.appendChild(tx)}
+    g.appendChild(c);pk.appendChild(g);
+    var t0=performance.now();
+    function frame(now){
+      if(tok!==run){g.remove();path.classList.remove("run");res();return}
+      var f=Math.min(1,(now-t0)/dur),e=f<.5?2*f*f:1-Math.pow(-2*f+2,2)/2;
+      var p=path.getPointAtLength((mv.r?1-e:e)*len);
+      c.setAttribute("cx",p.x);c.setAttribute("cy",p.y);
+      rect.setAttribute("x",p.x-w/2);rect.setAttribute("y",p.y-29);
+      tx.setAttribute("x",p.x);tx.setAttribute("y",p.y-16.5);
+      if(f<1)requestAnimationFrame(frame);
+      else{setTimeout(function(){g.remove()},250/speed);path.classList.remove("run");res()}
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+function renderTabs(){
+  var t=$("tabs");t.textContent="";
+  STORIES.forEach(function(s,i){
+    var b=document.createElement("button");b.type="button";b.className="tab";b.setAttribute("role","tab");
+    b.setAttribute("aria-selected",i===story?"true":"false");b.id="tab-"+s.id;
+    var d=document.createElement("span");d.className="dot";d.style.background=s.color;b.appendChild(d);
+    b.appendChild(document.createTextNode(s.name));
+    b.onclick=function(){story=i;renderTabs();renderList();go(0,true)};
+    t.appendChild(b);
+  });
+}
+function renderList(){
+  var ol=$("steps");ol.textContent="";
+  STORIES[story].steps.forEach(function(s,i){
+    var li=document.createElement("li"),b=document.createElement("button");b.type="button";b.textContent=s.t;
+    if(s.bad)li.classList.add("badstep");
+    b.onclick=function(){go(i,playing)};li.appendChild(b);ol.appendChild(li);
+  });
+}
+function paintCard(){
+  var S=STORIES[story],s=S.steps[step];
+  $("st-no").textContent="Step "+(step+1)+" of "+S.steps.length;$("st-story").textContent=S.name;
+  $("st-title").textContent=s.t;$("st-desc").textContent=s.d;
+  var code=$("st-code");code.hidden=!s.c;code.textContent=s.c||"";code.className="code"+(s.bc?" bad":"");
+  var who=$("st-who");who.textContent="";
+  s.n.forEach(function(n){var c=document.createElement("span");c.className="chip";c.textContent=NAMES[n];who.appendChild(c)});
+  $("st-bar").style.width=((step+1)/S.steps.length*100)+"%";
+  $("steps").querySelectorAll("li").forEach(function(li,i){li.classList.toggle("cur",i===step);li.classList.toggle("done",i<step)});
+  $("b-play").textContent=playing?"❚❚ Pause":(step===S.steps.length-1&&!playing&&ended?"⟲ Replay":"▶ Play");
+}
+var ended=false;
+
+async function go(i,autoplay){
+  var tok=++run,S=STORIES[story];
+  step=Math.max(0,Math.min(i,S.steps.length-1));playing=!!autoplay;ended=false;
+  clearEdges();
+  var last=null;for(var j=0;j<step;j++)if(S.steps[j].book)last=S.steps[j].book;bookFinal(last);
+  var s=S.steps[step];
+  s.n.forEach(function(n){var g=$("n-"+n);if(g)g.classList.add("on")});
+  (s.bad||[]).forEach(function(n){var g=$("n-"+n);if(g){g.classList.remove("on");g.classList.add("bad")}});
+  paintCard();
+  for(var k=0;k<s.m.length;k++){
+    var grp=Array.isArray(s.m[k])?s.m[k]:[s.m[k]];
+    await Promise.all(grp.map(function(mv){return packet(mv,tok)}));
+    if(tok!==run)return;
+  }
+  if(s.book){await bookAnim(s.book,tok);if(tok!==run)return}
+  if(!playing)return;
+  if(!await wait((1600+s.d.length*14)/speed,tok))return;
+  if(step<S.steps.length-1)go(step+1,true);
+  else{playing=false;ended=true;paintCard()}
+}
+
+$("b-play").onclick=function(){
+  var S=STORIES[story];
+  if(playing){playing=false;run++;paintCard();return}
+  if(ended||step===S.steps.length-1&&ended){go(0,true);return}
+  go(step,true);
+};
+$("b-next").onclick=function(){go(step+1,false)};
+$("b-back").onclick=function(){go(step-1,false)};
+$("b-restart").onclick=function(){go(0,!reduce)};
+$("speed").onchange=function(){speed=parseFloat(this.value)||1};
+document.addEventListener("keydown",function(e){
+  if(e.target.closest&&e.target.closest("select"))return;
+  if(e.key==="ArrowRight"){go(step+1,false)}else if(e.key==="ArrowLeft"){go(step-1,false)}
+});
+
+renderTabs();renderList();
+go(0,!reduce);
+})();
+</script>
+
+</body></html>

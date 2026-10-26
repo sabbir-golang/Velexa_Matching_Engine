@@ -18,6 +18,8 @@ import (
 // into internal/rest. A route that is dropped or renamed fails here.
 var wantRoutes = []string{
 	"/admin/api/overview",
+	"/admin/api/report/order-history",
+	"/admin/api/diagnostics",
 	"/admin/api/report/daily",
 	"/admin/api/report/orders",
 	"/admin/report/daily",
@@ -58,6 +60,7 @@ var wantRoutes = []string{
 	"/api/book",
 	"/api/market",
 	"/api/order",
+	"/api/order/cancel",
 	"/api/session",
 	"/api/session/open",
 	"/api/session/preopen",

@@ -69,9 +69,16 @@ try {
   await connect();
   await cmd("Page.enable"); await cmd("Runtime.enable"); await cmd("Log.enable");
 
-  // 1. register through the form
+  // 1. register through the form; a mistake is caught in the browser and keeps what was typed
   await go(B + "/?as=register");
   await shot("01-register");
+  await ev(`(()=>{const f=document.getElementById("regcard");const set=(n,v)=>{f.querySelector("[name="+n+"]").value=v};
+    set("full_name","Test Person");set("user","tester1");set("email","tester1@example.com");set("phone","+880 1711-000001");
+    set("gender","other");set("country","Bangladesh");set("pass","Trading-Desk7");set("pass2","Trading-Desk8");
+    f.requestSubmit();})()`);
+  await sleep(600);
+  const kept = await ev(`(()=>{const f=document.getElementById("regcard");return location.search.indexOf("e=")<0&&f.querySelector("[name=email]").value=="tester1@example.com"&&/do not match/.test(f.textContent)})()`);
+  check("registration mismatch is shown and the form keeps its details", kept === true);
   await ev(`(()=>{const f=document.getElementById("regcard");const set=(n,v)=>{f.querySelector("[name="+n+"]").value=v};
     set("full_name","Test Person");set("user","tester1");set("email","tester1@example.com");set("phone","+880 1711-000001");
     set("gender","other");set("country","Bangladesh");set("pass","Trading-Desk7");set("pass2","Trading-Desk7");
@@ -129,7 +136,7 @@ try {
   await ev(`show("users")`); await sleep(1200);
   const rows = await ev(`document.querySelectorAll("#userList tr").length`);
   const onclick = await ev(`(document.querySelector("#userList button")||{}).getAttribute?.("onclick")||""`);
-  check("users page renders with safe handlers", rows >= 2 && /setUserRole\("/.test(onclick), `rows=${rows} onclick=${onclick}`);
+  check("users page renders with safe handlers", rows >= 2 && /editUser\("/.test(onclick), `rows=${rows} onclick=${onclick}`);
   await shot("07-admin-users");
   await ev(`show("creds")`); await sleep(1200);
   check("admin brokers view: no script ran from data", (await ev(`window.__xss===1`)) === false);

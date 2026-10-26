@@ -35,7 +35,7 @@ var viewerRoutes = map[string]bool{
 	"/admin/api/broker/detail": true, "/admin/api/broker/add": true, "/admin/api/broker/del": true, "/admin/api/broker/sheet": true,
 	"/admin/api/session":      true,                                                                // a user's own brokers only (checked per broker)
 	"/admin/api/report/daily": true, "/admin/report/daily": true, "/admin/api/report/orders": true, // a user: own brokers only
-	"/admin/api/overview": true, // the dashboard: own brokers only
+	"/admin/api/overview": true, "/admin/api/report/order-history": true, // own brokers only
 }
 
 func isConsoleRoute(p string) bool {
@@ -464,7 +464,7 @@ func TestSelfRegistrationMakesReadOnlyUsers(t *testing.T) {
 		{"reg_taken", reg("admin", "Fresh-Start1", "Fresh-Start1", map[string]string{"email": "adm@example.com"}).Header().Get("Location")},
 		{"reg_mismatch", reg("other1", "Fresh-Start1", "Different-12").Header().Get("Location")},
 		{"reg_weak", reg("other2", "short", "short").Header().Get("Location")},
-		{"reg_weak", reg("other3", "other3-Pass1", "other3-Pass1").Header().Get("Location")}, // contains the username
+		{"reg_weak", reg("other3", "onlylower1234", "onlylower1234").Header().Get("Location")}, // two classes only
 		{"reg_name", reg("a b", "Fresh-Start1", "Fresh-Start1").Header().Get("Location")},
 		{"reg_email", reg("pers1", "Fresh-Start1", "Fresh-Start1", map[string]string{"email": "not-an-email"}).Header().Get("Location")},
 		{"reg_phone", reg("pers2", "Fresh-Start1", "Fresh-Start1", map[string]string{"phone": "abc"}).Header().Get("Location")},

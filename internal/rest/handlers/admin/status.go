@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"velexa-sim-me/internal/config"
 	"velexa-sim-me/internal/database/audit"
 	"velexa-sim-me/internal/database/brokers"
 	"velexa-sim-me/internal/engine"
@@ -56,7 +57,8 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 		"phase": phase, "instruments": instr, "orders": orders, "trades": trades, "running": running,
 		"auto_clock": eng.AutoClock(), "schedule": eng.ScheduleText(),
 		"fix_auth": brokers.Fix.Enforced(), "fix_auth_mode": brokers.Fix.Mode, "itch_auth": brokers.Itch.Enabled,
-		"uptime":    time.Since(meStart).Round(time.Second).String(),
+		"uptime":   time.Since(meStart).Round(time.Second).String(),
+		"fix_port": fixPort(), "fix_sender": config.EnvOr("FIX_SENDER", "DSEME"), "fix_begin": config.EnvOr("ME_FIX_BEGIN", "FIXT.1.1"),
 		"listeners": listeners(),
 		"sessions":  sessions, "events": events, "scope": "all",
 		"universe": engine.InstrumentStatus(eng),

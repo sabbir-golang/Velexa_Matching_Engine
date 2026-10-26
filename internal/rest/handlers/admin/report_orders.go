@@ -22,6 +22,7 @@ import (
 // orderRow is one report line, as the page and the downloads show it.
 type orderRow struct {
 	Time     string  `json:"time"`
+	Updated  string  `json:"updated"` // when the order last changed (fill, cancel, expiry)
 	Broker   string  `json:"broker"`
 	BrokerID string  `json:"broker_id"`
 	OrderID  string  `json:"order_id"`
@@ -59,7 +60,11 @@ func brokerLabel(actor string) (id, label string) {
 
 func toRow(r orderlog.Record) orderRow {
 	id, label := brokerLabel(r.Actor)
-	return orderRow{Time: r.Entered.In(engine.Dhaka).Format("2006-01-02 15:04:05"), Broker: label, BrokerID: id,
+	updated := ""
+	if !r.Updated.IsZero() {
+		updated = r.Updated.In(engine.Dhaka).Format("2006-01-02 15:04:05")
+	}
+	return orderRow{Time: r.Entered.In(engine.Dhaka).Format("2006-01-02 15:04:05"), Updated: updated, Broker: label, BrokerID: id,
 		OrderID: r.OrderID, Client: r.Client, Symbol: r.Symbol, Side: r.Side, Type: r.Type, Qty: r.Qty,
 		Price: r.Price, Filled: r.Filled, Status: r.Status, Board: r.Board, AvgPx: r.AvgPx, Account: r.Account,
 		ClOrdID: r.ClOrdID, Trader: r.Trader, TIF: r.TIF, Reason: r.Reason}

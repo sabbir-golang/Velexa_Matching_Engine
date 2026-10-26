@@ -46,6 +46,9 @@ select{width:100%;padding:11px 13px;background:#0b1119;border:1px solid var(--li
 select:focus{border-color:var(--acc)}
 .wrap.regmode{grid-template-columns:.8fr 1.4fr}
 @media(max-width:560px){.two{grid-template-columns:1fr}}
+.ferr{display:block;color:#f87171;font-size:11.5px;margin-top:5px;line-height:1.35}.ferr:empty{display:none}
+.hint{display:block;color:var(--mut);font-size:11.5px;margin-top:5px;line-height:1.35}
+input.bad,select.bad{border-color:#f87171!important}
 .alt{text-align:center;color:var(--mut);font-size:12.5px;margin-top:16px}
 .alt a{color:var(--acc);text-decoration:none;font-weight:600}
 .ft{color:var(--mut);font-size:11px;text-align:center;margin-top:18px;font-family:"IBM Plex Mono",monospace;letter-spacing:.05em}
@@ -78,19 +81,20 @@ select:focus{border-color:var(--acc)}
   <div class="alt" id="toReg">New here? <a href="#" onclick="pick('register');return false">Create an account</a></div>
   <div class="ft">VELEXA · DSEME</div>
  </form>
- <form class="card reg" method="post" action="/register" id="regcard" style="display:none">
+ <form class="card reg" method="post" action="/register" id="regcard" style="display:none" novalidate>
   <h2>Create account</h2>
   <p class="sub">New accounts start with an empty workspace and see only their own brokers.</p>
   <div class="two">
-   <div><label>Full name *</label><input name="full_name" autocomplete="name" required maxlength="80"></div>
-   <div><label>Username *</label><input name="user" autocomplete="username" required placeholder="letters, digits . _ -" minlength="3" maxlength="32"></div>
-   <div><label>Email *</label><input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></div>
-   <div><label>Phone *</label><input name="phone" type="tel" autocomplete="tel" required placeholder="+880 1XXX-XXXXXX"></div>
-   <div><label>Gender *</label><select name="gender" required><option value="">Select…</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
-   <div><label>Country *</label><select name="country" id="country" required></select></div>
-   <div><label>Password *</label><input name="pass" type="password" autocomplete="new-password" required minlength="8" placeholder="min 8 characters"></div>
-   <div><label>Confirm password *</label><input name="pass2" type="password" autocomplete="new-password" required minlength="8"></div>
+   <div><label for="r_full_name">Full name *</label><input name="full_name" id="r_full_name" autocomplete="name" required maxlength="80"><small class="ferr"></small></div>
+   <div><label for="r_user">Username *</label><input name="user" id="r_user" autocomplete="username" required placeholder="letters, digits . _ -" maxlength="32"><small class="ferr"></small></div>
+   <div><label for="r_email">Email *</label><input name="email" id="r_email" type="email" autocomplete="email" required placeholder="you@example.com" maxlength="120"><small class="ferr"></small></div>
+   <div><label for="r_phone">Phone *</label><input name="phone" id="r_phone" type="tel" autocomplete="tel" required placeholder="+880 1XXX-XXXXXX"><small class="ferr"></small></div>
+   <div><label for="r_gender">Gender *</label><select name="gender" id="r_gender" required><option value="">Select…</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select><small class="ferr"></small></div>
+   <div><label for="country">Country *</label><select name="country" id="country" required></select><small class="ferr"></small></div>
+   <div><label for="r_pass">Password *</label><input name="pass" id="r_pass" type="password" autocomplete="new-password" required maxlength="128" placeholder="at least 10 characters"><small class="ferr"></small></div>
+   <div><label for="r_pass2">Confirm password *</label><input name="pass2" id="r_pass2" type="password" autocomplete="new-password" required maxlength="128"><small class="ferr"></small></div>
   </div>
+  <small class="hint">Password: 10 to 128 characters, with at least 3 of: lower-case letters, upper-case letters, digits, symbols.</small>
   <div class="err" id="regerr"></div>
   <button class="go" type="submit">Register</button>
   <div class="alt">Already registered? <a href="#" onclick="pick('user');return false">Sign in</a></div>
@@ -112,7 +116,42 @@ function pick(a){
  document.getElementById("who").textContent=a=="admin"?"Administrator access — full control.":"Your own brokers and the market.";
  document.getElementById("go").textContent=a=="admin"?"Sign in as admin":"Sign in as user";
  document.getElementById("toReg").style.display=(REG&&a=="user")?"block":"none"}
-var start="__AS__";
-if(start=="register"){document.getElementById("regerr").textContent=document.getElementById("err").textContent;pick("register")}else pick(start);
+// ── Registration: checked here with the server's rules before it is sent, so a
+// mistake never empties the form; what only the server can check (a taken name
+// or email) comes back with the details kept. Passwords are never stored.
+var RF=["full_name","user","email","phone","gender","country"],DRAFT="me-reg-draft",regTried=false;
+function rel(n){return document.querySelector('#regcard [name="'+n+'"]')}
+function setErr(n,msg){var el=rel(n),e=el.parentNode.querySelector(".ferr");el.classList.toggle("bad",!!msg);el.setAttribute("aria-invalid",msg?"true":"false");if(e)e.textContent=msg||""}
+function pwClasses(p){var c=0;if(/[a-z]/.test(p))c++;if(/[A-Z]/.test(p))c++;if(/[0-9]/.test(p))c++;if(/[^a-zA-Z0-9]/.test(p))c++;return c}
+function regCheck(n){var v=rel(n).value,t=v.trim(),u=rel("user").value.trim();
+ switch(n){
+ case "full_name":return t.length<2?"Enter your full name (at least 2 characters).":"";
+ case "user":return !/^[A-Za-z0-9._-]{3,32}$/.test(t)?"3 to 32 characters: letters, digits, dot, underscore or dash.":"";
+ case "email":return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)||t.length>120?"Enter a valid email address, e.g. you@example.com.":"";
+ case "phone":var d=t.replace(/[^0-9]/g,"").length;return !/^\+?[0-9 ()-]+$/.test(t)||d<7||d>15?"Enter a phone number with 7 to 15 digits, e.g. +880 1712-345678.":"";
+ case "gender":return v?"":"Select your gender.";
+ case "country":return v?"":"Select your country.";
+ case "pass":if(v.length<10)return "At least 10 characters.";if(pwClasses(v)<3)return "Use at least 3 of: lower-case, upper-case, digits, symbols.";return "";
+ case "pass2":return !v?"Enter the password again.":v!=rel("pass").value?"The two passwords do not match.":""}return ""}
+var REGN=RF.concat(["pass","pass2"]);
+function regValidate(){var first=null;REGN.forEach(function(n){var m=regCheck(n);setErr(n,m);if(m&&!first)first=n});if(first)rel(first).focus();return !first}
+REGN.forEach(function(n){var el=rel(n);var re=function(){if(regTried||el.classList.contains("bad"))setErr(n,regCheck(n));if(n=="pass"&&rel("pass2").value&&regTried)setErr("pass2",regCheck("pass2"))};el.addEventListener("input",re);el.addEventListener("change",re);el.addEventListener("blur",function(){if(el.value)setErr(n,regCheck(n))})});
+document.getElementById("regcard").addEventListener("submit",function(e){regTried=true;var re=document.getElementById("regerr");re.textContent="";re.style.color="";
+ if(!regValidate()){e.preventDefault();return}
+ try{var d={};RF.forEach(function(n){d[n]=rel(n).value});sessionStorage.setItem(DRAFT,JSON.stringify(d))}catch(x){}});
+// the server's answer: which field it is about
+var REGFIELD={reg_mismatch:"pass2",reg_weak:"pass",reg_name:"user",reg_fullname:"full_name",reg_email:"email",reg_phone:"phone",reg_gender:"gender",reg_country:"country",reg_taken:"user"};
+var start="__AS__",code=(location.search.match(/[?&]e=([a-z_]+)/)||[])[1]||"";
+if(code=="registered"){try{sessionStorage.removeItem(DRAFT)}catch(x){}}
+if(start=="register"){pick("register");
+ var msg=document.getElementById("err").textContent,d=null;try{d=JSON.parse(sessionStorage.getItem(DRAFT)||"null")}catch(x){}
+ if(d)RF.forEach(function(n){if(d[n]!=null)rel(n).value=d[n]});
+ var f=REGFIELD[code];
+ // passwords are never kept: after a round trip they are the only fields to fill again
+ var note=d?"Your details are kept — please enter the password twice again.":"";
+ var re=document.getElementById("regerr");
+ if(f){setErr(f,msg);re.textContent=note;re.style.color="var(--mut)";rel(f).focus()}
+ else re.textContent=msg+(note?" "+note:"");
+}else pick(start);
 </script>
 </body></html>`

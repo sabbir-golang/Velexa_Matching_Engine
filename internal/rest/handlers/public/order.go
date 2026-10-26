@@ -23,6 +23,7 @@ func (h *Handler) Order(w http.ResponseWriter, r *http.Request) {
 		Price   float64 `json:"price"`
 		Qty     int64   `json:"qty"`
 		ClOrdID string  `json:"cl_ord_id"`
+		TIF     string  `json:"tif"` // DAY (default), IOC, FOK or GTC
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "malformed order JSON", 400)
@@ -54,6 +55,38 @@ func (h *Handler) Order(w http.ResponseWriter, r *http.Request) {
 	}
 	o := eng.NewOrder(req.Symbol, side, typ, req.Price, req.Qty, actor)
 	o.ClOrdID = req.ClOrdID
+	switch strings.ToUpper(strings.TrimSpace(req.TIF)) {
+	case "IOC":
+		o.TIF = engine.IOC
+	case "FOK":
+		o.TIF = engine.FOK
+	case "GTC":
+		o.TIF = engine.GTC
+	}
 	rep := eng.SubmitAndWait(o)
 	utils.WriteJSON(w, rep)
+}
+
+// CancelOrder serves POST /api/order/cancel {cl_ord_id}: a signed-in console
+// user cancels one of their own working Trade Terminal orders.
+func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
+	middleware.LimitBody(w, r)
+	var req struct {
+		ClOrdID string `json:"cl_ord_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.ClOrdID) == "" {
+		utils.WriteJSON(w, map[string]any{"ok": false, "error": "cl_ord_id is required"})
+		return
+	}
+	cl := strings.TrimSpace(req.ClOrdID)
+	rep := h.Eng.CancelAs(cl, cl+"-X", "USER:"+middleware.Username(r)) // only the user's own orders match
+	if rep.Status != "CANCELED" {
+		msg := "the order is not working (already filled, cancelled or not yours)"
+		if rep.Reason != "" {
+			msg = rep.Reason
+		}
+		utils.WriteJSON(w, map[string]any{"ok": false, "error": msg})
+		return
+	}
+	utils.WriteJSON(w, map[string]any{"ok": true, "report": rep})
 }

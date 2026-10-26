@@ -31,7 +31,7 @@ If accounts were kept in the stand-alone `velexa_me_pg` container (`make db`), t
 
 | Command | Does |
 |---|---|
-| `make docker-up` | Build and start, or update after a `git pull` (rebuilds and restarts the engine). Also switches back from `make dev` to the production image |
+| `make docker-up` or `docker compose up -d` | Build and start, or update after a `git pull` or a code change. Both rebuild the image from this folder first (`pull_policy: build`), so they always run the current code; the engine restarts (the market is saved and restored, brokers log on again). Also switches back from `make dev` to the production image |
 | `make dev` | Live reload: the engine runs under Air on the project folder; a saved `.go` file is rebuilt and the engine restarts in seconds (see below) |
 | `make docker-ps` | Status and health of both containers |
 | `make docker-logs` | Follow the engine log |

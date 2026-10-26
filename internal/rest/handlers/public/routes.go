@@ -16,8 +16,9 @@ func (h *Handler) RegRoutes(mux *http.ServeMux, manager *middleware.Manager) {
 	mux.Handle("/api/status", manager.With(http.HandlerFunc(h.Status)))
 	mux.Handle("/api/market", manager.With(http.HandlerFunc(h.Market)))
 	mux.Handle("/api/book", manager.With(http.HandlerFunc(h.Book)))
-	mux.Handle("/api/order", manager.With(http.HandlerFunc(h.Order), middleware.PostOnly, h.middlewares.Viewer)) // the signed-in user is the order's actor
-	mux.Handle("/events", manager.With(http.HandlerFunc(h.Events)))                                              // SSE market stream, or the news WebSocket on an Upgrade
+	mux.Handle("/api/order", manager.With(http.HandlerFunc(h.Order), middleware.PostOnly, h.middlewares.Viewer))              // the signed-in user is the order's actor
+	mux.Handle("/api/order/cancel", manager.With(http.HandlerFunc(h.CancelOrder), middleware.PostOnly, h.middlewares.Viewer)) // own orders only
+	mux.Handle("/events", manager.With(http.HandlerFunc(h.Events)))                                                           // SSE market stream, or the news WebSocket on an Upgrade
 
 	// ITCH WebSocket gateway for the trader SPA
 	mux.Handle("/market", manager.With(h.Itch.Serve(h.Itch.Market, itchgw.SelMarket)))
