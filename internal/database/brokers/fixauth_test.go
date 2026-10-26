@@ -1,9 +1,49 @@
 package brokers
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// Simulator bots log on with temporary logons: accepted while they exist,
+// never saved, never listed, and they do not switch the "auto" check on.
+func TestSimulatorLogons(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fix_brokers.json")
+	t.Setenv("ME_FIX_AUTH", "on")
+	t.Setenv("ME_FIX_AUTH_FILE", path)
+	a := LoadFix()
+	a.Add("JBL", "Right-Pass1")
+	a.AddTemp("SIMBOT1", "Sim-Pass1")
+	if r := a.Authorize("SIMBOT1", "SIMBOT1", "Sim-Pass1"); r != "" {
+		t.Fatalf("bot logon refused: %s", r)
+	}
+	if a.Authorize("SIMBOT1", "", "wrong") == "" || a.Authorize("SIMBOT2", "", "Sim-Pass1") == "" {
+		t.Fatal("bad bot logons accepted")
+	}
+	if l := a.List(); len(l) != 1 || l[0] != "JBL" {
+		t.Fatalf("listed: %v", l)
+	}
+	a.Add("KBL", "Right-Pass2") // saves the file again
+	if b, _ := os.ReadFile(path); strings.Contains(string(b), "SIMBOT") {
+		t.Fatalf("a bot logon was saved: %s", b)
+	}
+	a.RemoveTemp("SIMBOT1")
+	if a.Authorize("SIMBOT1", "", "Sim-Pass1") == "" {
+		t.Fatal("a removed bot logon still works")
+	}
+	t.Setenv("ME_FIX_AUTH", "")
+	t.Setenv("ME_FIX_AUTH_FILE", filepath.Join(t.TempDir(), "none.json"))
+	b := LoadFix()
+	b.AddTemp("SIMBOT1", "x")
+	if b.Enforced() {
+		t.Fatal("a bot logon switched the auto logon check on")
+	}
+	if !IsSimulator("simbot4") || !IsSimulator("SIMBENCH1") || IsSimulator("SIMBA") || !IsSimBench("SIMBENCH2") || IsSimBench("SIMBOT1") {
+		t.Fatal("IsSimulator / IsSimBench")
+	}
+}
 
 func TestFixAuthModes(t *testing.T) {
 	for _, tc := range []struct {

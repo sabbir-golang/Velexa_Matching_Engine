@@ -20,6 +20,10 @@ func (h *Handler) RegRoutes(mux *http.ServeMux, manager *middleware.Manager) {
 	mux.Handle("/admin/api/report/orders", manager.With(http.HandlerFunc(h.OrderReport), h.middlewares.Viewer))            // a user: own brokers only
 	mux.Handle("/admin/api/report/order-history", manager.With(http.HandlerFunc(h.OrderHistory), h.middlewares.Viewer))    // a user: own brokers only
 	mux.Handle("/admin/api/diagnostics", manager.With(http.HandlerFunc(h.Diagnostics), h.middlewares.Admin))
+	mux.Handle("/admin/api/sim", manager.With(http.HandlerFunc(h.Sim), h.middlewares.Admin))
+	mux.Handle("/admin/api/sim/bots", manager.With(http.HandlerFunc(h.SimBots), middleware.PostOnly, h.middlewares.Admin))
+	mux.Handle("/admin/api/sim/bench", manager.With(http.HandlerFunc(h.SimBench), middleware.PostOnly, h.middlewares.Admin))
+	mux.Handle("/admin/api/sim/clean", manager.With(http.HandlerFunc(h.SimClean), middleware.PostOnly, h.middlewares.Admin))
 	mux.Handle("/admin/report/daily", manager.With(http.HandlerFunc(h.DailyReportPage), h.middlewares.Viewer))
 	mux.Handle("/admin/api/fixlog", manager.With(http.HandlerFunc(h.FixLog), h.middlewares.Viewer)) // logon passwords masked for the user role
 }

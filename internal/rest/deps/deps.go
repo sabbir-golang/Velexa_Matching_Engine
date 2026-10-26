@@ -8,6 +8,7 @@ import (
 	"velexa-sim-me/internal/database/users"
 	"velexa-sim-me/internal/engine"
 	"velexa-sim-me/internal/itchgw"
+	"velexa-sim-me/internal/simulator"
 )
 
 // Deps is embedded in every handler, so a handler method reads h.Eng, h.Users and so on.
@@ -19,4 +20,6 @@ type Deps struct {
 	Reports reports.Store      // saved daily report figures (past days)
 	Orders  *orderlog.Recorder // the order log (order report); nil in tests that do not need it
 	State   *marketstate.Saver // saves the live market every second; nil when off or in tests
+
+	Simulator *simulator.Sim // market bots and benchmark; nil when off
 }

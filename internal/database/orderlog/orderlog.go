@@ -55,11 +55,24 @@ type Store interface {
 	Save(recs []Record) error
 	// List returns a day's records, newest first.
 	List(day string) ([]Record, error)
+	// DeleteActors removes the records of every day whose actor starts with
+	// one of prefixes.
+	DeleteActors(prefixes []string) error
+}
+
+func actorMatch(actor string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(actor, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // Recorder turns engine order events into records. Today's records are kept in
 // memory (the report reads them from there); changes are saved by Run.
 type Recorder struct {
+	fmu     sync.Mutex // one flush or Forget at a time
 	mu      sync.Mutex
 	store   Store
 	run     string                    // this engine run, part of every key
@@ -293,6 +306,30 @@ func (r *Recorder) Observe(o *engine.Order, rep *engine.ExecReport) {
 	}
 }
 
+// Forget removes the records of actors starting with one of prefixes (the
+// simulator's bots): today's and the saved ones of every day. It returns how
+// many of today's it removed.
+func (r *Recorder) Forget(prefixes ...string) (int, error) {
+	r.fmu.Lock()
+	defer r.fmu.Unlock()
+	r.mu.Lock()
+	n := 0
+	for k, rec := range r.today {
+		if actorMatch(rec.Actor, prefixes) {
+			delete(r.today, k)
+			delete(r.dirty, k)
+			n++
+		}
+	}
+	for o, rec := range r.byOrder {
+		if actorMatch(rec.Actor, prefixes) {
+			delete(r.byOrder, o)
+		}
+	}
+	r.mu.Unlock()
+	return n, r.store.DeleteActors(prefixes)
+}
+
 // Today returns a copy of today's records, newest first, with the date.
 func (r *Recorder) Today() (string, []Record) {
 	r.mu.Lock()
@@ -325,6 +362,8 @@ func sortNewestFirst(recs []Record) {
 // flush saves the records changed since the last call; on failure they are
 // kept and tried again.
 func (r *Recorder) flush() error {
+	r.fmu.Lock()
+	defer r.fmu.Unlock()
 	r.mu.Lock()
 	if len(r.dirty) == 0 {
 		r.mu.Unlock()
@@ -447,6 +486,43 @@ func (f *FileStore) Save(recs []Record) error {
 	return nil
 }
 
+func (f *FileStore) DeleteActors(prefixes []string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	files, err := filepath.Glob(filepath.Join(f.dir, "orders-*.json"))
+	if err != nil {
+		return err
+	}
+	for _, path := range files {
+		day := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "orders-"), ".json")
+		m, err := f.read(day)
+		if err != nil {
+			return err
+		}
+		keep := make([]Record, 0, len(m))
+		for _, rec := range m {
+			if !actorMatch(rec.Actor, prefixes) {
+				keep = append(keep, rec)
+			}
+		}
+		if len(keep) == len(m) {
+			continue
+		}
+		sortNewestFirst(keep)
+		b, err := json.Marshal(keep)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(path+".tmp", b, 0o600); err != nil {
+			return err
+		}
+		if err := os.Rename(path+".tmp", path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (f *FileStore) List(day string) ([]Record, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -487,6 +563,17 @@ func (p *PGStore) Save(recs []Record) error {
 			r.Trader, r.Board, r.Symbol, r.Side, r.Type, r.TIF, r.Qty, r.Price, r.Filled, r.AvgPx, r.Status, r.Reason)
 	}
 	return p.pool.SendBatch(ctx, b).Close()
+}
+
+func (p *PGStore) DeleteActors(prefixes []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	for _, pre := range prefixes {
+		if _, err := p.pool.Exec(ctx, `DELETE FROM order_log WHERE starts_with(actor, $1)`, pre); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (p *PGStore) List(day string) ([]Record, error) {

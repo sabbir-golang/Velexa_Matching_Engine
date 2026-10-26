@@ -26,6 +26,44 @@ type FixAuth struct {
 	Mode  string // on | off | auto
 	path  string
 	creds map[string]string // CompID (upper) → password
+	temp  map[string]string // simulator bots: CompID → password, in memory only
+}
+
+// Simulator bots log on with CompIDs under these prefixes. They are reserved:
+// a broker cannot be registered with one.
+const (
+	SimBotPrefix   = "SIMBOT"   // market bots
+	SimBenchPrefix = "SIMBENCH" // benchmark sessions (not written to the message log)
+)
+
+// IsSimulator reports whether comp is one of the simulator's bot CompIDs.
+func IsSimulator(comp string) bool {
+	c := strings.ToUpper(strings.TrimSpace(comp))
+	return strings.HasPrefix(c, SimBotPrefix) || strings.HasPrefix(c, SimBenchPrefix)
+}
+
+// IsSimBench reports whether comp is a benchmark session.
+func IsSimBench(comp string) bool {
+	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(comp)), SimBenchPrefix)
+}
+
+// AddTemp lets a simulator bot log on with pass until RemoveTemp. It is kept in
+// memory only: never saved, never listed, and it does not switch the "auto"
+// logon check on.
+func (a *FixAuth) AddTemp(comp, pass string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.temp == nil {
+		a.temp = map[string]string{}
+	}
+	a.temp[strings.ToUpper(strings.TrimSpace(comp))] = pass
+}
+
+// RemoveTemp withdraws a simulator bot's logon.
+func (a *FixAuth) RemoveTemp(comp string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.temp, strings.ToUpper(strings.TrimSpace(comp)))
 }
 
 // Enforced reports whether logons are being checked right now.
@@ -95,6 +133,9 @@ func (a *FixAuth) Authorize(broker, user, pass string) string {
 	a.mu.RLock()
 	enforced := a.enforcedLocked()
 	want, ok := a.creds[strings.ToUpper(strings.TrimSpace(broker))]
+	if !ok {
+		want, ok = a.temp[strings.ToUpper(strings.TrimSpace(broker))]
+	}
 	a.mu.RUnlock()
 	if !enforced {
 		return ""

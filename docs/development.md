@@ -39,6 +39,7 @@ internal/
   engine/              matching-engine core: orders, books, the matching loop, sessions, market-event journal, instrument universe
   fixgw/               FIX 5.0 SP2 acceptor and the FIX message log
   itchgw/              DSE-ITCH SoupBinTCP feed and the WebSocket gateway for the trader SPA
+  simulator/           market bots and benchmark that trade through the FIX gateway (Simulator page)
   utils/               JSON reply helpers shared by the handlers
   config/              environment settings and where the data files live
   web/                 HTML pages: trade terminal, welcome page, admin console
@@ -125,6 +126,8 @@ go run .
 | `fixgw/fixacceptor.go` | FIX acceptor: session config, NewOrderSingle/Cancel/Replace handlers, ExecutionReport and OrderCancelReject building, session controls. |
 | `fixgw/msglog.go` | quickfix log that captures FIX messages to an in-memory log and an append-only file. |
 | `itchgw/gateway.go` | WebSocket gateway for the trader SPA: `/market`, `/marketdepth`, `/index`, and the `/events` time-and-sales/news socket. |
+| `simulator/fixclient.go` | A small FIX initiator (logon, heartbeats, orders, cancels) the bots use to reach the engine's own FIX gateway. |
+| `simulator/bots.go`, `simulator/bench.go`, `simulator/simulator.go` | Market bots, the benchmark, report bookkeeping, the live tape and Clean test data. |
 | `database/brokers/fixauth.go` | FIX logon allowlist (`fix_brokers.json`): CompID to password, enforced when `ME_FIX_AUTH=on`. |
 | `database/brokers/itchauth.go` | ITCH feed credential store (`itch_brokers.json`). |
 | `database/brokers/meta.go` | Broker metadata store (`broker_meta.json`): links each broker FIX CompID to its ITCH user and company. |

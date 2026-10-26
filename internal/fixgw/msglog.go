@@ -14,6 +14,7 @@ import (
 	"github.com/quickfixgo/quickfix"
 
 	"velexa-sim-me/internal/config"
+	"velexa-sim-me/internal/database/brokers"
 )
 
 // fixmsglog.go — a FIX message log for the Matching Engine: every inbound and
@@ -280,5 +281,16 @@ func (f msgLogFactory) Create() (quickfix.Log, error) {
 }
 
 func (f msgLogFactory) CreateSessionLog(sid quickfix.SessionID) (quickfix.Log, error) {
+	if brokers.IsSimBench(sid.TargetCompID) {
+		return nullLog{}, nil // benchmark floods would push real brokers' messages out of the log
+	}
 	return &sessionLog{store: f.store, session: sid.TargetCompID}, nil
 }
+
+// nullLog records nothing.
+type nullLog struct{}
+
+func (nullLog) OnIncoming([]byte)               {}
+func (nullLog) OnOutgoing([]byte)               {}
+func (nullLog) OnEvent(string)                  {}
+func (nullLog) OnEventf(string, ...interface{}) {}

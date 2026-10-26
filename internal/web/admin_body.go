@@ -14,6 +14,7 @@ const adminBody = `<div class="app">
    <div class="navitem" data-v="sessions"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><span>FIX Sessions</span><span class="badge" id="navSess"></span></div>
    <div class="navitem" data-v="market" data-admin-only><svg viewBox="0 0 24 24"><path d="M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg><span>Market Session</span></div>
    <div class="navitem" data-v="instruments" data-admin-only><svg viewBox="0 0 24 24"><path d="M5 20V11M10 20V5M15 20v-8M20 20v-5M3 20h18"/></svg><span>Instruments</span></div>
+   <div class="navitem" data-v="sim" data-admin-only><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3M7.5 14h9"/></svg><span>Simulator</span></div>
    <div class="navgrp">Access</div>
    <div class="navitem" data-v="creds"><svg viewBox="0 0 24 24"><path d="M14.5 9.5a4.5 4.5 0 1 0-1.3 3.2L20 19.5M17 16.5l2-2M15 14.5l1.5-1.5"/></svg><span>Broker Credentials</span></div>
    <div class="navitem" data-v="access" data-admin-only><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg><span>OMS IP Allowlist</span></div>
@@ -267,6 +268,55 @@ const adminBody = `<div class="app">
     <div class="row2">
      <div class="card o w3"><div class="tw"><table class="tbl" style="font-size:12px"><thead><tr><th>Time</th><th>Dir</th><th>Session</th><th>Type</th><th class="r">Seq</th><th>Summary</th></tr></thead><tbody id="msglog"></tbody></table></div><div class="note" style="padding:8px 16px" id="ml_count"></div></div>
      <div class="card w2 sticky" id="ml_detail" style="display:flex;flex-direction:column;gap:12px;padding:18px;flex-basis:340px"><span class="faint" style="font-size:13px">Select a message to decode it.</span></div>
+    </div>
+   </section>
+
+   <section class="view" id="view-sim" data-admin-only>
+    <div class="card p sm-head">
+     <div class="tbar">
+      <div class="tb"><span class="cap">Market</span><span class="tag" id="sm_phase">&mdash;</span><span class="note" id="sm_phnote"></span></div>
+      <div class="tb"><button class="btn" type="button" onclick="smPhase('preopen')">Pre-Open</button><button class="btn" type="button" onclick="smPhase('open')">Open market</button></div>
+     </div>
+     <p class="note">The bots are FIX brokers: they log on to the engine's FIX gateway as <span class="mono">SIMBOT1&hellip;8</span> (market bots) and <span class="mono">SIMBENCH1&ndash;2</span> (benchmark) and send ordinary orders. Their trades move prices and go out on the ITCH feed, so connected OMS screens see them. <b>Clean test data</b> takes their orders out of the book and the order report again.</p>
+    </div>
+    <div class="row2">
+     <div class="card p w2 sm-card">
+      <div class="tbar"><div class="tb"><span class="cap">Market bots</span><span class="tag" id="sm_bstate">STOPPED</span></div>
+       <div class="tb"><button class="btn pri" id="sm_bstart" type="button" onclick="smBots('start')">Start</button><button class="btn" id="sm_bpause" type="button" onclick="smBots(SM.paused?'resume':'pause')" disabled>Pause</button><button class="btn" id="sm_bstop" type="button" onclick="smBots('stop')" disabled>Stop</button></div></div>
+      <div class="sm-f">
+       <label class="fld">Speed<select class="in" id="sm_brate"><option value="5">5 orders/s</option><option value="20" selected>20 orders/s</option><option value="50">50 orders/s</option><option value="100">100 orders/s</option><option value="200">200 orders/s</option><option value="500">500 orders/s</option></select></label>
+       <label class="fld">Bot brokers<select class="in" id="sm_bbots"><option>2</option><option selected>4</option><option>6</option><option>8</option></select></label>
+       <label class="fld">Shares<select class="in" id="sm_bset" onchange="smSet()"><option value="10">10 blue chips</option><option value="20" selected>20 blue chips</option><option value="50">50 shares</option><option value="list">My list&hellip;</option></select></label>
+       <label class="fld" id="sm_blistf" hidden>Symbols, comma separated<input class="in" id="sm_blist" placeholder="GP, BATBC, SQURPHARMA" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <div class="sm-k" id="sm_bk"></div>
+      <div class="note" id="sm_bnote">Quotes a few ticks around a moving fair price, and sometimes crosses the spread with an IOC order, so trades keep happening. Prices stay inside the daily band and on the tick; quantities are whole lots.</div>
+      <div class="tb" id="sm_bsess"></div>
+     </div>
+     <div class="card p w2 sm-card">
+      <div class="tbar"><div class="tb"><span class="cap">Benchmark</span><span class="tag" id="sm_qstate">IDLE</span></div>
+       <div class="tb"><button class="btn pri" id="sm_qstart" type="button" onclick="smBench('start')">Run</button><button class="btn" id="sm_qstop" type="button" onclick="smBench('stop')" disabled>Stop</button></div></div>
+      <div class="sm-f">
+       <div class="fld">What to send<div class="seg md" id="sm_qmode"><button type="button" class="on" data-m="trade" title="SIMBENCH1 sells, SIMBENCH2 buys it with an IOC order: every pair trades">Trades</button><button type="button" data-m="orders" title="IOC buys at the bottom of the band: accepted and cancelled, no trades">Orders only</button></div></div>
+       <label class="fld">Rate<span class="sm-rate"><input class="in" id="sm_qrate" type="number" min="1" max="100000" value="500" inputmode="numeric"><span class="faint">/s</span><label class="sm-max"><input type="checkbox" id="sm_qmax" onchange="document.getElementById('sm_qrate').disabled=this.checked"> MAX</label></span></label>
+       <label class="fld">Duration<select class="in" id="sm_qsec"><option value="5">5 s</option><option value="10" selected>10 s</option><option value="30">30 s</option><option value="60">1 min</option><option value="120">2 min</option></select></label>
+       <label class="fld">Share<input class="in" id="sm_qsym" value="GP" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <div class="sm-tp"><div><span class="l">Throughput</span><span class="v" id="sm_qnow">0</span><span class="faint">acknowledged orders/s</span></div><svg id="sm_qspark" viewBox="0 0 300 60" preserveAspectRatio="none" aria-label="Orders acknowledged per second"></svg></div>
+      <div class="sm-k" id="sm_qk"></div>
+      <div class="tw"><table class="tbl tight sm-lat"><thead><tr><th>Latency (ms)</th><th class="r">avg</th><th class="r">p50</th><th class="r">p95</th><th class="r">p99</th><th class="r">max</th><th class="r">samples</th></tr></thead><tbody id="sm_qlat"></tbody></table></div>
+      <p class="note"><b>Trades</b>: SIMBENCH1 sells and SIMBENCH2 buys it with an IOC order, so every pair trades; use a share the market bots are not trading. <b>Orders only</b>: IOC buys at the bottom of the band, accepted and cancelled. Latency runs from sending an order over FIX to its acknowledgement (150=0 or 8), and for the buys to their first fill. At MAX up to 1,000 orders wait in the gateway at once, so latency there includes that queue; a set rate shows the engine's own latency.</p>
+     </div>
+    </div>
+    <div class="row2">
+     <div class="card t w3"><div class="hd"><span class="cap">Live order tape</span><span class="note">latest bot orders and fills; the benchmark is sampled</span></div>
+      <div class="tw"><table class="tbl tight"><thead><tr><th>Time</th><th>Bot</th><th>Share</th><th>Side</th><th class="r">Qty</th><th class="r">Price</th><th>Status</th><th>Note</th></tr></thead><tbody id="sm_tape"></tbody></table></div></div>
+     <div class="w1 sm-side">
+      <div class="card p sm-card"><span class="cap">Reject reasons</span><div id="sm_rej"></div></div>
+      <div class="card p sm-card sm-danger"><span class="cap">Clean test data</span>
+       <p class="note">Stops the bots and the benchmark, cancels every simulator order still in the book and removes the simulator's rows from the order report. Trades stay in the market: prices, volume and the trade log follow from them.</p>
+       <button class="btn dng" type="button" onclick="smClean()">Clean test data</button></div>
+     </div>
     </div>
    </section>
 

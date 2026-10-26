@@ -2,6 +2,7 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -108,6 +109,26 @@ func TestConsolePages(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("the phase change is not in the audit trail: %v", audit.Recent(5))
+	}
+
+	// Simulator: admins only; off when the server has none (no FIX gateway here).
+	// Its CompIDs are reserved: no broker can be registered with one.
+	for _, p := range []string{"/admin/api/sim"} {
+		if c := e.do(http.MethodGet, p, alice, nil).Code; c != http.StatusForbidden {
+			t.Fatalf("a user reached %s: %d", p, c)
+		}
+	}
+	if c := e.do(http.MethodPost, "/admin/api/sim/bots", alice, map[string]string{"action": "start"}).Code; c != http.StatusForbidden {
+		t.Fatalf("a user started the bots: %d", c)
+	}
+	if d := decode(t, e.do(http.MethodGet, "/admin/api/sim", adm, nil).Body.String()); d["ok"] != false {
+		t.Fatalf("simulator without a FIX gateway: %v", d)
+	}
+	for _, comp := range []string{"SIMBOT9", "simbench1"} {
+		d := decode(t, e.do(http.MethodPost, "/admin/api/broker/add", adm, map[string]string{"Sender": comp}).Body.String())
+		if d["ok"] != false || !strings.Contains(fmt.Sprint(d["error"]), "reserved") {
+			t.Fatalf("registering %s: %v", comp, d)
+		}
 	}
 
 	// Diagnostics: admins only; the self-test checks the live engine.

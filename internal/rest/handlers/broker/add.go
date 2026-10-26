@@ -28,6 +28,10 @@ func (h *Handler) Add(w http.ResponseWriter, r *http.Request) {
 		utils.WriteJSON(w, map[string]any{"ok": false, "error": "SenderCompID must be 1-20 letters, digits, '.', '-' or '_'"})
 		return
 	}
+	if brokers.IsSimulator(sender) {
+		utils.WriteJSON(w, map[string]any{"ok": false, "error": "SenderCompIDs starting with " + brokers.SimBotPrefix + " or " + brokers.SimBenchPrefix + " are reserved for the simulator"})
+		return
+	}
 	// A CompID identifies one broker on the exchange: never hand out one that is
 	// already registered (to anyone), and never overwrite its credentials.
 	if brokers.Meta.Get(sender) != nil || brokers.Fix.Password(sender) != "" {

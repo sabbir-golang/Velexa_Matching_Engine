@@ -94,13 +94,48 @@ func checkLifecycle(t *testing.T, st Store) {
 	}
 }
 
+// checkForget: the simulator's rows go (today's and other days'), the rest stay.
+func checkForget(t *testing.T, st Store) {
+	e, rec := newEngine(t, st)
+	place(e, "FIX:AAA", "K1", engine.Buy, 9.1, 10, engine.OrderInfo{})
+	place(e, "FIX:SIMBOT1", "S1", engine.Buy, 9.2, 10, engine.OrderInfo{})
+	place(e, "FIX:SIMBENCH2", "S2", engine.Sell, 9.9, 10, engine.OrderInfo{})
+	if err := rec.flush(); err != nil {
+		t.Fatal(err)
+	}
+	old := Record{Key: "old-1", Day: "2001-01-02", Entered: time.Now(), Updated: time.Now(), Actor: "FIX:SIMBOT3", Symbol: "GP", Side: "Buy", Type: "LIMIT", Qty: 1}
+	if err := st.Save([]Record{old}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := rec.Forget("FIX:SIMBOT", "FIX:SIMBENCH")
+	if err != nil || n != 2 {
+		t.Fatalf("forget: %d %v", n, err)
+	}
+	day, recs := rec.Today()
+	saved, err := st.List(day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, list := range [][]Record{recs, saved} {
+		if m := byCl(list); len(list) != 1 || m["K1"].Actor != "FIX:AAA" {
+			t.Fatalf("after forget: %+v", list)
+		}
+	}
+	if got, _ := st.List("2001-01-02"); len(got) != 0 {
+		t.Fatalf("an earlier day's simulator row is still saved: %+v", got)
+	}
+}
+
 func TestOrderLogFile(t *testing.T) {
 	checkLifecycle(t, NewFileStore(filepath.Join(t.TempDir(), "orders")))
+	checkForget(t, NewFileStore(filepath.Join(t.TempDir(), "orders")))
 }
 
 func TestOrderLogPostgres(t *testing.T) {
 	pool, _ := dbtest.Open(t)
 	checkLifecycle(t, NewPGStore(pool))
+	pool2, _ := dbtest.Open(t)
+	checkForget(t, NewPGStore(pool2))
 }
 
 // Orders restored with the market after a restart keep their row: a fill

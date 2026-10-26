@@ -126,7 +126,7 @@ The generated config is plain TCP; it does no TLS. The broker onboarding sheet, 
 
 ## Admin console
 
-Open `http://<host>:8010/admin` (or the proxied URL) and sign in with `ME_ADMIN_USER` / `ME_ADMIN_PASS` (the first `admin`) or any account created on the **Users** page. Roles are `admin` (the whole exchange) and `user` (a private workspace: only the brokers they register, with their credentials, FIX sessions, message log and dashboard figures; never other users' data). Anyone can register on the welcome page and starts with an empty workspace. Sessions last at most 8 hours and end after 30 minutes without use; **Sign out** ends every session of the account. Disabling, deleting or resetting the password of a user signs them out at once; a role change applies on their next request. The last enabled admin cannot be deleted, disabled or demoted. With `ME_RATE_LIMIT=on` (off by default), 5 wrong passwords lock that client IP — and, separately, that username — for 15 minutes. Passwords need 10–128 characters, must not contain the username, and must mix at least 3 of lower-case, upper-case, digits and symbols. If `ME_ADMIN_PASS` is not set, the first start creates the `admin` account with a random password and writes it to `initial-admin-password` in the state directory.
+Open `http://<host>:8010/admin` (or the proxied URL) and sign in with `ME_ADMIN_USER` / `ME_ADMIN_PASS` (the first `admin`) or any account created on the **Users** page. Roles are `admin` (the whole exchange) and `user` (a private workspace: only the brokers they register, with their credentials, FIX sessions, message log and dashboard figures; never other users' data). Anyone can register on the welcome page and starts with an empty workspace. Sessions last at most 8 hours and end after 30 minutes without use; **Sign out** ends every session of the account. Disabling, deleting or resetting the password of a user signs them out at once; a role change applies on their next request. The last enabled admin cannot be deleted, disabled or demoted. With `ME_RATE_LIMIT=on` (off by default), 5 wrong passwords lock that client IP — and, separately, that username — for 15 minutes. Passwords need 10–128 characters and must mix at least 3 of lower-case, upper-case, digits and symbols. If `ME_ADMIN_PASS` is not set, the first start creates the `admin` account with a random password and writes it to `initial-admin-password` in the state directory.
 
 | View | What you can do |
 |---|---|
@@ -137,6 +137,7 @@ Open `http://<host>:8010/admin` (or the proxied URL) and sign in with `ME_ADMIN_
 | Market Session | The session phase and the DSE clock. Force Pre-Open, Open, Close, Post-Close or End of day (switches the clock to manual), or switch back to the schedule. |
 | Broker Credentials | Issue, view and revoke broker FIX and ITCH credentials, and print onboarding sheets. |
 | External OMS Access | Edit the port 5443 IP allowlist. |
+| Simulator | Market bots and a FIX benchmark (admins); see [Simulator](#simulator). |
 | Message Log | Search FIX messages by broker and ClOrdID. |
 | Diagnostics | Auth state, logon/logout/reject events, and the audit log. |
 
@@ -164,6 +165,17 @@ curl -s -b jar -X POST localhost:8010/admin/api/instruments/reload
 ```
 
 See [http-api](http-api.md#logging-in) for creating the cookie jar.
+
+### Simulator
+
+The **Simulator** page (admins) sends test traffic through the engine's own FIX gateway, the way a broker's OMS does. Nothing runs until you start it.
+
+- **Market bots** log on as `SIMBOT1`…`SIMBOT8` and trade a set of shares: they quote a few ticks around a moving fair price and sometimes cross the spread with an IOC order, so trades keep happening. Prices stay inside the daily band and on the tick, quantities are whole lots. They trade only in Pre-Open (quotes only) and Continuous Trading. **Pause** keeps their orders in the book; **Stop** cancels them and logs the bots out.
+- **Benchmark** logs on as `SIMBENCH1` and `SIMBENCH2` and sends orders at a set rate or as fast as the gateway answers (MAX, at most 1,000 waiting) for 5 s to 2 min. *Trades*: SIMBENCH1 sells and SIMBENCH2 buys it with an IOC order, so every pair trades; pick a share the market bots are not trading. *Orders only*: IOC buys at the bottom of the band, accepted and cancelled. It shows orders per second, sent / acknowledged / trades / rejected, and latency (avg, p50, p95, p99) from sending an order to its acknowledgement and to its first fill. At MAX the latency includes the queue of waiting orders; a set rate shows the engine's own.
+- **Live order tape** shows the latest bot orders and fills (the benchmark is sampled), and **Reject reasons** the commonest refusals.
+- **Clean test data** stops everything, cancels every simulator order still in the book and removes the simulator's rows from the order report (every day).
+
+Bot orders are real orders: they trade, move prices, go out on the ITCH feed (connected OMS screens see them) and are counted in the trade log and the daily report, under their own SenderCompIDs. Cleaning does not undo trades. Their logons exist only in memory and are never listed under Broker Credentials; the benchmark sessions are not written to the message log, and reports for a bot that has logged out are dropped instead of being kept for it. A simulator order still in the book when the engine restarts is cancelled at start-up. Start, stop and clean are in the audit trail (`SIM …`).
 
 ## Database
 

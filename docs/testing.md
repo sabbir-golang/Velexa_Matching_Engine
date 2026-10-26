@@ -96,6 +96,17 @@ Other FIX tests: logon passwords never reach the message log (`TestLogonPassword
 | ITCH-U4 | Halt an instrument | Trading-state `H` message | `TestHaltSendsTradingState` | PASS |
 | ITCH-U5 | Index and news feeds | `Z` values; `N` session and halt announcements | `TestIndexFeedSendsValues`, `TestNewsFeedAnnouncesSessionsAndHalts` | PASS |
 
+### Simulator (`internal/simulator`)
+
+| ID | Case | Expected | Automated by | Status |
+|---|---|---|---|---|
+| SIM-1 | Market bots through the real FIX gateway, with logon checks on | Bots log on with in-memory logons (not listed, not saved), trade without rejects, and the trades reach the market data | `TestBotsTradeThroughFIXAndCleanUp` | PASS |
+| SIM-2 | Stop and Clean test data | No bot order left in the book; the bots' order-report rows removed | `TestBotsTradeThroughFIXAndCleanUp`, `TestOrderLogFile`, `TestOrderLogPostgres` | PASS |
+| SIM-3 | Benchmark, trade mode at MAX | Every sell + buy pair trades; acknowledgement and fill latency measured; nothing left in the book | `TestBenchmarkMeasuresTradesAndLatency` | PASS |
+| SIM-4 | Benchmark, orders mode at 400/s for 1 s | About 400 orders, all accepted, no trades | `TestBenchmarkMeasuresTradesAndLatency` | PASS |
+| SIM-5 | Restart with simulator orders in the book | Only the simulator's orders are cancelled | `TestSweepCancelsLeftoverBotOrders` | PASS |
+| SIM-6 | Access | Users get 403; `SIMBOT*` / `SIMBENCH*` CompIDs cannot be registered as brokers | `TestConsolePages`, `TestSimulatorLogons` | PASS |
+
 ### Console security, accounts and roles (`internal/rest`, `internal/database/users`)
 
 | ID | Case | Expected | Automated by | Status |

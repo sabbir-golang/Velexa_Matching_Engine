@@ -18,6 +18,7 @@ import (
 
 	"github.com/quickfixgo/quickfix"
 
+	"velexa-sim-me/internal/database/brokers"
 	"velexa-sim-me/internal/engine"
 )
 
@@ -141,6 +142,9 @@ func (fa *Acceptor) hold(rep *engine.ExecReport, ctx *orderCtx, at time.Time) {
 		ctx.fixOrderID(rep.OrderID, at) // the OrderID the broker would have seen now
 	}
 	broker := ctx.sid.TargetCompID
+	if brokers.IsSimulator(broker) {
+		return // a simulator bot that is gone does not need its reports
+	}
 	b, err := json.Marshal(heldJSON{Broker: broker, At: at, Ctx: ctx.saved(),
 		Rep: savedRep{ExecReport: *rep, ReqID: rep.ReqID, CumValue: rep.CumValue, Aggressor: rep.Aggressor}})
 	if err != nil {

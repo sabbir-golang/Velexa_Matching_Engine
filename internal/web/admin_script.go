@@ -76,7 +76,7 @@ function confirmGo(){var r=val("dlg_reason");if(_confirmFn)_confirmFn(r)}
 var TITLES={dash:["Dashboard","Today · whole exchange"],trade:["Trade Terminal","Place and monitor orders against the live book"],orders:["Order Report","Every order received, with its execution history"],
  sessions:["FIX Sessions","Broker connections on the FIX acceptor"],market:["Market Session","Trading phases, schedule and the DSE clock"],instruments:["Instruments","Listed securities and their trading parameters"],
  creds:["Broker Credentials","FIX and ITCH logins issued to member brokers"],access:["OMS IP Allowlist","Networks allowed to reach the order gateway"],users:["Users","Console accounts and roles"],
- msglog:["Message Log","FIX traffic in and out of the engine"],diag:["Diagnostics","Engine health, configuration and self-tests"]};
+ sim:["Simulator","Market bots and benchmark through the FIX gateway"],msglog:["Message Log","FIX traffic in and out of the engine"],diag:["Diagnostics","Engine health, configuration and self-tests"]};
 var VIEW="dash";
 function show(v){
  if(!TITLES[v])v="dash";
@@ -98,6 +98,7 @@ function show(v){
  if(v=="users")loadUsers();
  if(v=="msglog")mlLoad();
  if(v=="diag")dgLoad();
+ if(v=="sim")smLoad();
 }
 var aside=document.querySelector("aside"),bd=document.getElementById("backdrop");
 function toggleNav(open){aside.classList.toggle("open",open);bd.classList.toggle("on",open)}
@@ -644,6 +645,59 @@ function dgTest(){var b=document.getElementById("dg_run");b.disabled=true;b.text
  j("diagnostics?test=1").then(function(d){b.disabled=false;b.textContent="Run self-test";DG.d=d;renderDiag();var c=d.checks||[],bad=c.filter(function(x){return !x.ok}).length;
   seth("dg_checks",c.map(function(x){return "<div style='display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px'><span style='width:10px;height:10px;border-radius:50%;background:"+(x.ok?"var(--acc)":"var(--red)")+"'></span><span>"+esc(x.name)+"</span><span class='mono faint' style='font-size:12px'>"+esc(x.result)+"</span></div>"}).join(""));
   var e=document.getElementById("dg_done");e.textContent=bad?bad+" of "+c.length+" checks failed at "+d.tested_at+".":"All "+c.length+" checks passed at "+d.tested_at+".";e.style.color=bad?"var(--red)":"var(--acc)"})}
+// ── Simulator: market bots and benchmark (/admin/api/sim) ──
+var SM={d:null,paused:false,mode:"trade"};
+function smLoad(){return j("sim").then(function(d){SM.d=d;smRender()})}
+function smSet(){document.getElementById("sm_blistf").hidden=val("sm_bset")!="list"}
+document.getElementById("sm_qmode").onclick=function(e){var b=e.target.closest("button");if(!b)return;SM.mode=b.dataset.m;this.querySelectorAll("button").forEach(function(x){x.classList.toggle("on",x==b)})};
+function smKs(id,list){seth(id,list.map(function(k){return "<div><span class=l>"+esc(k[0])+"</span><span class='v"+(k[2]?" "+k[2]:"")+"'>"+esc(k[1])+"</span></div>"}).join(""))}
+function smTag(id,state,cls){var e=document.getElementById(id);e.textContent=String(state).toUpperCase();e.className="tag "+cls}
+function smRender(){var d=SM.d;if(!d)return;
+ if(!d.ok){setc("sm_phnote",d.error||"The simulator is not available.");["sm_bstart","sm_qstart"].forEach(function(i){document.getElementById(i).disabled=true});return}
+ var ph=d.phase||"",open=ph=="Continuous Trading"||ph=="Pre-Open";
+ smTag("sm_phase",ph,open?"t-acc":"t-amber");setc("sm_phnote",open?(ph=="Pre-Open"?"bots only quote until the market opens":"bots trade now"):"bots wait until Pre-Open or Continuous Trading");
+ var b=d.bots||{},st=b.state||"stopped",on=st!="stopped";SM.paused=st=="paused";
+ smTag("sm_bstate",st,st=="running"?(b.note?"t-amber":"t-acc"):st=="paused"?"t-amber":"t-mut");
+ document.getElementById("sm_bstart").disabled=on;document.getElementById("sm_bstop").disabled=!on;
+ var pb=document.getElementById("sm_bpause");pb.disabled=!on;pb.textContent=SM.paused?"Resume":"Pause";
+ ["sm_brate","sm_bbots","sm_bset","sm_blist"].forEach(function(i){document.getElementById(i).disabled=on});
+ var s=b.stats||{};
+ smKs("sm_bk",[["Sent",fmtN(s.sent)],["Accepted",fmtN(s.accepted)],["Trades",fmtN(s.trades),s.trades?"good":""],["Rejected",fmtN(s.rejected),s.rejected?"bad":""],["Resting",fmtN(b.working)],["Orders/s",on?fmtN(b.orders_per_sec,1):"—"]]);
+ if(on)setc("sm_bnote",b.note||("Trading "+(b.symbols||[]).length+" shares: "+(b.symbols||[]).slice(0,12).join(", ")+((b.symbols||[]).length>12?" …":"")+" · running "+fmtN(b.running_for)+" s"));
+ else setc("sm_bnote","Quotes a few ticks around a moving fair price, and sometimes crosses the spread with an IOC order, so trades keep happening. Prices stay inside the daily band and on the tick; quantities are whole lots.");
+ seth("sm_bsess",(b.sessions||[]).map(function(x){return "<span class='sm-bot"+(x.up?"":" dn")+"' title='"+(x.up?"logged on":"disconnected")+"'><i></i>"+esc(x.comp)+" <span class=faint>"+fmtN(x.working)+"</span></span>"}).join(""));
+ var q=d.bench||{},qs=q.state||"idle",qrun=qs=="running",qq=q.stats||{},acks=(qq.accepted||0)+(qq.rejected||0);
+ smTag("sm_qstate",qs,qrun?"t-acc":qs=="done"?"t-blue":"t-mut");
+ document.getElementById("sm_qstart").disabled=qrun;document.getElementById("sm_qstop").disabled=!qrun;
+ setc("sm_qnow",fmtN(qrun?q.throughput_now:q.throughput_avg));
+ document.querySelector(".sm-tp .faint").textContent=qrun?"acknowledged orders/s":(qs=="idle"?"acknowledged orders/s":"average orders/s over the run");
+ smKs("sm_qk",[["Sent",fmtN(qq.sent)],["Acknowledged",fmtN(acks)],["Trades",fmtN(qq.trades),qq.trades?"good":""],["Rejected",fmtN(qq.rejected),qq.rejected?"bad":""],["Peak/s",fmtN(q.throughput_peak)],["Time",q.elapsed!=null?fmtN(q.elapsed,1)+" s":"—"]]);
+ var L=(q.latency||{}),row=function(n,x){x=x||{};return "<tr><td>"+n+"</td>"+["avg","p50","p95","p99","max"].map(function(k){return "<td class=r>"+(x.n?fmtN(x[k],2):"—")+"</td>"}).join("")+"<td class=r>"+fmtN(x.n||0)+"</td></tr>"};
+ seth("sm_qlat",row("Acknowledgement",L.ack)+row("First fill",L.fill));
+ var sr=(q.series||[]).slice(-60),mx=Math.max.apply(null,sr.concat([1]))*1.15,w=300,h=60;
+ seth("sm_qspark",sr.length<2?"<line x1=0 y1=59 x2=300 y2=59 stroke='var(--line)'/>":"<polyline fill='var(--accSoft)' stroke='none' points='0,"+h+" "+sr.map(function(v,i){return (i*w/(sr.length-1)).toFixed(1)+","+(h-2-(v/mx)*(h-6)).toFixed(1)}).join(" ")+" "+w+","+h+"'/><polyline fill='none' stroke='var(--acc)' stroke-width='1.5' vector-effect='non-scaling-stroke' points='"+sr.map(function(v,i){return (i*w/(sr.length-1)).toFixed(1)+","+(h-2-(v/mx)*(h-6)).toFixed(1)}).join(" ")+"'/>");
+ var stc={New:"t-blue",Filled:"t-acc","Partly filled":"t-acc",Cancelled:"t-amber",Expired:"t-amber",Rejected:"t-red"};
+ seth("sm_tape",(d.tape||[]).map(function(r){return "<tr><td class='m faint' style='font-size:12px'>"+esc(r.time)+"</td><td class=m style='font-size:12px'>"+esc(r.bot)+"</td><td><b>"+esc(r.symbol)+"</b></td><td style='font-weight:600;color:"+(r.side=="Buy"?"var(--acc)":"var(--red)")+"'>"+esc(r.side)+"</td><td class='r m'>"+fmtN(r.qty)+"</td><td class='r m'>"+(r.price?fmtN(r.price,2):"—")+"</td><td><span class='tag "+(stc[r.status]||"t-mut")+"'>"+esc(r.status)+"</span></td><td class='muted ell' title='"+esc(r.note||"")+"'>"+esc(r.note||"")+"</td></tr>"}).join("")||"<tr><td colspan=8 class=empty>Nothing yet. Start the market bots or run a benchmark.</td></tr>");
+ seth("sm_rej",(d.rejects||[]).map(function(r){return "<div class=sm-rej><span class=muted>"+esc(r.reason)+"</span><b class=mono>"+fmtN(r.count)+"</b></div>"}).join("")||"<p class=note>None.</p>")}
+function smBots(a){var body={action:a};
+ if(a=="start"){var set=val("sm_bset");body.rate=+val("sm_brate");body.bots=+val("sm_bbots");
+  if(set=="list"){body.symbols=val("sm_blist").split(/[\s,]+/).filter(Boolean);if(!body.symbols.length){toast("Type at least one symbol, or pick a set of shares.",true);return}}else body.count=+set}
+ ["sm_bstart","sm_bpause","sm_bstop"].forEach(function(i){document.getElementById(i).disabled=true});
+ if(a=="start"||a=="stop")smTag("sm_bstate",a=="start"?"starting":"stopping","t-amber");
+ jpost("sim/bots",body).then(function(d){if(d.ok===false){toast(d.error||"The bots could not "+a+".",true);smLoad();return}SM.d=d;smRender();
+  toast({start:"Market bots started",stop:"Market bots stopped; their orders were cancelled",pause:"Market bots paused",resume:"Market bots resumed"}[a])})}
+function smBench(a){var body={action:a};
+ if(a=="start"){body.mode=SM.mode;body.rate=document.getElementById("sm_qmax").checked?0:+val("sm_qrate");body.seconds=+val("sm_qsec");body.symbol=val("sm_qsym");
+  if(!body.symbol){toast("Type the share to benchmark, for example GP.",true);return}
+  if(!document.getElementById("sm_qmax").checked&&!(body.rate>0)){toast("Set a rate above 0, or tick MAX.",true);return}}
+ document.getElementById("sm_qstart").disabled=true;
+ jpost("sim/bench",body).then(function(d){if(d.ok===false){toast(d.error||"The benchmark could not "+a+".",true);smLoad();return}SM.d=d;smRender();if(a=="stop")toast("Benchmark stopped")})}
+function smPhase(a){confirmDlg(a=="open"?"Open the market?":"Start Pre-Open?",a=="open"?"Runs the opening auction and starts Continuous Trading for every broker, and switches the DSE clock to manual.":"Moves the market to Pre-Open for every broker, and switches the DSE clock to manual.",a=="open"?"Open market":"Start Pre-Open",false,function(){
+ j("trading-session?action="+a+"&note="+encodeURIComponent("from the Simulator page"),{method:"POST"}).then(function(d){dlgClose();if(!d.ok){toast(d.error||"The phase was not changed.",true);return}toast("Market is now "+d.phase);smLoad();refresh()})})}
+function smClean(){confirmDlg("Clean test data?","Stops the market bots and any benchmark, cancels every simulator order in the book, and removes the simulator's orders from the order report (every day). Trades and prices stay.","Clean test data",true,function(){
+ var b=document.getElementById("dlg_ok");if(b){b.disabled=true;b.textContent="Cleaning…"}
+ j("sim/clean",{method:"POST"}).then(function(d){dlgClose();if(!d.ok){toast(d.error||"Cleaning failed.",true);smLoad();return}var r=d.result||{};toast("Cleaned: "+fmtN(r.cancelled)+" orders cancelled, "+fmtN(r.report_rows)+" order-report rows removed");smLoad()})})}
+
 // ── start ──
 var _h0=location.hash.slice(1);
 loadMe().then(function(){show(TITLES[_h0]?_h0:"dash")});
@@ -656,5 +710,6 @@ setInterval(function(){if(VIEW=="trade")ttMarket()},3000);
 setInterval(function(){if(VIEW=="trade")ttMine()},5000);
 setInterval(function(){if(VIEW=="orders"&&OR.today)loadOrders()},5000);
 setInterval(function(){if(VIEW=="msglog")mlLoad()},3000);
+setInterval(function(){if(VIEW=="sim")smLoad()},1000);
 setInterval(function(){if(VIEW=="creds"||VIEW=="sessions")loadBrokers()},15000);
 `

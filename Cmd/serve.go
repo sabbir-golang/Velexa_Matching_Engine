@@ -27,6 +27,7 @@ import (
 	"velexa-sim-me/internal/itchgw"
 	"velexa-sim-me/internal/rest"
 	"velexa-sim-me/internal/rest/deps"
+	"velexa-sim-me/internal/simulator"
 )
 
 // Serve starts the matching engine: the FIX acceptor, the ITCH feed and gateway,
@@ -75,7 +76,16 @@ func Serve() {
 	eng.StartClock(engine.ScheduleFromEnv()) // DSE trading day on the Dhaka clock (ME_SESSION_AUTO=off to drive it by hand)
 	brokers.Itch = brokers.LoadItch()
 
-	srv := newServer(eng, bus, st)
+	// Simulator: market bots and benchmark, through the FIX gateway (admin console, Simulator page).
+	var sim *simulator.Sim
+	if fa != nil && !strings.EqualFold(config.EnvOr("ME_SIMULATOR", "on"), "off") {
+		sim = simulator.New(eng, "127.0.0.1:"+fixPort, fixSender, config.EnvOr("ME_FIX_BEGIN", "FIXT.1.1"), st.orders)
+		if n := sim.Sweep(); n > 0 { // bots never outlive the engine run they belonged to
+			log.Printf("[sim] cancelled %d simulator order(s) left in the book from before the restart", n)
+		}
+	}
+
+	srv := newServer(eng, bus, st, sim)
 
 	log.Printf("Velexa Matching Engine %s on :%s  (%d instruments from %s, auto-list=%v, phase=%s)",
 		config.Version, port, len(eng.Instr()), engine.UniverseSource(), engine.AutoListEnabled(), eng.Phase)
@@ -86,6 +96,10 @@ func Serve() {
 	}
 	// SIGTERM (docker stop, systemctl stop): log brokers out, save the market
 	// once more and close the database.
+	if sim != nil {
+		sim.StopBots()
+		sim.StopBench()
+	}
 	if fa != nil {
 		fa.Stop()
 	}
@@ -95,7 +109,7 @@ func Serve() {
 
 // newServer starts the services the HTTP layer sits on: the admin stores, the
 // ITCH gateway and feeds. closeStores releases the database at shutdown.
-func newServer(eng *engine.Engine, bus *engine.Bus, st *stores) *rest.Server {
+func newServer(eng *engine.Engine, bus *engine.Bus, st *stores, sim *simulator.Sim) *rest.Server {
 	brokers.LoadMeta()
 	itch := itchgw.NewGateway(eng)
 	go itch.Run()
@@ -107,7 +121,7 @@ func newServer(eng *engine.Engine, bus *engine.Bus, st *stores) *rest.Server {
 	}
 	config.SessionKey() // create the session key now, not on the first sign-in
 	return rest.NewServer(&deps.Deps{Eng: eng, Bus: bus, Itch: itch, Users: st.accounts,
-		Reports: st.daily.store, Orders: st.orders, State: st.state.saver})
+		Reports: st.daily.store, Orders: st.orders, State: st.state.saver, Simulator: sim})
 }
 
 // stores are the engine's saved data: accounts and audit trail, the daily
