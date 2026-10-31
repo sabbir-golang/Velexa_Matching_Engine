@@ -16,4 +16,5 @@ func (h *Handler) RegRoutes(mux *http.ServeMux, manager *middleware.Manager) {
 	mux.Handle("/admin/api/instruments/export", manager.With(http.HandlerFunc(h.Export), h.middlewares.Admin))
 	mux.Handle("/admin/api/instruments/reload", manager.With(http.HandlerFunc(h.Reload), middleware.PostOnly, h.middlewares.Admin))
 	mux.Handle("/admin/api/instruments/import", manager.With(http.HandlerFunc(h.Import), middleware.PostOnly, h.middlewares.Admin))
+	mux.Handle("/admin/api/instruments/delete-all", manager.With(http.HandlerFunc(h.DeleteAll), middleware.PostOnly, h.middlewares.Admin))
 }

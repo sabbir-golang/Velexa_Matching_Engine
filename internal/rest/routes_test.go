@@ -47,6 +47,7 @@ var wantRoutes = []string{
 	"/admin/api/instruments",
 	"/admin/api/instruments/export",
 	"/admin/api/instruments/import",
+	"/admin/api/instruments/delete-all",
 	"/admin/api/instruments/reload",
 	"/admin/api/instrument/update",
 	"/admin/api/session",

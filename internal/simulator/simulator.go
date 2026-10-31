@@ -1,12 +1,15 @@
-// Package simulator sends test traffic to the engine through its own FIX
-// gateway, the way a broker's OMS does: market bots that keep orders and
-// trades flowing, and a benchmark that measures throughput and latency.
+// Package simulator sends test traffic to the engine: market bots that keep
+// orders and trades flowing through a broker's OMS (omsbots.go), so they show
+// in its blotter, and a benchmark that measures the FIX gateway's throughput
+// and latency.
 //
-// The bots log on as SIMBOT<n> (market bots) and SIMBENCH<n> (benchmark), with
-// logons that exist only in memory. Their orders are ordinary FIX orders, so
-// they trade, move prices and reach the ITCH feed like any other; the
-// SenderCompIDs mark them as test traffic, and Clean takes them out of the book
-// and the order report again. Matching is not changed in any way.
+// The benchmark logs on to the engine's own FIX gateway as SIMBENCH<n>, with
+// logons that exist only in memory; SIMBOT<n> was the old engine-only market
+// bots', whose leftover orders Clean Data still cancels. Their orders are
+// ordinary FIX orders, so they trade, move prices and reach the ITCH feed like
+// any other; the SenderCompIDs mark them as test traffic, and Clean takes them
+// out of the book and the order report again. Matching is not changed in any
+// way.
 package simulator
 
 import (
@@ -37,7 +40,7 @@ type Sim struct {
 
 	op      sync.Mutex // one start, stop or clean at a time
 	mu      sync.Mutex
-	bots    *botRun   // nil when stopped
+	oms     *omsRun   // the market bots; nil when signed out
 	bench   *benchRun // the running or last benchmark
 	tape    []TapeRow // newest last
 	rejects map[string]int
@@ -323,9 +326,13 @@ func simActor(actor string) bool {
 	return strings.HasPrefix(actor, "FIX:") && brokers.IsSimulator(strings.TrimPrefix(actor, "FIX:"))
 }
 
-// Sweep cancels every simulator order still in the book (for example one left
-// from before a restart) and returns how many it cancelled.
+// Sweep cancels every simulator order still in the book and returns how many
+// it cancelled.
 func (s *Sim) Sweep() int { return s.sweep(simActor) }
+
+// SweepBench cancels the benchmark orders still in the book (left from before
+// a restart). The market bots' orders stay: Stop keeps them on purpose.
+func (s *Sim) SweepBench() int { return s.sweep(actorPrefix(brokers.SimBenchPrefix)) }
 
 // sweep cancels, in the engine, the resting orders whose actor match accepts.
 func (s *Sim) sweep(match func(actor string) bool) int {
@@ -349,14 +356,20 @@ type CleanResult struct {
 	ReportRows int `json:"report_rows"` // today's rows removed from the order report
 }
 
-// Clean stops the bots and the benchmark, takes every simulator order out of
-// the book and removes the simulator's rows from the order report (all days).
-// Trades stay: they happened, and the prices, volumes and trade log follow
-// from them.
+// Clean stops the market bots and the benchmark, takes every simulator order
+// out of the book and removes the simulator's rows from the order report (all
+// days). Trades stay: they happened, and the prices, volumes and trade log
+// follow from them. The market bots' orders are cancelled through the OMS and
+// the bots signed out; being the broker's own orders, they stay in the report.
 func (s *Sim) Clean() (CleanResult, error) {
 	s.op.Lock()
 	defer s.op.Unlock()
-	s.stopBots()
+	s.mu.Lock()
+	r := s.oms
+	s.mu.Unlock()
+	if r != nil {
+		s.releaseOMS(r, true)
+	}
 	s.stopBench()
 	res := CleanResult{Cancelled: s.Sweep()}
 	if s.orders != nil {
@@ -402,7 +415,7 @@ func (s *Sim) Status() map[string]any {
 	for k, v := range s.rejects {
 		rej = append(rej, rc{k, v})
 	}
-	bots, bench := s.bots, s.bench
+	oms, bench := s.oms, s.bench
 	s.mu.Unlock()
 	for i := 1; i < len(rej); i++ {
 		for j := i; j > 0 && rej[j].Count > rej[j-1].Count; j-- {
@@ -412,7 +425,11 @@ func (s *Sim) Status() map[string]any {
 	if len(rej) > 6 {
 		rej = rej[:6]
 	}
-	return map[string]any{"ok": true, "phase": s.eng.CurrentPhase(), "bots": bots.status(), "bench": bench.status(),
+	bots := oms.status()
+	bots["leftover"] = s.botOrders() // the old engine-only bots' orders, for Clean Data
+	bots["orphans"] = s.omsOrphans() // bot orders no run follows, for Clean Data
+	bots["saved_login"] = savedLoginStatus()
+	return map[string]any{"ok": true, "phase": s.eng.CurrentPhase(), "bots": bots, "bench": bench.status(),
 		"tape": tape, "rejects": rej}
 }
 

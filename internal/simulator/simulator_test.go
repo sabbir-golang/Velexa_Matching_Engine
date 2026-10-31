@@ -5,12 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"velexa-sim-me/internal/database/brokers"
 	"velexa-sim-me/internal/database/orderlog"
 	"velexa-sim-me/internal/engine"
 	"velexa-sim-me/internal/fixgw"
@@ -97,59 +95,48 @@ func simOrders(eng *engine.Engine) int {
 
 func stat(m map[string]any, k string) int64 { return m["stats"].(map[string]int64)[k] }
 
-func TestBotsTradeThroughFIXAndCleanUp(t *testing.T) {
+// Clean test data cancels every simulator order and removes the simulator's
+// rows from the order report, and nothing else; the page counts the old
+// engine-only bots' orders so Clean Data can offer to cancel them.
+func TestCleanRemovesOnlySimulatorData(t *testing.T) {
 	sim, eng, rec := newSim(t)
-	if err := sim.Start(BotConfig{Rate: 300, Bots: 3, Symbols: []string{"GP", "BATBC"}}); err != nil {
-		t.Fatalf("start: %v", err)
+	for i, actor := range []string{"FIX:SIMBOT1", "FIX:SIMBENCH1", "FIX:REALBRK"} {
+		o := eng.NewOrder("RENATA", engine.Buy, engine.Limit, 680+float64(i), 10, actor)
+		o.ClOrdID = "CLN-" + strconv.Itoa(i)
+		eng.SubmitAndWait(o)
 	}
-	if brokers.Fix.Enforced() == false || len(brokers.Fix.List()) != 1 {
-		t.Fatalf("bot logons must not be saved or listed as brokers: %v", brokers.Fix.List())
+	t.Cleanup(func() {
+		eng.CancelAs("CLN-2", "CLN-2-X", "FIX:REALBRK")
+		rec.Forget("FIX:REALBRK")
+	})
+	if left := sim.Status()["bots"].(map[string]any)["leftover"]; left != 1 {
+		t.Fatalf("old engine-bot orders counted: %v, want 1", left)
 	}
-	if err := sim.Start(BotConfig{}); err == nil {
-		t.Fatal("a second start must be refused")
-	}
-	deadline := time.Now().Add(8 * time.Second)
-	var st map[string]any
-	for time.Now().Before(deadline) {
-		st = sim.Status()["bots"].(map[string]any)
-		if stat(st, "trades") >= 5 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if stat(st, "trades") < 5 || stat(st, "accepted") == 0 {
-		t.Fatalf("the bots should trade: %v", st["stats"])
-	}
-	if stat(st, "rejected") != 0 {
-		t.Fatalf("bot orders were rejected: %v", sim.Status()["rejects"])
-	}
-	if eng.MdOf("GP").Volume+eng.MdOf("BATBC").Volume == 0 {
-		t.Fatal("bot trades must reach the market data")
-	}
-	sim.StopBots()
-	if n := simOrders(eng); n != 0 {
-		t.Fatalf("%d bot orders left in the book after Stop", n)
-	}
-	if s := sim.Status()["bots"].(map[string]any); s["state"] != "stopped" {
-		t.Fatalf("state after stop: %v", s["state"])
-	}
-
 	_, rows := rec.Today()
-	bots := 0
+	sims := 0
 	for _, r := range rows {
-		if strings.HasPrefix(r.Actor, "FIX:SIMBOT") {
-			bots++
+		if simActor(r.Actor) {
+			sims++
 		}
-	}
-	if bots == 0 {
-		t.Fatal("bot orders must be in the order report")
 	}
 	res, err := sim.Clean()
-	if err != nil || res.ReportRows != bots {
-		t.Fatalf("clean: %+v %v (want %d rows)", res, err, bots)
+	if err != nil || res.Cancelled < 2 || res.ReportRows != sims || simOrders(eng) != 0 {
+		t.Fatalf("clean: %+v %v (want %d rows), %d simulator orders left", res, err, sims, simOrders(eng))
 	}
-	if _, rows := rec.Today(); len(rows) != 0 {
-		t.Fatalf("the order report still has %d rows", len(rows))
+	_, after := rec.Today()
+	for _, r := range after {
+		if simActor(r.Actor) {
+			t.Fatalf("the order report still has a simulator row: %+v", r)
+		}
+	}
+	if len(after) != len(rows)-sims {
+		t.Fatalf("Clean removed %d rows that were not the simulator's", len(rows)-sims-len(after))
+	}
+	eng.Mu.RLock()
+	real := eng.FindOpen("CLN-2", "FIX:REALBRK")
+	eng.Mu.RUnlock()
+	if real == nil {
+		t.Fatal("a real broker's order was cancelled")
 	}
 }
 
@@ -206,6 +193,13 @@ func TestSweepCancelsLeftoverBotOrders(t *testing.T) {
 	keep := eng.NewOrder("RENATA", engine.Buy, engine.Limit, 689, 10, "FIX:REALBRK")
 	keep.ClOrdID = "REAL-1"
 	eng.SubmitAndWait(keep)
+	bench := eng.NewOrder("RENATA", engine.Sell, engine.Limit, 710, 10, "FIX:SIMBENCH1")
+	bench.ClOrdID = "LEFT-2"
+	eng.SubmitAndWait(bench)
+	// At start-up only the benchmark's leftovers go: Stop keeps the market bots' orders.
+	if n := sim.SweepBench(); n != 1 || eng.FindOpen("LEFT-1", "FIX:SIMBOT1") == nil {
+		t.Fatalf("SweepBench cancelled %d, want only the benchmark order", n)
+	}
 	if n := sim.Sweep(); n != 1 {
 		t.Fatalf("sweep cancelled %d, want 1", n)
 	}

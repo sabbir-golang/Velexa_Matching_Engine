@@ -84,7 +84,7 @@ The conformance suite holds 184 cases in 13 groups. The full list, with what was
 | Session messages | 6 | 6 | – | – |
 | **Total** | **184** | **146** | **29** | **9** |
 
-Other FIX tests: logon passwords never reach the message log (`TestLogonPasswordsAreNeverStored`); malformed CompIDs are refused (`TestLogonCompIDMustBePlain`); DSE report and reject formats (`TestReportsLikeTheDSE`, `TestRejectsUseTheDSEForm`); logon authentication modes `on`/`off`/auto (`TestFixAuthModes`).
+Other FIX tests: logon passwords never reach the message log (`TestLogonPasswordsAreNeverStored`); malformed CompIDs are refused (`TestLogonCompIDMustBePlain`); DSE report and reject formats (`TestReportsLikeTheDSE`, `TestRejectsUseTheDSEForm`); logon authentication modes `on`/`off`/auto (`TestFixAuthModes`); the resend store keeps only the newest `ME_FIX_RESEND_KEEP` messages (`TestBoundedStoreKeepsTheNewestMessages`, `TestResendKeepSetting`), and the conformance run uses a limit of 5 so SS-3's ResendRequest gets a gap-fill (35=4, 123=Y) for the older range.
 
 ### ITCH market data (`internal/itchgw`)
 
@@ -100,12 +100,19 @@ Other FIX tests: logon passwords never reach the message log (`TestLogonPassword
 
 | ID | Case | Expected | Automated by | Status |
 |---|---|---|---|---|
-| SIM-1 | Market bots through the real FIX gateway, with logon checks on | Bots log on with in-memory logons (not listed, not saved), trade without rejects, and the trades reach the market data | `TestBotsTradeThroughFIXAndCleanUp` | PASS |
-| SIM-2 | Stop and Clean test data | No bot order left in the book; the bots' order-report rows removed | `TestBotsTradeThroughFIXAndCleanUp`, `TestOrderLogFile`, `TestOrderLogPostgres` | PASS |
+| SIM-1 | Clean test data | Every simulator order cancelled and every simulator row removed from the order report, a real broker's order and rows left alone; the page counts the old engine-only bots' orders for Clean Data | `TestCleanRemovesOnlySimulatorData`, `TestOrderLogFile`, `TestOrderLogPostgres` | PASS |
+| SIM-2 | Market bots: Stop, Clean Data, Start again | Stop leaves the bots' orders in the book and keeps them signed in; a stopped run cannot be paused; Clean Data is refused while they run, then cancels every order through the OMS and signs out; Start after Stop cancels the stopped run's orders first | `TestOMSBotsStopKeepsOrdersCleanDataCancelsThem` | PASS |
 | SIM-3 | Benchmark, trade mode at MAX | Every sell + buy pair trades; acknowledgement and fill latency measured; nothing left in the book | `TestBenchmarkMeasuresTradesAndLatency` | PASS |
 | SIM-4 | Benchmark, orders mode at 400/s for 1 s | About 400 orders, all accepted, no trades | `TestBenchmarkMeasuresTradesAndLatency` | PASS |
-| SIM-5 | Restart with simulator orders in the book | Only the simulator's orders are cancelled | `TestSweepCancelsLeftoverBotOrders` | PASS |
+| SIM-5 | Restart with simulator orders in the book | Only the benchmark's orders are cancelled at start-up; real brokers' orders stay | `TestSweepCancelsLeftoverBotOrders` | PASS |
 | SIM-6 | Access | Users get 403; `SIMBOT*` / `SIMBENCH*` CompIDs cannot be registered as brokers | `TestConsolePages`, `TestSimulatorLogons` | PASS |
+| SIM-7 | Market bots against a fake OMS | Sign-in with the tenant header; order and position sockets with `tenant_subdomain`, token and Origin; every request in the OMS front end's shape (dealer, client, BO, order-book id, board, group, session) and under 4,096 bytes; prices on the tick inside the band; buys under the largest-buy value; sells only from holdings; ClOrdIDs of at most 20 characters; fills counted and on the tape; another person's orders ignored; the password not in the status | `TestOMSBotsTradeThroughTheOMS` | PASS |
+| SIM-8 | Market bots: Clean Data | Every resting bot order cancelled through the OMS (with its OrderID); signed out | `TestOMSBotsTradeThroughTheOMS`, `TestOMSBotsStopKeepsOrdersCleanDataCancelsThem` | PASS |
+| SIM-9 | Market bots refused at start | Wrong password, a client not in the dealer's list without a BO id, an MFA login and a malformed OMS address each give a clear error | `TestOMSBotsStartErrors`, `TestParseOMSSite` | PASS |
+| SIM-9b | Market bots: saved login | Not saved without Remember; with it, saved in `sim_oms.json` with mode 0600 after the OMS accepts the sign-in; the status shows the login but never the password; a blank password uses it for the same login only; Forget deletes it | `TestOMSLoginRemembered` | PASS |
+| SIM-9c | Market bots: amends | A completed amend reported as orderStatus NEW with execType REPLACED (as the live OMS sends it) moves the order to its new ClOrdID, so it can still be cancelled; the fake OMS reports amends that way | `TestOMSAmendReportedAsNewReplaced`, `TestOMSBotsTradeThroughTheOMS` | PASS |
+| SIM-9d | Market bots: orphans | Clean Data cancels, in the engine, OMS-bot orders no run follows, with the report under the order's own ClOrdID; other orders stay; the card counts them | `TestOMSCleanDataCancelsOrphans` | PASS |
+| SIM-10 | Market bots against the live OMS | Orders appear in the OMS Blotter / Execution / Positions, with fills between the bots' clients | manual | — |
 
 ### Console security, accounts and roles (`internal/rest`, `internal/database/users`)
 

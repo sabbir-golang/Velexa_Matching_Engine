@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"velexa-sim-me/internal/engine"
+	"velexa-sim-me/internal/rest/deps"
 )
 
 // newTestEngine boots an engine on a tiny universe with its matching goroutine
@@ -282,5 +283,209 @@ func TestInstrumentExport(t *testing.T) {
 	rows, err := engine.ParseMaster(body)
 	if err != nil || len(rows) != 2 || rows[0].Sector != "Bank" || rows[1].AssetClass != "MF" {
 		t.Fatalf("json re-import: %v %+v", err, rows)
+	}
+}
+
+// ---- import ------------------------------------------------------------------
+
+func importReq(t *testing.T, eng *engine.Engine, query, body string) map[string]any {
+	t.Helper()
+	h := &Handler{Deps: &deps.Deps{Eng: eng}}
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/instruments/import?"+query, strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.Import(rec, req)
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("response not JSON: %q", rec.Body.String())
+	}
+	return out
+}
+
+func planOf(t *testing.T, out map[string]any) (newSyms, updSyms []string, skipped map[string]string, indices int) {
+	t.Helper()
+	p, ok := out["plan"].(map[string]any)
+	if !ok {
+		t.Fatalf("no plan: %v", out)
+	}
+	for _, n := range p["new"].([]any) {
+		newSyms = append(newSyms, n.(map[string]any)["symbol"].(string))
+	}
+	for _, u := range p["updated"].([]any) {
+		updSyms = append(updSyms, u.(map[string]any)["symbol"].(string))
+	}
+	skipped = map[string]string{}
+	for _, s := range p["skipped"].([]any) {
+		skipped[s.(map[string]any)["symbol"].(string)] = s.(map[string]any)["reason"].(string)
+	}
+	return newSyms, updSyms, skipped, int(p["indices"].(float64))
+}
+
+// A DSE end-of-day ticker file and a CSV import: preview first, then the three
+// modes; blank fields keep the listed values and the universe is saved.
+func TestInstrumentImport(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "instruments.json")
+	t.Setenv("ME_INSTRUMENT_FILE", path)
+	t.Setenv("ME_AUTO_LIST", "off")
+	eng := newTestEngine(t)
+	if out := adminPost(t, eng, addH, `{"Symbol":"CUSTOM","Name":"Custom Co","Board":"Main (B)","Prev":40,"Lot":5,"Sector":"Bank"}`); out["ok"] != true {
+		t.Fatalf("add: %v", out)
+	}
+	eod := `<?xml version="1.0" encoding="utf-8"?>
+<EODTickers>
+  <Ticker SecurityCode="DSEX" ISIN="DSEX" AssetClass="IN" CompulsorySpot="N" TradeDate="20230914" Close="6302.03" />
+  <Ticker SecurityCode="GP" ISIN="BD0001GP0004" Category="A" AssetClass="EQ" Sector="Telecom" CompulsorySpot="N" TradeDate="20230914" Close="286.6" />
+  <Ticker SecurityCode="ACI" ISIN="BD0455ACI002" Category="B" AssetClass="EQ" Sector="PharmaChem" CompulsorySpot="N" TradeDate="20230914" Close="260.2" />
+  <Ticker SecurityCode="1JANATAMF" ISIN="BD0178JBMF19" Category="A" AssetClass="MF" Sector="MutFund" CompulsorySpot="N" TradeDate="20230914" Close="6.1" />
+  <Ticker SecurityCode="ACI" ISIN="BD0455ACI002" Category="A" AssetClass="EQ" Sector="PharmaChem" CompulsorySpot="N" TradeDate="20230914" Close="1" />
+  <Ticker SecurityCode="BADISIN" ISIN="1612" Category="A" AssetClass="EQ" Sector="Misc" CompulsorySpot="N" TradeDate="20230914" Close="10" />
+  <Ticker SecurityCode="bad code" ISIN="BD0000BAD000" Category="A" AssetClass="EQ" CompulsorySpot="N" TradeDate="20230914" Close="10" />
+</EODTickers>`
+
+	// Preview: nothing changes.
+	out := importReq(t, eng, "dry_run=1", eod)
+	newSyms, upd, skipped, idx := planOf(t, out)
+	if out["ok"] != true || out["format"] != "xml" || idx != 1 || strings.Join(newSyms, ",") != "ACI,1JANATAMF" || strings.Join(upd, ",") != "GP" ||
+		!strings.Contains(skipped["ACI"], "more than once") || !strings.Contains(skipped["BADISIN"], "ISIN") || !strings.Contains(skipped["BAD CODE"], "valid ticker") {
+		t.Fatalf("preview: %v", out)
+	}
+	if eng.Listed("ACI") || eng.MdOf("GP").Prev != 331.2 {
+		t.Fatal("a preview changed the market")
+	}
+
+	// Add new only: GP keeps its price; ACI gets its board from the category and its name from the DSE list.
+	out = importReq(t, eng, "mode=new", eod)
+	if newSyms, _, skipped, _ = planOf(t, out); out["ok"] != true || len(newSyms) != 2 || !strings.Contains(skipped["GP"], "already listed") {
+		t.Fatalf("mode=new: %v", out)
+	}
+	if !eng.Listed("ACI") || eng.MdOf("GP").Prev != 331.2 || eng.MdOf("ACI").Prev != 260.2 {
+		t.Fatal("mode=new: wrong market")
+	}
+	if m := engine.MetaFor("ACI"); m.Board != "MAIN (B)" && m.Board != "Main (B)" {
+		t.Fatalf("ACI board from category B: %+v", m)
+	}
+	if m := engine.MetaFor("1JANATAMF"); !strings.EqualFold(m.Board, "Mutual Fund") || m.AssetClass != "MF" {
+		t.Fatalf("mutual fund board: %+v", m)
+	}
+
+	// Update only, from a CSV with just prices: names, lots and boards are kept.
+	out = importReq(t, eng, "mode=update", "symbol,prev_close\nGP,300\nCUSTOM,12.5\nNEWX,5\n")
+	if _, upd, skipped, _ = planOf(t, out); out["ok"] != true || strings.Join(upd, ",") != "GP,CUSTOM" || !strings.Contains(skipped["NEWX"], "not listed") {
+		t.Fatalf("mode=update: %v", out)
+	}
+	if eng.MdOf("GP").Prev != 300 || eng.MdOf("CUSTOM").Prev != 12.5 || eng.Listed("NEWX") {
+		t.Fatal("mode=update: wrong prices")
+	}
+	m := engine.MetaFor("CUSTOM")
+	if m.Lot != 5 || !strings.EqualFold(m.Board, "Main (B)") || m.Sector != "Bank" {
+		t.Fatalf("blank fields must keep the listed values: %+v", m)
+	}
+	for _, in := range eng.Instr() {
+		if in.Symbol == "CUSTOM" && in.Name != "Custom Co" {
+			t.Fatalf("name changed to %q", in.Name)
+		}
+	}
+
+	// The same file again changes nothing.
+	out = importReq(t, eng, "mode=update", "symbol,prev_close\nGP,300\n")
+	if p := out["plan"].(map[string]any); p["unchanged"].(float64) != 1 || len(p["updated"].([]any)) != 0 {
+		t.Fatalf("re-import: %v", out)
+	}
+
+	// Saved: a restart loads every instrument, the imported ones included.
+	u, err := engine.LoadUniverseFile(path)
+	if err != nil || len(u.Instr) != 4 || u.Meta["CUSTOM"].Lot != 5 {
+		t.Fatalf("saved universe: %v %+v", err, u.Instr)
+	}
+
+	for body, want := range map[string]string{"": "empty", "<html>nope</html>": "ticker file", "name\nX\n": "symbol"} {
+		if out := importReq(t, eng, "", body); out["ok"] != false || !strings.Contains(out["error"].(string), want) {
+			t.Fatalf("%q: %v", body, out)
+		}
+	}
+	if out := importReq(t, eng, "mode=replace", eod); out["ok"] != false {
+		t.Fatalf("bad mode: %v", out)
+	}
+}
+
+// ---- delete all ----------------------------------------------------------------
+
+func deleteAllReq(t *testing.T, eng *engine.Engine, query, body string) map[string]any {
+	t.Helper()
+	h := &Handler{Deps: &deps.Deps{Eng: eng}}
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/instruments/delete-all?"+query, strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.DeleteAll(rec, req)
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("response not JSON: %q", rec.Body.String())
+	}
+	return out
+}
+
+func TestInstrumentDeleteAll(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "instruments.json")
+	t.Setenv("ME_INSTRUMENT_FILE", path)
+	t.Setenv("ME_AUTO_LIST", "off")
+	eng := newTestEngine(t)
+	eng.SetPhase(engine.PhaseOpen)
+	if out := adminPost(t, eng, addH, `{"Symbol":"DELCO","Name":"Del Co","Prev":50}`); out["ok"] != true {
+		t.Fatalf("add: %v", out)
+	}
+	// the status table is shared by every test in the package
+	t.Cleanup(func() { engine.SetStatus("GP", "active"); engine.SetStatus("DELCO", "active") })
+
+	var cancelled []string
+	submit := func(o *engine.Order, cl string) {
+		o.ClOrdID = cl
+		o.Notify = func(r *engine.ExecReport) {
+			if r.Status == "CANCELED" {
+				cancelled = append(cancelled, r.Symbol+"/"+r.ClOrdID)
+			}
+		}
+		if rep := eng.SubmitAndWait(o); rep.Status == "REJECTED" {
+			t.Fatalf("%s %s: %+v", o.Symbol, cl, rep)
+		}
+	}
+	submit(eng.NewOrder("GP", engine.Buy, engine.Limit, 331.2, 10, "FIX:T"), "GP-1")
+	submit(eng.NewOrder("DELCO", engine.Sell, engine.Limit, 50, 10, "FIX:T"), "") // no ClOrdID: still taken out
+	stop := eng.NewOrder("GP", engine.Buy, engine.StopMkt, 0, 10, "FIX:T")
+	stop.StopPx = 340
+	submit(stop, "GP-STOP")
+
+	out := deleteAllReq(t, eng, "dry_run=1", "")
+	if out["ok"] != true || out["instruments"] != 2.0 || out["orders"] != 3.0 {
+		t.Fatalf("dry run: %v", out)
+	}
+	for _, body := range []string{"", `{"Confirm":"delete"}`} {
+		if out = deleteAllReq(t, eng, "", body); out["ok"] != false || len(instrumentRows(eng)) != 2 {
+			t.Fatalf("without DELETE typed, nothing may change: %v", out)
+		}
+	}
+
+	out = deleteAllReq(t, eng, "", `{"Confirm":"DELETE"}`)
+	if out["ok"] != true || out["deleted"] != 2.0 || out["cancelled"] != 3.0 || out["count"] != 0.0 || out["warning"] != nil {
+		t.Fatalf("delete all: %v", out)
+	}
+	if len(cancelled) != 3 || eng.OrdersIn(map[string]bool{"GP": true, "DELCO": true}) != 0 {
+		t.Fatalf("every order must be cancelled and its owner told: %v", cancelled)
+	}
+	if md := eng.MdOf("GP"); md.Bid != 0 || md.BidQty != 0 {
+		t.Fatalf("GP still shows a bid: %+v", md)
+	}
+	o := eng.NewOrder("GP", engine.Buy, engine.Limit, 331.2, 10, "FIX:T")
+	if rep := eng.SubmitAndWait(o); rep.Status != "REJECTED" || !strings.Contains(rep.Reason, "delisted") {
+		t.Fatalf("an order after delete all: %+v", rep)
+	}
+	if u, err := engine.LoadUniverseFile(path); err != nil || len(u.Instr) != 0 {
+		t.Fatalf("the saved master must be empty, so a restart starts with none: %v %d", err, len(u.Instr))
+	}
+	if out = deleteAllReq(t, eng, "", `{"Confirm":"DELETE"}`); out["ok"] != false {
+		t.Fatalf("nothing left to delete: %v", out)
+	}
+
+	// Import lists them again.
+	out = importReq(t, eng, "", `{"instruments":[{"symbol":"GP","name":"Grameenphone","prev_close":331.2},{"symbol":"DELCO","prev_close":50}]}`)
+	if out["ok"] != true || out["count"] != 2.0 || !engine.MetaFor("GP").Tradable() || !engine.MetaFor("DELCO").Tradable() {
+		t.Fatalf("re-import: %v", out)
 	}
 }

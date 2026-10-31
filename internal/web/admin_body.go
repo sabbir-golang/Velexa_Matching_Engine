@@ -7,6 +7,7 @@ const adminBody = `<div class="app">
   <div class="brand"><span class="logo">M</span><div><b>Matching Engine</b><small>DSEME · velexa</small></div></div>
   <nav>
    <div class="navgrp">Overview</div>
+   <div class="navitem" data-v="home"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7M6 9.5V20h12V9.5M10 20v-6h4v6"/></svg><span>Welcome</span></div>
    <div class="navitem" data-v="dash"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg><span>Dashboard</span></div>
    <div class="navgrp">Trading</div>
    <div class="navitem" data-v="trade"><svg viewBox="0 0 24 24"><path d="M4 4v16h16M8 15l3.5-4 3 3L20 8"/></svg><span>Trade Terminal</span></div>
@@ -34,12 +35,29 @@ const adminBody = `<div class="app">
  <main>
   <div class="top">
    <div class="tl"><button class="hamb" id="hamb" aria-label="Menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
-    <div><h1 id="pageTitle">Dashboard</h1><div class="sub" id="pageSub">Today · whole exchange</div></div></div>
+    <div><h1 id="pageTitle">Welcome</h1><div class="sub" id="pageSub">Your engine at a glance</div></div></div>
    <div class="tr"><span class="live" title=""><span class="dot"></span><span id="up">&mdash;</span></span><button class="btn" id="themeBtn" type="button" style="min-width:64px">Dark</button></div>
   </div>
   <div class="wrap">
 
-   <section class="view on" id="view-dash">
+   <section class="view on" id="view-home">
+    <div class="wl">
+     <div class="wl-hero">
+      <div class="wl-hi"><span class="wl-date" id="wl_date"></span><h2 id="wl_greet">Welcome</h2><span class="wl-sum" id="wl_sum"></span></div>
+      <div class="wl-phase"><i id="wl_pdot"></i><div><b id="wl_phase">&mdash;</b><span id="wl_clock"></span></div></div>
+     </div>
+     <div class="wl-cards" id="wl_cards"></div>
+     <div class="wl-row">
+      <div class="wl-attn"><div class="wl-hd"><span class="wl-cap">Needs attention</span><span class="wl-cnt" id="wl_acnt"></span></div><div id="wl_attn"></div></div>
+      <div class="wl-side">
+       <div class="wl-box"><span class="wl-cap">Quick actions</span><div class="wl-acts" id="wl_acts"></div></div>
+       <div class="wl-box wl-recent"><div class="wl-hd"><span class="wl-cap">Recent activity</span><button class="wl-link" id="wl_audit" type="button" onclick="show('diag')">Audit log</button></div><div id="wl_recent"></div></div>
+      </div>
+     </div>
+    </div>
+   </section>
+
+   <section class="view" id="view-dash">
     <div class="db">
      <div class="tbar"><span class="cap" id="ov_cap">Today · whole exchange · live</span>
       <div class="tb noprint"><input type="date" class="in" id="ov_date" onchange="ovLoad()" aria-label="Day" title="Show another day"><button class="btn" id="ov_today" onclick="ovToday()" style="display:none">Today</button><button class="btn" id="ov_pause" onclick="ovPause()">Pause live</button><button class="btn" onclick="repCSV()">Download CSV</button><button class="btn" onclick="repPrint()">Print</button></div>
@@ -222,7 +240,7 @@ const adminBody = `<div class="app">
    <section class="view" id="view-instruments" data-admin-only>
     <div class="tbar">
      <div class="tb"><input class="in" id="f_instr" placeholder="Search symbol, name or ISIN&hellip;" style="width:240px" oninput="renderInstr()"><div class="seg md" id="in_tabs"></div></div>
-     <div class="tb"><div class="menu"><button class="btn" type="button" onclick="toggleExport(event)">Export</button><div class="menu-pop" id="exp_menu"><button onclick="exportInstr('xml')"><b>XML</b><small>DSE end-of-day ticker file</small></button><button onclick="exportInstr('csv')"><b>CSV</b><small>Spreadsheet</small></button><button onclick="exportInstr('json')"><b>JSON</b><small>Re-importable master</small></button><small style="display:block;padding:6px 10px" class="faint" id="exp_note"></small></div></div><button class="btn pri" type="button" onclick="openInstr()">Add instrument</button></div>
+     <div class="tb"><button class="btn red" type="button" onclick="deleteAllInstr()">Delete all</button><button class="btn" type="button" onclick="importDlg()">Import</button><div class="menu"><button class="btn" type="button" onclick="toggleExport(event)">Export</button><div class="menu-pop" id="exp_menu"><button onclick="exportInstr('xml')"><b>XML</b><small>DSE end-of-day ticker file</small></button><button onclick="exportInstr('csv')"><b>CSV</b><small>Spreadsheet</small></button><button onclick="exportInstr('json')"><b>JSON</b><small>Re-importable master</small></button><small style="display:block;padding:6px 10px" class="faint" id="exp_note"></small></div></div><button class="btn pri" type="button" onclick="openInstr()">Add instrument</button></div>
     </div>
     <div class="card o"><div class="tw"><table class="tbl tight"><thead><tr><th>Symbol</th><th>Name</th><th>ISIN</th><th>Board</th><th class="r">Lot</th><th class="r">Tick</th><th class="r">Ref price</th><th class="r">Circuit range</th><th>Status</th><th></th></tr></thead><tbody id="instrList"></tbody></table></div></div>
     <p class="note" id="in_count"></p>
@@ -277,20 +295,28 @@ const adminBody = `<div class="app">
       <div class="tb"><span class="cap">Market</span><span class="tag" id="sm_phase">&mdash;</span><span class="note" id="sm_phnote"></span></div>
       <div class="tb"><button class="btn" type="button" onclick="smPhase('preopen')">Pre-Open</button><button class="btn" type="button" onclick="smPhase('open')">Open market</button></div>
      </div>
-     <p class="note">The bots are FIX brokers: they log on to the engine's FIX gateway as <span class="mono">SIMBOT1&hellip;8</span> (market bots) and <span class="mono">SIMBENCH1&ndash;2</span> (benchmark) and send ordinary orders. Their trades move prices and go out on the ITCH feed, so connected OMS screens see them. <b>Clean test data</b> takes their orders out of the book and the order report again.</p>
+     <p class="note">The <b>market bots</b> trade <b>through your OMS</b>: they sign in as the dealer you give and place, amend and cancel orders for its clients on the OMS's own order channel, so the orders pass the OMS risk checks, reach this engine through the broker's FIX session and show in the OMS Blotter, Execution, Positions and Purchase Power. The <b>benchmark</b> logs on to this engine's FIX gateway as <span class="mono">SIMBENCH1&ndash;2</span>. <b>Clean test data</b> takes the simulator's orders out of the book and the benchmark's out of the order report.</p>
     </div>
     <div class="row2">
      <div class="card p w2 sm-card">
-      <div class="tbar"><div class="tb"><span class="cap">Market bots</span><span class="tag" id="sm_bstate">STOPPED</span></div>
-       <div class="tb"><button class="btn pri" id="sm_bstart" type="button" onclick="smBots('start')">Start</button><button class="btn" id="sm_bpause" type="button" onclick="smBots(SM.paused?'resume':'pause')" disabled>Pause</button><button class="btn" id="sm_bstop" type="button" onclick="smBots('stop')" disabled>Stop</button></div></div>
+      <div class="tbar"><div class="tb"><span class="cap">Market bots</span><span class="tag" id="sm_bstate">STOPPED</span><span class="note" id="sm_bhead"></span></div>
+       <div class="tb"><button class="btn pri" id="sm_bstart" type="button" onclick="smBots('start')">Start</button><button class="btn" id="sm_bpause" type="button" onclick="smBots(SM.paused?'resume':'pause')" disabled>Pause</button><button class="btn" id="sm_bstop" type="button" onclick="smBots('stop')" disabled>Stop</button><button class="btn red" id="sm_bclean" type="button" onclick="smBotsClean()" disabled title="Cancel the bots' orders through the OMS and sign out">Clean Data</button></div></div>
       <div class="sm-f">
-       <label class="fld">Speed<select class="in" id="sm_brate"><option value="5">5 orders/s</option><option value="20" selected>20 orders/s</option><option value="50">50 orders/s</option><option value="100">100 orders/s</option><option value="200">200 orders/s</option><option value="500">500 orders/s</option></select></label>
-       <label class="fld">Bot brokers<select class="in" id="sm_bbots"><option>2</option><option selected>4</option><option>6</option><option>8</option></select></label>
-       <label class="fld">Shares<select class="in" id="sm_bset" onchange="smSet()"><option value="10">10 blue chips</option><option value="20" selected>20 blue chips</option><option value="50">50 shares</option><option value="list">My list&hellip;</option></select></label>
+       <label class="fld">OMS address<input class="in" id="sm_burl" placeholder="https://jbl.bdtaskoms.com" autocomplete="off" spellcheck="false"></label>
+       <label class="fld">Dealer login<input class="in" id="sm_buser" placeholder="OMS username" autocomplete="off" spellcheck="false"></label>
+       <label class="fld">Password<span class="sm-rate"><input class="in" id="sm_bpass" type="password" autocomplete="new-password"><label class="sm-max" title="Save the login on the engine, so the next Start works with the password left blank"><input type="checkbox" id="sm_bremember" checked> Remember</label></span></label>
+      </div>
+      <div class="note" id="sm_bsaved" hidden></div>
+      <div class="sm-f">
+       <label class="fld">Speed<select class="in" id="sm_brate"><option value="30">30 orders/min</option><option value="60" selected>60 orders/min</option><option value="120">120 orders/min</option><option value="300">300 orders/min</option><option value="600">600 orders/min</option></select></label>
+       <label class="fld">Clients<select class="in" id="sm_bcl" onchange="smSet()"><option value="4">4 clients</option><option value="8" selected>8 clients</option><option value="12">12 clients</option><option value="20">20 clients</option><option value="list">My list&hellip;</option></select></label>
+       <label class="fld">Shares<select class="in" id="sm_bset" onchange="smSet()"><option value="10">10 shares</option><option value="20" selected>20 shares</option><option value="50">50 shares</option><option value="list">My list&hellip;</option></select></label>
+       <label class="fld">Largest buy (Tk)<input class="in" id="sm_bmax" type="number" min="1000" step="1000" value="20000" inputmode="numeric"></label>
+       <label class="fld" id="sm_bclistf" hidden>Client codes, comma separated<input class="in" id="sm_bclist" placeholder="00018, 02301" title="A client that is not in the dealer's list: CODE/BO-ID" autocomplete="off" spellcheck="false"></label>
        <label class="fld" id="sm_blistf" hidden>Symbols, comma separated<input class="in" id="sm_blist" placeholder="GP, BATBC, SQURPHARMA" autocomplete="off" spellcheck="false"></label>
       </div>
       <div class="sm-k" id="sm_bk"></div>
-      <div class="note" id="sm_bnote">Quotes a few ticks around a moving fair price, and sometimes crosses the spread with an IOC order, so trades keep happening. Prices stay inside the daily band and on the tick; quantities are whole lots.</div>
+      <div class="note" id="sm_bnote"></div>
       <div class="tb" id="sm_bsess"></div>
      </div>
      <div class="card p w2 sm-card">
@@ -314,7 +340,7 @@ const adminBody = `<div class="app">
      <div class="w1 sm-side">
       <div class="card p sm-card"><span class="cap">Reject reasons</span><div id="sm_rej"></div></div>
       <div class="card p sm-card sm-danger"><span class="cap">Clean test data</span>
-       <p class="note">Stops the bots and the benchmark, cancels every simulator order still in the book and removes the simulator's rows from the order report. Trades stay in the market: prices, volume and the trade log follow from them.</p>
+       <p class="note">Stops the market bots and the benchmark, cancels every simulator order still in the book (the market bots' through the OMS, signing them out) and removes the benchmark's rows from the order report. The market bots' orders are the broker's own, so they stay in the report. Trades stay in the market: prices, volume and the trade log follow from them.</p>
        <button class="btn dng" type="button" onclick="smClean()">Clean test data</button></div>
      </div>
     </div>

@@ -1,4 +1,4 @@
-// Package instrument serves the instrument master: list, add, edit, halt, delist, export, import.
+// Package instrument serves the instrument master: list, add, edit, halt, delist, delete all, export, import.
 package instrument
 
 import (

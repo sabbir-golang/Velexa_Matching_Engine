@@ -507,6 +507,7 @@ func TestConformance(t *testing.T) {
 	t.Setenv("ME_AUTO_LIST", "off")
 	t.Setenv("ME_INSTRUMENT_FILE", filepath.Join(dir, "instruments.json"))
 	t.Setenv("ME_FIX_MSGLOG_FILE", filepath.Join(dir, "fixmsg.log"))
+	t.Setenv("ME_FIX_RESEND_KEEP", "5") // so SS-3's resend reaches past what is kept: gap-fill, then the newest resent
 	if _, err := os.Stat(filepath.Join(wd, "spec", "FIX50SP2.xml")); err != nil {
 		t.Skipf("FIX dictionary not found: %v", err)
 	}
@@ -1395,6 +1396,17 @@ func (h *harness) runSession() {
 			}
 		}
 		MsgLog.mu.Unlock()
+		gapFill := false
+		MsgLog.mu.Lock()
+		for _, m := range MsgLog.ring {
+			if m.Dir == "OUT" && m.Session == "TESTBRK2" && strings.Contains(m.Raw, "|35=4|") && strings.Contains(m.Raw, "|123=Y|") {
+				gapFill = true
+			}
+		}
+		MsgLog.mu.Unlock()
+		if !gapFill {
+			h.t.Errorf("SS-3: messages older than ME_FIX_RESEND_KEEP must be gap-filled (35=4, 123=Y)")
+		}
 		v := fail("no resend / gap-fill after a ResendRequest")
 		if ok {
 			v = pass("resend or gap-fill received")

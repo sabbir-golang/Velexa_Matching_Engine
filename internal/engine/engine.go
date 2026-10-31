@@ -874,6 +874,85 @@ func (e *Engine) doCancel(orig, cl, actor string) *ExecReport {
 	return &ExecReport{ClOrdID: cl, OrigClOrdID: orig, Status: "REJECT_CXL"}
 }
 
+// OrdersIn counts the resting orders and parked stops in the symbols syms.
+func (e *Engine) OrdersIn(syms map[string]bool) int {
+	e.Mu.RLock()
+	defer e.Mu.RUnlock()
+	n := 0
+	for sym := range syms {
+		if b := e.Book(sym); b != nil {
+			for _, lv := range b.bids {
+				n += len(lv.Orders)
+			}
+			for _, lv := range b.asks {
+				n += len(lv.Orders)
+			}
+		}
+		n += len(e.stops[sym])
+	}
+	return n
+}
+
+// CountOpen counts the resting orders and parked stops that match accepts.
+func (e *Engine) CountOpen(match func(actor, clOrdID string) bool) int {
+	e.Mu.RLock()
+	defer e.Mu.RUnlock()
+	n := 0
+	for _, o := range e.Open {
+		if match(o.Actor, o.ClOrdID) {
+			n++
+		}
+	}
+	for _, pend := range e.stops {
+		for _, s := range pend {
+			if match(s.Actor, s.ClOrdID) {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// CancelAllIn takes every resting order and parked stop in the symbols syms out
+// of the engine and tells each owner it was cancelled (150=4), under the
+// order's own ClOrdID as an expiry is. It returns how many orders went.
+// Serialized on the matching goroutine via ctrl.
+func (e *Engine) CancelAllIn(syms map[string]bool) int {
+	res := make(chan int, 1)
+	e.ctrl <- func() { res <- e.cancelAllIn(syms) }
+	return <-res
+}
+
+func (e *Engine) cancelAllIn(syms map[string]bool) int {
+	cancelled := func(o *Order) {
+		e.days.order(o.Actor, func(c *DayCounters) { c.Cancelled++ })
+		e.notify(o, &ExecReport{OrderID: o.ID, ClOrdID: o.ClOrdID, OrigClOrdID: o.ClOrdID, Symbol: o.Symbol, Side: o.Side,
+			Status: "CANCELED", FilledQty: o.CumQty, CumValue: o.CumValue, AvgPx: avgOf(o), LeavesQty: 0,
+			OrderQty: o.OrigQty, Price: o.Price, Event: "CANCEL", Ctx: o.Ctx})
+	}
+	n := 0
+	for sym := range syms {
+		if b := e.Book(sym); b != nil {
+			removed := b.removeWhere(func(*Order) bool { return true })
+			for _, o := range removed {
+				e.forget(o)
+				e.emitDelete(o)
+				cancelled(o)
+			}
+			if len(removed) > 0 {
+				e.refreshTop(sym)
+			}
+			n += len(removed)
+		}
+		for _, s := range e.stops[sym] {
+			cancelled(s)
+			n++
+		}
+		delete(e.stops, sym)
+	}
+	return n
+}
+
 // findStop returns the actor's parked stop with this ClOrdID (anyone's with
 // actor ""), or nil.
 func (e *Engine) findStop(clOrdID, actor string) *Order {

@@ -225,7 +225,7 @@ TargetCompID=DSE_BROKER
 		sessions: map[string]time.Time{}, sids: map[string]quickfix.SessionID{}, seqs: map[string]*seqPair{}}
 	Active = fa
 	fa.startSender()
-	acc, err := quickfix.NewAcceptor(fa, quickfix.NewMemoryStoreFactory(), settings, msgLogFactory{store: MsgLog})
+	acc, err := quickfix.NewAcceptor(fa, newStoreFactory(), settings, msgLogFactory{store: MsgLog})
 	if err != nil {
 		return nil, err
 	}

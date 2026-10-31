@@ -355,3 +355,44 @@ func TestNewsFeedAnnouncesSessionsAndHalts(t *testing.T) {
 		t.Fatalf("news titles = %q, want %q", titles, want)
 	}
 }
+
+// A client that sends nothing, not even a heartbeat, is dropped after
+// ME_ITCH_CLIENT_TIMEOUT; one that sends heartbeats stays.
+func TestSilentClientIsDropped(t *testing.T) {
+	t.Setenv("ME_ITCH_CLIENT_TIMEOUT", "1")
+	_, _, addr := testFeed(t)
+	quiet, _, _ := dial(t, addr, "", 1)
+	alive, _, _ := dial(t, addr, "", 1)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		tk := time.NewTicker(300 * time.Millisecond)
+		defer tk.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-tk.C:
+				writeSoup(alive.c, 'R', nil)
+			}
+		}
+	}()
+	// closed reads until the server closes c, or wait passes.
+	closed := func(c *soupClient, wait time.Duration) bool {
+		end := time.Now().Add(wait)
+		buf := make([]byte, 4096)
+		c.c.SetReadDeadline(end)
+		for {
+			if _, err := c.c.Read(buf); err != nil {
+				ne, ok := err.(net.Error)
+				return !(ok && ne.Timeout())
+			}
+		}
+	}
+	if !closed(quiet, 3*time.Second) {
+		t.Fatal("a client that sends nothing must be dropped")
+	}
+	if closed(alive, 2*time.Second) {
+		t.Fatal("a client that sends heartbeats must stay connected")
+	}
+}

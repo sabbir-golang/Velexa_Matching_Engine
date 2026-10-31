@@ -73,20 +73,21 @@ function confirmDlg(title,body,action,danger,fn,reasonLabel){_confirmFn=fn;
   "<span class=err id=dlg_err></span><div class=acts><button class=btn type=button onclick='dlgClose()'>Cancel</button><button class='btn "+(danger?"dng":"pri")+"' id=dlg_ok type=button onclick='confirmGo()'"+(reasonLabel?" disabled":"")+">"+esc(action)+"</button></div>")}
 function confirmGo(){var r=val("dlg_reason");if(_confirmFn)_confirmFn(r)}
 // ── navigation ──
-var TITLES={dash:["Dashboard","Today · whole exchange"],trade:["Trade Terminal","Place and monitor orders against the live book"],orders:["Order Report","Every order received, with its execution history"],
+var TITLES={home:["Welcome","Your engine at a glance"],dash:["Dashboard","Today · whole exchange"],trade:["Trade Terminal","Place and monitor orders against the live book"],orders:["Order Report","Every order received, with its execution history"],
  sessions:["FIX Sessions","Broker connections on the FIX acceptor"],market:["Market Session","Trading phases, schedule and the DSE clock"],instruments:["Instruments","Listed securities and their trading parameters"],
  creds:["Broker Credentials","FIX and ITCH logins issued to member brokers"],access:["OMS IP Allowlist","Networks allowed to reach the order gateway"],users:["Users","Console accounts and roles"],
- sim:["Simulator","Market bots and benchmark through the FIX gateway"],msglog:["Message Log","FIX traffic in and out of the engine"],diag:["Diagnostics","Engine health, configuration and self-tests"]};
-var VIEW="dash";
+ sim:["Simulator","Market bots through your OMS, and the FIX benchmark"],msglog:["Message Log","FIX traffic in and out of the engine"],diag:["Diagnostics","Engine health, configuration and self-tests"]};
+var VIEW="home";
 function show(v){
- if(!TITLES[v])v="dash";
- if(ME_ROLE!="admin"&&document.querySelector('.navitem[data-v="'+v+'"][data-admin-only]'))v="dash";
+ if(!TITLES[v])v="home";
+ if(ME_ROLE!="admin"&&document.querySelector('.navitem[data-v="'+v+'"][data-admin-only]'))v="home";
  VIEW=v;
  document.querySelectorAll(".navitem").forEach(function(n){n.classList.toggle("on",n.dataset.v==v)});
  document.querySelectorAll(".view").forEach(function(s){s.classList.toggle("on",s.id=="view-"+v)});
  setc("pageTitle",TITLES[v][0]);setc("pageSub",TITLES[v][1]);
  try{history.replaceState(null,"","#"+v)}catch(e){}
  window.scrollTo(0,0);
+ if(v=="home")wlLoad();
  if(v=="dash"){ovSub();ovLoad()}
  if(v=="trade")ttOpen();
  if(v=="orders")loadOrders();
@@ -116,7 +117,7 @@ function loadMe(){return j("me").then(function(m){
  document.body.classList.toggle("role-user",ME_ROLE!="admin");
  setc("meName",ME_USER);var r=document.getElementById("meRole");r.textContent=ME_ROLE;r.className="rolebadge "+ME_ROLE;
  setc("tt_as","Console ("+ME_USER+")");var a=document.getElementById("tt_as");if(a)a.value="Console ("+ME_USER+")";
- if(ME_ROLE!="admin"&&document.querySelector('.navitem[data-v="'+VIEW+'"][data-admin-only]'))show("dash")})}
+ if(ME_ROLE!="admin"&&document.querySelector('.navitem[data-v="'+VIEW+'"][data-admin-only]'))show("home")})}
 function pwDlg(){dlg("<h3>Change password</h3><label class=fld>Current password<input class=in type=password id=pw_cur autocomplete=current-password></label>"+
  "<label class=fld>New password<input class=in type=password id=pw_new autocomplete=new-password></label><label class=fld>Confirm new password<input class=in type=password id=pw_cf autocomplete=new-password></label>"+
  "<span class=note>10 to 128 characters, with at least 3 of: lower-case, upper-case, digits, symbols. You stay signed in on this device.</span><span class=err id=dlg_err></span>"+
@@ -126,7 +127,7 @@ function pwSave(){var c=val("pw_cur"),n=document.getElementById("pw_new").value,
  jpost("me/password",{Old:c,New:n}).then(function(x){if(!x.ok)return dlgErr(x.error||"The password was not changed.");dlgClose();toast("Password updated")})}
 // ── status (every 3 s): header pill, sidebar, FIX sessions, market session, diagnostics ──
 var _s=null;
-function refresh(){return j("status").then(function(d){_s=d;renderStatus(d)})}
+function refresh(){return j("status").then(function(d){_s=d;renderStatus(d);if(VIEW=="home")wlRender()})}
 function renderStatus(d){
  if(!d)return;
  var sv="";if(d.state_saved=="off")sv=" · market not saved";else if(d.state_age>=0)sv=d.state_age>10?" · ! market last saved "+Math.round(d.state_age)+" s ago":" · market saved";
@@ -475,6 +476,61 @@ function toggleExport(e){e.stopPropagation();var m=document.getElementById("exp_
 function exportInstr(fmt){document.getElementById("exp_menu").classList.remove("on");
  window.location="/admin/api/instruments/export?format="+fmt+"&q="+encodeURIComponent(val("f_instr"))}
 document.addEventListener("click",function(){var m=document.getElementById("exp_menu");if(m)m.classList.remove("on")});
+// ── Instruments: import a security master (DSE end-of-day XML, CSV/TSV, JSON) ──
+// The file is read in the browser, previewed with dry_run=1, then imported.
+var IMP={};
+var IMP_MODES=[["merge","Add new + update listed","Adds the instruments that are not listed and updates the listed ones."],
+ ["new","Add new only","Adds only instruments that are not listed; the listed ones stay as they are."],
+ ["update","Update listed only","Updates only listed instruments, for example closing prices; nothing new is listed."]];
+function importDlg(){IMP={text:"",name:"",mode:"merge",tab:"new",d:null};
+ dlg("<h3>Import instruments</h3>"+
+  "<label class=imp-drop id=imp_drop><input type=file id=imp_file accept='.xml,.csv,.tsv,.txt,.json' hidden onchange='impFile(this.files[0])'><b id=imp_fname>Choose a file or drop it here</b>"+
+  "<span class=faint>DSE end-of-day ticker file (XML), CSV or TSV with a header row, or a JSON master as exported. Up to 32 MB.</span></label>"+
+  "<div class=fld>What to do<div class='seg md' id=imp_mode></div><span class=note id=imp_mnote></span></div>"+
+  "<div id=imp_prev style='display:flex;flex-direction:column;gap:10px'></div>"+
+  "<p class=note>A blank field keeps the listed value (a DSE ticker file has no names, lots or ticks). Instruments that are not in the file stay listed. The result is saved, so it survives a restart. <a href='#' onclick='impTemplate();return false'>Download a CSV template</a></p>"+
+  "<span class=err id=dlg_err></span><div class=acts><button class=btn type=button onclick='dlgClose()'>Cancel</button><button class='btn pri' id=imp_go type=button disabled onclick='impGo()'>Import</button></div>","xwide");
+ var d=document.getElementById("imp_drop");
+ ["dragenter","dragover"].forEach(function(t){d.addEventListener(t,function(e){e.preventDefault();d.classList.add("on")})});
+ ["dragleave","drop"].forEach(function(t){d.addEventListener(t,function(e){e.preventDefault();d.classList.remove("on")})});
+ d.addEventListener("drop",function(e){if(e.dataTransfer&&e.dataTransfer.files.length)impFile(e.dataTransfer.files[0])});
+ impModes()}
+function impModes(){seth("imp_mode",IMP_MODES.map(function(m){return "<button type=button class='"+(IMP.mode==m[0]?"on":"")+"' onclick=\"IMP.mode='"+m[0]+"';impModes();impPreview()\">"+m[1]+"</button>"}).join(""));
+ setc("imp_mnote",IMP_MODES.filter(function(m){return m[0]==IMP.mode})[0][2])}
+function impFile(f){if(!f)return;dlgErr("");
+ if(f.size>32*1024*1024){dlgErr(f.name+" is larger than 32 MB.");return}
+ var r=new FileReader();r.onload=function(){IMP.text=String(r.result||"");IMP.name=f.name;setc("imp_fname",f.name+" · "+(f.size<1024?f.size+" bytes":fmtN(f.size/1024,1)+" KB"));impPreview()};
+ r.onerror=function(){dlgErr("The file could not be read.")};r.readAsText(f)}
+function impPost(dry){return j("instruments/import?mode="+IMP.mode+(dry?"&dry_run=1":""),{method:"POST",headers:{"Content-Type":"text/plain"},body:IMP.text})}
+function impPreview(){var go=document.getElementById("imp_go");if(!IMP.text){go.disabled=true;return}
+ go.disabled=true;seth("imp_prev","<span class=note>Checking the file…</span>");
+ impPost(true).then(function(d){if(!d.ok){IMP.d=null;seth("imp_prev","");dlgErr(d.error||"The file could not be read.");return}
+  dlgErr("");IMP.d=d;impRender()}).catch(function(){seth("imp_prev","");dlgErr("The preview failed; check the connection and try again.")})}
+function impBig(c){if(c.field!="Ref price")return false;var a=parseFloat(c.from),b=parseFloat(c.to);return a>0&&Math.abs(b/a-1)>0.2}
+function impRender(){var d=IMP.d;if(!d)return;var p=d.plan||{},nw=p.new||[],up=p.updated||[],sk=p.skipped||[];
+ var fmt={xml:"DSE end-of-day ticker file",csv:"CSV / TSV",json:"JSON master"}[d.format]||d.format;
+ var big=up.filter(function(u){return u.changes.some(impBig)}).length;
+ if(!nw.length&&IMP.tab=="new")IMP.tab=up.length?"updated":"skipped";
+ var tabs=[["new","New",nw.length],["updated","Updated",up.length],["skipped","Skipped",sk.length]];
+ var rows=IMP.tab=="new"?nw.map(function(n){return "<tr><td><b>"+esc(n.symbol)+"</b>"+(n.relisted?" <span class='tag t-amber'>RE-LIST</span>":"")+"</td><td class=ell>"+esc(n.name)+"</td><td>"+esc(n.board||"—")+"</td><td class=ell>"+esc(secLabel(n.sector)||"—")+"</td><td class='r m'>"+fmtN(n.prev,2)+"</td></tr>"})
+  :IMP.tab=="updated"?up.map(function(u){return "<tr><td><b>"+esc(u.symbol)+"</b></td><td class=wrap>"+u.changes.map(function(c){return "<span"+(impBig(c)?" class=imp-warn":"")+">"+esc(c.field)+": <span class=faint>"+esc(c.from||"—")+"</span> → "+esc(c.to||"—")+"</span>"}).join("<br>")+"</td></tr>"})
+  :sk.map(function(s){return "<tr><td><b>"+esc(s.symbol||"(blank)")+"</b></td><td class='wrap muted'>"+esc(s.reason)+"</td></tr>"});
+ var head=IMP.tab=="new"?"<tr><th>Symbol</th><th>Name</th><th>Board</th><th>Sector</th><th class=r>Ref price</th></tr>":IMP.tab=="updated"?"<tr><th>Symbol</th><th>What changes</th></tr>":"<tr><th>Symbol</th><th>Why it is skipped</th></tr>";
+ var empty={new:"No new instruments in this file"+(IMP.mode=="update"?" (this import only updates listed ones).":"."),updated:"No listed instrument changes"+(IMP.mode=="new"?" (this import only adds new ones).":"."),skipped:"Every row can be imported."}[IMP.tab];
+ seth("imp_prev","<div class=imp-sum><span class=faint>"+esc(fmt)+" · "+fmtN(d.rows)+" rows</span><span><b>"+fmtN(nw.length)+"</b> new</span><span><b>"+fmtN(up.length)+"</b> updated</span><span><b>"+fmtN(p.unchanged)+"</b> unchanged</span><span><b>"+fmtN(sk.length)+"</b> skipped</span>"+(p.indices?"<span class=faint>"+p.indices+" index rows ignored</span>":"")+"</div>"+
+  (big?"<span class='note imp-warn'>"+big+" listed instrument"+(big>1?"s change their":" changes its")+" reference price by more than 20%. The daily price band moves with it.</span>":"")+
+  "<div class='seg sm'>"+tabs.map(function(t){return "<button type=button class='"+(IMP.tab==t[0]?"on":"")+"' onclick=\"IMP.tab='"+t[0]+"';impRender()\">"+t[1]+" ("+fmtN(t[2])+")</button>"}).join("")+"</div>"+
+  "<div class=imp-box><table class='tbl tight'><thead>"+head+"</thead><tbody>"+(rows.join("")||"<tr><td colspan=5 class=empty>"+empty+"</td></tr>")+"</tbody></table></div>");
+ var n=nw.length+up.length,go=document.getElementById("imp_go");go.disabled=!n;go.textContent=n?"Import "+fmtN(n)+" instrument"+(n>1?"s":""):"Nothing to import"}
+function impGo(){var go=document.getElementById("imp_go");go.disabled=true;go.textContent="Importing…";
+ impPost(false).then(function(d){if(!d.ok){dlgErr(d.error||"The import failed.");impRender();return}var p=d.plan||{};
+  dlgClose();toast("Imported "+IMP.name+": "+fmtN((p.new||[]).length)+" new, "+fmtN((p.updated||[]).length)+" updated"+((p.skipped||[]).length?", "+fmtN(p.skipped.length)+" skipped":""),false,d.warning);loadInstr()})
+ .catch(function(){dlgErr("The import failed; check the connection and try again.");impRender()})}
+function impTemplate(){var csv="symbol,name,isin,board,sector,asset_class,lot,tick,prev_close,status\n"+
+  "GP,Grameenphone Ltd.,BD0001GP0004,Main (A),Telecom,EQ,1,0.10,286.60,active\n"+
+  "1JANATAMF,1JANATAMF,BD0178JBMF19,Mutual Fund,MutFund,MF,1,0.10,6.10,active\n";
+ var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="instruments-template.csv";document.body.appendChild(a);a.click();
+ setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1000)}
 var _editing="";
 function opts(list,cur){return list.map(function(x){var v=Array.isArray(x)?x[0]:x,l=Array.isArray(x)?x[1]:x;return "<option value=\""+esc(v)+"\""+(v==cur?" selected":"")+">"+esc(l)+"</option>"}).join("")}
 function openInstr(sym){var r=sym?_in.filter(function(x){return x.symbol==sym})[0]:null;_editing=r?r.symbol:"";
@@ -510,6 +566,17 @@ function haltInstr(sym,h){confirmDlg((h?"Halt ":"Activate ")+sym+"?",h?"New orde
  jpost("instrument/halt",{Symbol:sym,Halted:h}).then(function(d){if(!d.ok)return dlgErr(d.error||"Failed");dlgClose();toast(sym+(h?" halted":" active"),false,d.warning);loadInstr()})})}
 function delistInstr(sym){confirmDlg("Delist "+sym+"?",sym+" stops trading and leaves the directory and the saved master.","Delist",true,function(){
  jpost("instrument/delist",{Symbol:sym}).then(function(d){if(!d.ok)return dlgErr(d.error||"Failed");dlgClose();toast(sym+" delisted",false,d.warning);loadInstr()})})}
+// delete all: the engine counts what goes, then the button waits for DELETE to be typed
+function deleteAllInstr(){jpost("instruments/delete-all?dry_run=1",{}).then(function(d){if(!d.ok)return toast(d.error||"Failed",true);if(!d.instruments)return toast("There are no instruments to delete",true);
+ var n=d.instruments,o=d.orders;
+ dlg("<h3>Delete all "+n+" instruments?</h3><p>Every instrument is delisted: it stops trading and leaves the directory and the saved master, so the engine starts with none after a restart. "+
+  (o?o+" open order"+(o==1?" is":"s are")+" cancelled and "+(o==1?"its broker is":"their brokers are")+" told.":"No orders are open.")+" Export a JSON copy first if you may want them back: Import lists them again.</p>"+
+  "<label class=fld>Type DELETE to confirm<input class=in id=del_conf autocomplete=off spellcheck=false oninput=\"document.getElementById('dlg_ok').disabled=this.value!='DELETE'\" onkeydown=\"if(event.key=='Enter'&&this.value=='DELETE')deleteAllGo()\"></label>"+
+  "<span class=err id=dlg_err></span><div class=acts><button class=btn type=button onclick='dlgClose()'>Cancel</button><button class='btn dng' id=dlg_ok type=button disabled onclick='deleteAllGo()'>Delete all</button></div>");
+ document.getElementById("del_conf").focus()})}
+function deleteAllGo(){var b=document.getElementById("dlg_ok");if(b)b.disabled=true;
+ jpost("instruments/delete-all",{Confirm:val("del_conf")}).then(function(d){if(!d.ok){if(b)b.disabled=false;return dlgErr(d.error||"Failed")}dlgClose();
+  toast(d.deleted+" instruments deleted"+(d.cancelled?", "+d.cancelled+" orders cancelled":""),false,d.warning);loadInstr()})}
 // ── Broker credentials ──
 var _b=null;
 function loadBrokers(){return j("brokers").then(function(b){_b=b;renderBrokers(b);if(VIEW=="sessions")renderFix()})}
@@ -648,24 +715,16 @@ function dgTest(){var b=document.getElementById("dg_run");b.disabled=true;b.text
 // ── Simulator: market bots and benchmark (/admin/api/sim) ──
 var SM={d:null,paused:false,mode:"trade"};
 function smLoad(){return j("sim").then(function(d){SM.d=d;smRender()})}
-function smSet(){document.getElementById("sm_blistf").hidden=val("sm_bset")!="list"}
+function smSet(){document.getElementById("sm_blistf").hidden=val("sm_bset")!="list";document.getElementById("sm_bclistf").hidden=val("sm_bcl")!="list"}
+(function(){try{var s=JSON.parse(localStorage.getItem("me_sim_oms")||"{}");if(s.url)document.getElementById("sm_burl").value=s.url;if(s.user)document.getElementById("sm_buser").value=s.user}catch(e){}})();
 document.getElementById("sm_qmode").onclick=function(e){var b=e.target.closest("button");if(!b)return;SM.mode=b.dataset.m;this.querySelectorAll("button").forEach(function(x){x.classList.toggle("on",x==b)})};
 function smKs(id,list){seth(id,list.map(function(k){return "<div><span class=l>"+esc(k[0])+"</span><span class='v"+(k[2]?" "+k[2]:"")+"'>"+esc(k[1])+"</span></div>"}).join(""))}
 function smTag(id,state,cls){var e=document.getElementById(id);e.textContent=String(state).toUpperCase();e.className="tag "+cls}
 function smRender(){var d=SM.d;if(!d)return;
- if(!d.ok){setc("sm_phnote",d.error||"The simulator is not available.");["sm_bstart","sm_qstart"].forEach(function(i){document.getElementById(i).disabled=true});return}
+ if(!d.ok){setc("sm_phnote",d.error||"The simulator is not available.");["sm_bstart","sm_qstart","sm_bclean"].forEach(function(i){document.getElementById(i).disabled=true});return}
  var ph=d.phase||"",open=ph=="Continuous Trading"||ph=="Pre-Open";
  smTag("sm_phase",ph,open?"t-acc":"t-amber");setc("sm_phnote",open?(ph=="Pre-Open"?"bots only quote until the market opens":"bots trade now"):"bots wait until Pre-Open or Continuous Trading");
- var b=d.bots||{},st=b.state||"stopped",on=st!="stopped";SM.paused=st=="paused";
- smTag("sm_bstate",st,st=="running"?(b.note?"t-amber":"t-acc"):st=="paused"?"t-amber":"t-mut");
- document.getElementById("sm_bstart").disabled=on;document.getElementById("sm_bstop").disabled=!on;
- var pb=document.getElementById("sm_bpause");pb.disabled=!on;pb.textContent=SM.paused?"Resume":"Pause";
- ["sm_brate","sm_bbots","sm_bset","sm_blist"].forEach(function(i){document.getElementById(i).disabled=on});
- var s=b.stats||{};
- smKs("sm_bk",[["Sent",fmtN(s.sent)],["Accepted",fmtN(s.accepted)],["Trades",fmtN(s.trades),s.trades?"good":""],["Rejected",fmtN(s.rejected),s.rejected?"bad":""],["Resting",fmtN(b.working)],["Orders/s",on?fmtN(b.orders_per_sec,1):"—"]]);
- if(on)setc("sm_bnote",b.note||("Trading "+(b.symbols||[]).length+" shares: "+(b.symbols||[]).slice(0,12).join(", ")+((b.symbols||[]).length>12?" …":"")+" · running "+fmtN(b.running_for)+" s"));
- else setc("sm_bnote","Quotes a few ticks around a moving fair price, and sometimes crosses the spread with an IOC order, so trades keep happening. Prices stay inside the daily band and on the tick; quantities are whole lots.");
- seth("sm_bsess",(b.sessions||[]).map(function(x){return "<span class='sm-bot"+(x.up?"":" dn")+"' title='"+(x.up?"logged on":"disconnected")+"'><i></i>"+esc(x.comp)+" <span class=faint>"+fmtN(x.working)+"</span></span>"}).join(""));
+ smBotsRender(d.bots||{});
  var q=d.bench||{},qs=q.state||"idle",qrun=qs=="running",qq=q.stats||{},acks=(qq.accepted||0)+(qq.rejected||0);
  smTag("sm_qstate",qs,qrun?"t-acc":qs=="done"?"t-blue":"t-mut");
  document.getElementById("sm_qstart").disabled=qrun;document.getElementById("sm_qstop").disabled=!qrun;
@@ -676,16 +735,52 @@ function smRender(){var d=SM.d;if(!d)return;
  seth("sm_qlat",row("Acknowledgement",L.ack)+row("First fill",L.fill));
  var sr=(q.series||[]).slice(-60),mx=Math.max.apply(null,sr.concat([1]))*1.15,w=300,h=60;
  seth("sm_qspark",sr.length<2?"<line x1=0 y1=59 x2=300 y2=59 stroke='var(--line)'/>":"<polyline fill='var(--accSoft)' stroke='none' points='0,"+h+" "+sr.map(function(v,i){return (i*w/(sr.length-1)).toFixed(1)+","+(h-2-(v/mx)*(h-6)).toFixed(1)}).join(" ")+" "+w+","+h+"'/><polyline fill='none' stroke='var(--acc)' stroke-width='1.5' vector-effect='non-scaling-stroke' points='"+sr.map(function(v,i){return (i*w/(sr.length-1)).toFixed(1)+","+(h-2-(v/mx)*(h-6)).toFixed(1)}).join(" ")+"'/>");
- var stc={New:"t-blue",Filled:"t-acc","Partly filled":"t-acc",Cancelled:"t-amber",Expired:"t-amber",Rejected:"t-red"};
+ var stc={New:"t-blue",Amended:"t-blue",Filled:"t-acc","Partly filled":"t-acc",Cancelled:"t-amber",Expired:"t-amber",Rejected:"t-red"};
  seth("sm_tape",(d.tape||[]).map(function(r){return "<tr><td class='m faint' style='font-size:12px'>"+esc(r.time)+"</td><td class=m style='font-size:12px'>"+esc(r.bot)+"</td><td><b>"+esc(r.symbol)+"</b></td><td style='font-weight:600;color:"+(r.side=="Buy"?"var(--acc)":"var(--red)")+"'>"+esc(r.side)+"</td><td class='r m'>"+fmtN(r.qty)+"</td><td class='r m'>"+(r.price?fmtN(r.price,2):"—")+"</td><td><span class='tag "+(stc[r.status]||"t-mut")+"'>"+esc(r.status)+"</span></td><td class='muted ell' title='"+esc(r.note||"")+"'>"+esc(r.note||"")+"</td></tr>"}).join("")||"<tr><td colspan=8 class=empty>Nothing yet. Start the market bots or run a benchmark.</td></tr>");
  seth("sm_rej",(d.rejects||[]).map(function(r){return "<div class=sm-rej><span class=muted>"+esc(r.reason)+"</span><b class=mono>"+fmtN(r.count)+"</b></div>"}).join("")||"<p class=note>None.</p>")}
+function smBotsRender(b){var st=b.state||"stopped",on=st=="running"||st=="paused",held=!on&&!!b.dealer,work=b.working||0,orph=b.orphans||0,left=b.leftover||0;SM.paused=st=="paused";
+ smTag("sm_bstate",st,st=="running"?(b.note||!b.connected?"t-amber":"t-acc"):st=="paused"||held?"t-amber":"t-mut");
+ setc("sm_bhead",b.dealer?"dealer "+b.dealer+(b.dealer_name&&b.dealer_name!=b.dealer?" ("+b.dealer_name+")":"")+" · "+b.tenant+(b.env=="uat"?" UAT":""):"");
+ document.getElementById("sm_bstart").disabled=on;document.getElementById("sm_bstop").disabled=!on;document.getElementById("sm_bclean").disabled=on||!(held||work||orph||left);
+ var pb=document.getElementById("sm_bpause");pb.disabled=!on;pb.textContent=SM.paused?"Resume":"Pause";
+ ["sm_burl","sm_buser","sm_bpass","sm_bremember","sm_brate","sm_bcl","sm_bclist","sm_bset","sm_blist","sm_bmax"].forEach(function(i){document.getElementById(i).disabled=on});
+ smSaved(b.saved_login);
+ var s=b.stats||{};
+ smKs("sm_bk",[["Sent",fmtN(s.sent)],["Accepted by OMS",fmtN(s.accepted)],["Fills",fmtN(s.trades),s.trades?"good":""],["Rejected",fmtN(s.rejected),s.rejected?"bad":""],["Resting",fmtN(work+orph+left)],["Orders/min",on?fmtN(b.orders_per_min,1):"—"]]);
+ var lost=orph?" "+fmtN(orph)+" bot order"+(orph==1?"":"s")+" from earlier runs "+(orph==1?"is":"are")+" still in the book with no run following "+(orph==1?"it":"them")+"; Clean Data cancels "+(orph==1?"it":"them")+".":"";
+ if(left)lost+=" "+fmtN(left)+" order"+(left==1?"":"s")+" of the old engine-only bots "+(left==1?"is":"are")+" still in the book; Clean Data cancels "+(left==1?"it":"them")+".";
+ if(on)setc("sm_bnote",b.note||("Trading "+(b.symbols||[]).length+" shares for "+(b.clients||[]).length+" clients through "+b.site+" · running "+fmtN(b.running_for)+" s"));
+ else if(held)setc("sm_bnote","Stopped: "+fmtN(work)+" bot order"+(work==1?"":"s")+" stay in the book and the bots stay signed in, so the depth and the Blotter stay as they were. Clean Data cancels them through the OMS and signs out; Start replaces them with fresh ones."+lost);
+ else setc("sm_bnote","Simulated dealers that sign in to your OMS and trade for the dealer's clients on its own order channel, so their orders show in the OMS Blotter, Execution, Positions and Purchase Power. They quote a few ticks around a moving fair price, or take the best price with an IOC order, so they trade with each other. Buys stay under the largest-buy value (clients need cash); sells only use shares the OMS says the client holds. Use a dealer login without a one-time code. With Remember ticked, the login is saved on the engine (the password is never shown or logged), so the next Start works with the password left blank."+lost);
+ seth("sm_bsess",(b.clients||[]).map(function(c){return "<span class='sm-bot"+(b.connected?"":" dn")+"' title='"+esc((c.name||c.code)+" · BO "+c.bo+(c.sells?" · holds "+c.holdings+" shares":" · holdings unknown: buys only"))+"'><i></i>"+esc(c.code)+" <span class=faint>"+fmtN(c.working)+"</span></span>"}).join(""));}
 function smBots(a){var body={action:a};
- if(a=="start"){var set=val("sm_bset");body.rate=+val("sm_brate");body.bots=+val("sm_bbots");
-  if(set=="list"){body.symbols=val("sm_blist").split(/[\s,]+/).filter(Boolean);if(!body.symbols.length){toast("Type at least one symbol, or pick a set of shares.",true);return}}else body.count=+set}
- ["sm_bstart","sm_bpause","sm_bstop"].forEach(function(i){document.getElementById(i).disabled=true});
- if(a=="start"||a=="stop")smTag("sm_bstate",a=="start"?"starting":"stopping","t-amber");
- jpost("sim/bots",body).then(function(d){if(d.ok===false){toast(d.error||"The bots could not "+a+".",true);smLoad();return}SM.d=d;smRender();
-  toast({start:"Market bots started",stop:"Market bots stopped; their orders were cancelled",pause:"Market bots paused",resume:"Market bots resumed"}[a])})}
+ if(a=="start"){var set=val("sm_bset"),cl=val("sm_bcl");body.url=val("sm_burl");body.user=val("sm_buser");body.password=document.getElementById("sm_bpass").value;
+  body.rate=+val("sm_brate");body.max_value=+val("sm_bmax");body.remember=document.getElementById("sm_bremember").checked;
+  if(!body.url||!body.user){toast("Enter the OMS address and the dealer login.",true);return}
+  if(!body.password&&!document.getElementById("sm_bpass").placeholder){toast("Enter the dealer's password (none is saved for this login).",true);return}
+  if(cl=="list"){body.clients=val("sm_bclist").split(/[\s,]+/).filter(Boolean);if(!body.clients.length){toast("Type at least one client code, or pick a number of clients.",true);return}}else body.client_count=+cl;
+  if(set=="list"){body.symbols=val("sm_blist").split(/[\s,]+/).filter(Boolean);if(!body.symbols.length){toast("Type at least one symbol, or pick a set of shares.",true);return}}else body.count=+set;
+  try{localStorage.setItem("me_sim_oms",JSON.stringify({url:body.url,user:body.user}))}catch(e){}}
+ ["sm_bstart","sm_bpause","sm_bstop","sm_bclean"].forEach(function(i){document.getElementById(i).disabled=true});
+ if(a=="start"||a=="stop")smTag("sm_bstate",a=="start"?"signing in":"stopping","t-amber");
+ jpost("sim/bots",body).then(function(d){if(d.ok===false){toast(d.error||"The market bots could not "+a+".",true);smLoad();return}
+  if(a=="start")document.getElementById("sm_bpass").value="";SM.d=d;smRender();
+  toast({start:"Market bots signed in and trading",stop:"Market bots stopped; their orders stay in the book",pause:"Market bots paused",resume:"Market bots resumed"}[a])})}
+// smSaved shows the login saved on the engine (never its password) and fills empty fields from it
+function smSaved(sv){var u=document.getElementById("sm_burl"),n=document.getElementById("sm_buser"),p=document.getElementById("sm_bpass"),e=document.getElementById("sm_bsaved");
+ SM.saved=sv||null;e.hidden=!sv;p.placeholder="";if(!sv)return;
+ if(!u.value&&document.activeElement!==u)u.value=sv.url;if(!n.value&&document.activeElement!==n)n.value=sv.user;
+ var same=n.value.trim().toLowerCase()==String(sv.user).toLowerCase()&&u.value.trim().replace(/\/+$/,"").toLowerCase()==String(sv.url).toLowerCase();
+ if(same)p.placeholder="saved: leave blank to use it";
+ e.innerHTML="Saved login: <b>"+esc(sv.user)+"</b> on "+esc(sv.url)+", saved "+esc(sv.saved)+". Leave the password blank to use it. <button class='btn sm' type=button onclick='smForget()'>Forget</button>"}
+function smForget(){var sv=SM.saved||{};confirmDlg("Forget the saved login?","The saved password for "+(sv.user||"the dealer")+" is deleted from the engine. Bots that are signed in stay signed in.","Forget",true,function(){
+ jpost("sim/bots",{action:"forget"}).then(function(d){if(d.ok===false)return dlgErr(d.error||"Failed");dlgClose();SM.d=d;smRender();toast("Saved OMS login deleted")})})}
+// Clean Data: the bots' orders are cancelled through the OMS and the bots sign out; trades and the order report stay
+function smBotsClean(){var b=(SM.d||{}).oms||{},n=(b.working||0)+(b.orphans||0);
+ confirmDlg("Clean Data?",fmtN(n)+" market-bot order"+(n==1?"":"s")+" still in the book "+(n==1?"is":"are")+" cancelled (through the OMS, so the Blotter shows them cancelled) and the bots sign out of the OMS. Trades, prices and the order report stay.","Clean Data",true,function(){
+  var ok=document.getElementById("dlg_ok");if(ok){ok.disabled=true;ok.textContent="Cleaning…"}
+  jpost("sim/bots",{action:"clean"}).then(function(d){if(d.ok===false){if(ok){ok.disabled=false;ok.textContent="Clean Data"}smLoad();return dlgErr(d.error||"Clean Data failed.")}
+   dlgClose();SM.d=d;smRender();toast("Clean Data: "+(d.detail||"done"))})})}
 function smBench(a){var body={action:a};
  if(a=="start"){body.mode=SM.mode;body.rate=document.getElementById("sm_qmax").checked?0:+val("sm_qrate");body.seconds=+val("sm_qsec");body.symbol=val("sm_qsym");
   if(!body.symbol){toast("Type the share to benchmark, for example GP.",true);return}
@@ -694,15 +789,102 @@ function smBench(a){var body={action:a};
  jpost("sim/bench",body).then(function(d){if(d.ok===false){toast(d.error||"The benchmark could not "+a+".",true);smLoad();return}SM.d=d;smRender();if(a=="stop")toast("Benchmark stopped")})}
 function smPhase(a){confirmDlg(a=="open"?"Open the market?":"Start Pre-Open?",a=="open"?"Runs the opening auction and starts Continuous Trading for every broker, and switches the DSE clock to manual.":"Moves the market to Pre-Open for every broker, and switches the DSE clock to manual.",a=="open"?"Open market":"Start Pre-Open",false,function(){
  j("trading-session?action="+a+"&note="+encodeURIComponent("from the Simulator page"),{method:"POST"}).then(function(d){dlgClose();if(!d.ok){toast(d.error||"The phase was not changed.",true);return}toast("Market is now "+d.phase);smLoad();refresh()})})}
-function smClean(){confirmDlg("Clean test data?","Stops the market bots and any benchmark, cancels every simulator order in the book, and removes the simulator's orders from the order report (every day). Trades and prices stay.","Clean test data",true,function(){
+function smClean(){confirmDlg("Clean test data?","Stops the market bots and any benchmark, cancels every simulator order in the book (the market bots' through the OMS, signing them out), and removes the benchmark's orders from the order report (every day). Trades and prices stay.","Clean test data",true,function(){
  var b=document.getElementById("dlg_ok");if(b){b.disabled=true;b.textContent="Cleaning…"}
  j("sim/clean",{method:"POST"}).then(function(d){dlgClose();if(!d.ok){toast(d.error||"Cleaning failed.",true);smLoad();return}var r=d.result||{};toast("Cleaned: "+fmtN(r.cancelled)+" orders cancelled, "+fmtN(r.report_rows)+" order-report rows removed");smLoad()})})}
 
+// ── Welcome: the engine at a glance, from the status poll, today's overview and the broker list ──
+var WL={ov:null,instr:null,dis:{}};
+try{WL.dis=JSON.parse(sessionStorage.getItem("me-wl-dismissed")||"{}")}catch(e){}
+function wlLoad(){j("overview").then(function(d){if(d&&d.ok!==false){WL.ov=d;if(VIEW=="home")wlRender()}});
+ if(ME_ROLE=="admin")j("instruments").then(function(d){WL.instr=d.rows||[];if(VIEW=="home")wlRender()});
+ wlRender()}
+// Dhaka wall clock: [hours, minutes, seconds] and the date line
+function wlNow(){var p=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Dhaka",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(new Date()),o={};
+ p.forEach(function(x){o[x.type]=x.value});return [+o.hour,+o.minute,+o.second]}
+function wlDate(){var f=function(k){return new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Dhaka",[k]:k=="day"?"numeric":"long"}).format(new Date())};
+ return (f("weekday")+" · "+f("day")+" "+f("month")+" "+new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Dhaka",year:"numeric"}).format(new Date())).toUpperCase()}
+function wlMin(hm){var p=String(hm||"").split(":");return p.length<2?-1:+p[0]*60+ +p[1]}
+function wlIn(min){min=Math.max(0,Math.round(min));return min>=60?Math.floor(min/60)+"h "+(min%60)+"m":min+"m"}
+function wlTk(v){v=+v||0;return v>=1e7?"Tk "+fmtN(v/1e7,2)+" Cr":v>=1e5?"Tk "+fmtN(v/1e5,2)+" Lakh":"Tk "+fmtN(v,0)}
+// the clock and the phase pill, every second
+function wlTick(){var d=_s||{},ov=WL.ov||{},sc=ov.schedule||{},ph=d.phase||ov.phase||"",t=wlNow(),m=t[0]*60+t[1],pad=function(n){return (n<10?"0":"")+n};
+ var trading=ph=="Continuous Trading"||ph=="Pre-Open",note="";
+ if(d.auto_clock===false||ov.auto_clock===false)note="clock manual";
+ else if(ph=="Continuous Trading"&&wlMin(sc.close)>m)note="closes in "+wlIn(wlMin(sc.close)-m);
+ else if(ph=="Pre-Open"&&wlMin(sc.open)>m)note="opens in "+wlIn(wlMin(sc.open)-m);
+ else if(ov.trading_day&&wlMin(sc.pre_open)>m)note="pre-open at "+sc.pre_open;
+ setc("wl_phase",ph||"—");document.getElementById("wl_pdot").style.background=trading?"var(--acc)":"var(--mut2)";
+ setc("wl_clock",pad(t[0])+":"+pad(t[1])+":"+pad(t[2])+(note?" · "+note:""));
+ return {ph:ph,trading:trading,hour:t[0]}}
+// what needs a look: each item has a signature, so a dismissed one comes back when it changes
+function wlAttention(){var d=_s||{},ov=WL.ov||{},tt=ov.totals||{},out=[],admin=ME_ROLE=="admin",ph=d.phase||ov.phase||"",trading=ph=="Continuous Trading"||ph=="Pre-Open";
+ var live={};(d.sessions||[]).forEach(function(x){live[String(x.broker).toUpperCase()]=1});
+ var down=((_b&&_b.brokers)||[]).map(function(b){return String(b.sender)}).filter(function(id){return !live[id.toUpperCase()]});
+ if(down.length)out.push({id:"fix",sig:down.join(","),sev:trading?"red":"amber",title:down.length+" FIX session"+(down.length>1?"s":"")+" disconnected",
+  detail:down.slice(0,4).join(", ")+(down.length>4?" and "+(down.length-4)+" more":"")+(down.length>1?" have":" has")+" not logged on"+(trading?" while the market is open.":"."),action:"View sessions",v:"sessions"});
+ var lst=d.listeners||{},dl=Object.keys(lst).filter(function(k){return !lst[k]});
+ if(admin&&dl.length)out.push({id:"listen",sig:dl.join(","),sev:"red",title:dl.join(", ")+(dl.length>1?" are":" is")+" down",detail:"Nothing can connect to "+(dl.length>1?"these ports":"this port")+" until the listener is back.",action:"Diagnostics",v:"diag"});
+ if(admin&&d.state_age>30)out.push({id:"save",sig:"x",sev:"red",title:"The market was last saved "+Math.round(d.state_age)+" s ago",detail:"Order books and trades are normally saved every second. Check the database and the disk.",action:"Diagnostics",v:"diag"});
+ var halted=(WL.instr||[]).filter(function(r){return r.status=="halted"}).map(function(r){return r.symbol});
+ if(admin&&halted.length)out.push({id:"halt",sig:halted.join(","),sev:"amber",title:halted.length>1?halted.length+" instruments are halted":halted[0]+" is halted",
+  detail:(halted.length>1?halted.slice(0,6).join(", ")+(halted.length>6?" …":"")+": n":"N")+"ew orders are rejected until "+(halted.length>1?"they are":"it is")+" activated. Resting orders keep their place.",action:"Open instruments",v:"instruments"});
+ var tot=(tt.buy_orders||0)+(tt.sell_orders||0),rej=tt.rejected||0;
+ if(rej>=10&&rej/Math.max(tot,1)>=.05)out.push({id:"rej",sig:"x",sev:"amber",title:"Rejections are high today",detail:fmtN(rej)+" of "+fmtN(tot)+" orders ("+fmtN(rej*100/tot,1)+"%) were refused on arrival.",action:"Review orders",v:"orders"});
+ var q=d.fix_queued||{},qb=Object.keys(q).filter(function(k){return q[k]>0}),qn=0;qb.forEach(function(k){qn+=q[k]});
+ if(admin&&qn)out.push({id:"queued",sig:qb.join(","),sev:"blue",title:fmtN(qn)+" report"+(qn>1?"s":"")+" waiting for "+qb.join(", "),detail:"Execution reports for a broker that is logged off are kept and sent when it logs on again.",action:"View sessions",v:"sessions"});
+ if(admin&&d.auto_clock===false)out.push({id:"clock",sig:ph,sev:"blue",title:"The DSE clock is manual",detail:"Phases change only by hand: the market stays in "+(ph||"its phase")+" until someone moves it.",action:"Market session",v:"market"});
+ return out.filter(function(a){return WL.dis[a.id]!==a.id+"|"+a.sig})}
+function wlDismiss(id,sig){WL.dis[id]=id+"|"+sig;try{sessionStorage.setItem("me-wl-dismissed",JSON.stringify(WL.dis))}catch(e){}wlRender()}
+function wlRender(){if(VIEW!="home")return;var d=_s||{},ov=WL.ov||{},tt=ov.totals||{},admin=ME_ROLE=="admin",now=wlTick(),col={red:"var(--red)",amber:"var(--amber)",blue:"var(--blue)",green:"var(--acc)",mut:"var(--mut2)"};
+ setc("wl_date",wlDate());setc("wl_greet",(now.hour<12?"Good morning":now.hour<17?"Good afternoon":"Good evening")+(ME_USER?", "+ME_USER:""));
+ var att=wlAttention(),urgent=att.filter(function(a){return a.sev=="red"}).length;
+ var mk={"Continuous Trading":"The market is open and matching normally.","Pre-Open":"The market is in Pre-Open: orders are collected for the opening auction.","Post-Close":"The market is in Post-Close."}[now.ph]||(now.ph?"The market is "+now.ph.toLowerCase()+".":"");
+ setc("wl_sum",mk+" "+(att.length?att.length+" item"+(att.length>1?"s need":" needs")+" a look"+(urgent?", "+urgent+" urgent":"")+".":"Nothing needs you right now."));
+ // status cards
+ var live={};(d.sessions||[]).forEach(function(x){live[String(x.broker).toUpperCase()]=1});
+ var reg=((_b&&_b.brokers)||[]).map(function(b){return String(b.sender).toUpperCase()}),up=reg.filter(function(id){return live[id]}).length,dn=reg.length-up;
+ var pt=(ov.prev&&ov.prev.totals)||null,tr=tt.trades||0,trSub=fmtN(tt.volume||0)+" shares";
+ if(pt&&pt.trades){var ch=(tr-pt.trades)*100/pt.trades;trSub=(ch>=0?"▲ ":"▼ ")+fmtN(Math.abs(ch),1)+"% vs "+String(ov.prev.date).slice(5)}
+ var traded=(ov.instruments||[]).filter(function(r){return r.trades>0}).length;
+ var cards=[
+  {l:"Engine",st:d.running===false?"DOWN":"UP",c:d.running===false?"red":"green",v:d.running===false?"Stopped":"Running",s:"uptime "+(d.uptime||"—"),go:admin?"diag":"dash"},
+  reg.length?{l:"FIX sessions",st:dn?dn+" DOWN":"ALL UP",c:dn?"red":"green",v:up+" / "+reg.length,s:"logged on",go:"sessions"}
+   :{l:"FIX sessions",st:"NONE",c:"mut",v:fmtN((d.sessions||[]).length),s:"no brokers registered yet",go:"creds"},
+  {l:"Trades today",st:now.trading?"LIVE":"TODAY",c:now.trading?"green":"mut",v:fmtN(tr),s:trSub,go:"dash"},
+  {l:"Turnover today",st:now.trading?"LIVE":"TODAY",c:now.trading?"green":"mut",v:wlTk(tt.turnover),s:!tr?"no trades yet":ov.scope=="own"?"your brokers' trades":"across "+traded+" instrument"+(traded==1?"":"s"),go:"dash"}];
+ seth("wl_cards",cards.map(function(k){return "<button class=wl-card type=button onclick=\"show('"+k.go+"')\"><span class=l>"+esc(k.l)+"<span class=wl-st style='color:"+col[k.c]+"'><i></i>"+esc(k.st)+"</span></span><span class=v>"+esc(k.v)+"</span><span class=s>"+esc(k.s)+"</span></button>"}).join(""));
+ // needs attention
+ setc("wl_acnt",att.length?att.length+" open":"");
+ seth("wl_attn",att.map(function(a){return "<div class=wl-item><span class=bar style='background:"+col[a.sev]+"'></span><div><b>"+esc(a.title)+"</b><span class=d>"+esc(a.detail)+"</span></div>"+
+  "<div class=acts><button class=wl-dis type=button onclick='wlDismiss("+jsa(a.id)+","+jsa(a.sig)+")'>Dismiss</button><button class=wl-go type=button onclick=\"show('"+a.v+"')\">"+esc(a.action)+"</button></div></div>"}).join("")||"<div class=wl-clear><i></i>Nothing needs you right now.</div>");
+ // quick actions: the pages this role has, with their sidebar icons
+ var acts=admin?[["trade","Place an order"],["market","Market session"],["creds","Add a broker"],["access","Allow an IP"],["orders","Order report"],["diag","Run self-test"]]
+  :[["trade","Place an order"],["creds","Add a broker"],["sessions","FIX sessions"],["orders","Order report"],["msglog","Message log"],["dash","Dashboard"]];
+ seth("wl_acts",acts.map(function(a){var ic=document.querySelector('.navitem[data-v="'+a[0]+'"] svg');return "<button class=wl-act type=button onclick=\"show('"+a[0]+"')\"><svg viewBox='0 0 24 24'>"+(ic?ic.innerHTML:"")+"</svg><span>"+esc(a[1])+"</span></button>"}).join(""));
+ // recent activity from the audit trail (a user sees their own entries)
+ document.getElementById("wl_audit").style.display=admin?"":"none";
+ seth("wl_recent",(d.audit||[]).slice(0,6).map(function(e){return "<div class=wl-rec><span class=t>"+esc(String(e.time||"").slice(11,16))+"</span><div><span>"+esc(wlAudit(e))+"</span><small>"+esc(String(e.actor||"").split(" (")[0])+"</small></div></div>"}).join("")||"<div class=wl-empty>No activity yet.</div>")}
+// an audit entry in words
+var WL_AUD={"login.ok":"Signed in to the console","login.fail":"Failed sign-in","login.locked":"Sign-in locked after too many attempts","logout":"Signed out",
+ "user.add":"Added user","user.delete":"Deleted user","user.role":"Changed the role of","user.register":"Registered","user.password.self":"Changed own password","user.password.reset":"Reset the password of",
+ "instruments.reload":"Reloaded instruments","instruments.import":"Imported instruments","instruments.export":"Exported instruments","instruments.delete_all":"Deleted all instruments",
+ "instrument.add":"Listed","instrument.update":"Edited","instrument.halt":"Halted","instrument.resume":"Activated","instrument.delist":"Delisted",
+ "ISSUE":"Issued credentials for","REVOKE":"Revoked credentials for","ALLOW+":"Allowed","ALLOW-":"Removed from the allowlist:",
+ "SESSION OPEN":"Opened continuous trading","SESSION PREOPEN":"Moved to Pre-Open","SESSION CLOSE":"Moved to Close","SESSION POSTCLOSE":"Moved to Post-Close","SESSION ENDOFDAY":"Ended the trading day",
+ "SESSION AUTO_ON":"Clock follows the schedule","SESSION AUTO_OFF":"Clock switched to manual","SESSION DISCONNECT":"Logged out FIX session","SESSION RESET":"Reset sequence numbers for"};
+function wlAudit(e){var a=String(e.action||""),t=String(e.target||""),w=WL_AUD[a];
+ if(a.indexOf("SESSION ")==0&&a!="SESSION DISCONNECT"&&a!="SESSION RESET"){var note=t.split(" · ").slice(1).join(" · ");return w?w+(note?": "+note:""):a}
+ if(w)return w+(t&&!/^(instruments\.|login\.|logout|user\.password\.self)/.test(a)?" "+t:"");
+ return a.charAt(0)+a.slice(1).toLowerCase().replace(/[._]/g," ")+(t?": "+t:"")}
+
 // ── start ──
 var _h0=location.hash.slice(1);
-loadMe().then(function(){show(TITLES[_h0]?_h0:"dash")});
+loadMe().then(function(){show(TITLES[_h0]?_h0:"home")});
 refresh();loadBrokers();
 setInterval(refresh,3000);
+setInterval(function(){if(VIEW=="home")wlTick()},1000);
+setInterval(function(){if(VIEW=="home")wlLoad()},15000);
 setInterval(function(){if(VIEW=="dash"&&!_ovPaused&&OV&&OV.today)ovLoad()},3000);
 setInterval(function(){if(VIEW=="dash"&&OV&&OV.today)ovSession();if(VIEW=="market")renderMarket()},1000);
 setInterval(function(){if(VIEW=="trade")ttBook()},1500);

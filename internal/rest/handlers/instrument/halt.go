@@ -86,3 +86,45 @@ func (h *Handler) Delist(w http.ResponseWriter, r *http.Request) {
 	}
 	utils.WriteJSON(w, out)
 }
+
+// DeleteAll serves /admin/api/instruments/delete-all: every listed instrument is
+// delisted, as Delist does one at a time, and its resting orders and stops are
+// cancelled with a report to each owner. ?dry_run=1 only counts them; otherwise
+// the body must be {"Confirm":"DELETE"}.
+func (h *Handler) DeleteAll(w http.ResponseWriter, r *http.Request) {
+	eng := h.Eng
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"POST only"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	syms := map[string]bool{}
+	for _, row := range instrumentRows(eng) {
+		syms[row["symbol"].(string)] = true
+	}
+	if r.URL.Query().Get("dry_run") != "" {
+		utils.WriteJSON(w, map[string]any{"ok": true, "dry_run": true, "instruments": len(syms), "orders": eng.OrdersIn(syms)})
+		return
+	}
+	var req struct{ Confirm string }
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil || req.Confirm != "DELETE" {
+		utils.WriteJSON(w, map[string]any{"ok": false, "error": "type DELETE to confirm"})
+		return
+	}
+	if len(syms) == 0 {
+		utils.WriteJSON(w, map[string]any{"ok": false, "error": "there are no instruments to delete"})
+		return
+	}
+	// Delisted first, so no new order can rest while the books are emptied.
+	for sym := range syms {
+		engine.SetStatus(sym, "delisted")
+		eng.PublishTradingState(sym)
+	}
+	cancelled := eng.CancelAllIn(syms)
+	audit.Record(middleware.ActorOf(r), "instruments.delete_all", fmt.Sprintf("%d instruments delisted · %d orders cancelled", len(syms), cancelled))
+	log.Printf("[universe] admin deleted all %d instruments (%d orders cancelled)", len(syms), cancelled)
+	out := map[string]any{"ok": true, "deleted": len(syms), "cancelled": cancelled, "count": len(instrumentRows(eng))}
+	if err := persistUniverse(eng); err != nil {
+		out["warning"] = fmt.Sprintf("applied, but could not be persisted to %s: %v", engine.InstrumentFile(), err)
+	}
+	utils.WriteJSON(w, out)
+}

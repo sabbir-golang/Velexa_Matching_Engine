@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/csv"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"log"
@@ -393,14 +394,17 @@ func emptyMaster(b []byte) bool {
 }
 
 // ParseMaster accepts the exchange JSON payload ({"instruments":[...]}), a bare
-// JSON array of the same objects, or a delimited export (CSV/TSV with a header
-// row) — whichever the operator has to hand from the OMS security master.
+// JSON array of the same objects, a DSE end-of-day ticker file (XML), or a
+// delimited export (CSV/TSV with a header row) — whichever the operator has to
+// hand from the OMS security master.
 func ParseMaster(b []byte) ([]MasterInstr, error) {
-	trimmed := strings.TrimSpace(string(b))
+	trimmed := strings.TrimSpace(strings.TrimPrefix(string(b), "\ufeff"))
 	if trimmed == "" {
 		return nil, fmt.Errorf("empty master")
 	}
 	switch trimmed[0] {
+	case '<':
+		return parseEODTickers([]byte(trimmed))
 	case '{':
 		var payload struct {
 			Count       int           `json:"count"`
@@ -418,6 +422,69 @@ func ParseMaster(b []byte) ([]MasterInstr, error) {
 		return rows, nil
 	}
 	return parseDelimited(trimmed)
+}
+
+// BuiltinName is the company name the built-in DSE list has for sym ("" when it
+// has none).
+func BuiltinName(sym string) string {
+	for _, in := range universe {
+		if in.Symbol == sym && in.Name != in.Symbol {
+			return in.Name
+		}
+	}
+	return ""
+}
+
+// MasterFormat names the format ParseMaster reads b as: "xml", "json" or "csv".
+func MasterFormat(b []byte) string {
+	trimmed := strings.TrimSpace(strings.TrimPrefix(string(b), "\ufeff"))
+	switch {
+	case strings.HasPrefix(trimmed, "<"):
+		return "xml"
+	case strings.HasPrefix(trimmed, "{"), strings.HasPrefix(trimmed, "["):
+		return "json"
+	}
+	return "csv"
+}
+
+// parseEODTickers reads a DSE end-of-day ticker file
+// (YYYYMMDD-HHMMSS-eodtickers-DSE.xml, also what the export writes): one
+// <Ticker SecurityCode ISIN Category AssetClass Sector Close …/> per security.
+// The day's close becomes the previous close; the board follows from the asset
+// class and category as on the DSE; indices (AssetClass IN) are marked so they
+// are not listed. The file carries no company names, so Name is left blank
+// (BuiltinName has the name of a known DSE ticker).
+func parseEODTickers(b []byte) ([]MasterInstr, error) {
+	var doc struct {
+		XMLName xml.Name `xml:"EODTickers"`
+		Tickers []struct {
+			Code       string `xml:"SecurityCode,attr"`
+			ISIN       string `xml:"ISIN,attr"`
+			Category   string `xml:"Category,attr"`
+			AssetClass string `xml:"AssetClass,attr"`
+			Sector     string `xml:"Sector,attr"`
+			Close      string `xml:"Close,attr"`
+		} `xml:"Ticker"`
+	}
+	if err := xml.Unmarshal(b, &doc); err != nil {
+		return nil, fmt.Errorf("not a DSE end-of-day ticker file (<EODTickers><Ticker …/></EODTickers>): %v", err)
+	}
+	if len(doc.Tickers) == 0 {
+		return nil, fmt.Errorf("the ticker file has no <Ticker> rows")
+	}
+	out := make([]MasterInstr, 0, len(doc.Tickers))
+	for _, t := range doc.Tickers {
+		sym := strings.ToUpper(strings.TrimSpace(t.Code))
+		class := strings.ToUpper(strings.TrimSpace(t.AssetClass))
+		prev, _ := strconv.ParseFloat(strings.TrimSpace(t.Close), 64)
+		m := MasterInstr{Symbol: sym, ISIN: strings.TrimSpace(t.ISIN), PrevClose: Round2(prev),
+			Sector: strings.TrimSpace(t.Sector), AssetClass: class, IsIndex: class == "IN"}
+		if !m.IsIndex {
+			m.Board = boardFor(NormAssetClass(class), strings.ToUpper(strings.TrimSpace(t.Category)))
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // parseDelimited reads a CSV/TSV security-master export. The header row names

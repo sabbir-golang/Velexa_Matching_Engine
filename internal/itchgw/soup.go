@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,11 +33,30 @@ type soupConn struct {
 	wmu       sync.Mutex
 	stop      chan struct{}
 	closeOnce sync.Once
-	seq       uint64 // sequence number of the next SequencedData packet
+	seq       uint64        // sequence number of the next SequencedData packet
+	silence   time.Duration // drop the client after this long without a packet from it (0: never)
 }
 
 func newSoupConn(c net.Conn, name string) *soupConn {
 	return &soupConn{c: c, name: name, stop: make(chan struct{}), seq: 1}
+}
+
+// clientSilence is how long a logged-in client may send nothing, not even a
+// heartbeat, before its connection is dropped: SoupBinTCP's "about 15 seconds"
+// (ME_ITCH_CLIENT_TIMEOUT, in seconds; 0 never drops). It ends a connection its
+// client has lost track of, for example after the client reset its state
+// without closing the socket, so that the client's own reconnect can go ahead.
+func clientSilence() time.Duration {
+	v := strings.TrimSpace(os.Getenv("ME_ITCH_CLIENT_TIMEOUT"))
+	if v == "" {
+		return 15 * time.Second
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		log.Printf("[ITCH] ME_ITCH_CLIENT_TIMEOUT=%q is not a number of seconds: using 15", v)
+		return 15 * time.Second
+	}
+	return time.Duration(n) * time.Second
 }
 
 func (s *soupConn) close() {
@@ -100,11 +120,18 @@ func (s *soupConn) heartbeatLoop() {
 	}
 }
 
-// readerLoop drains client heartbeats and watches for a logout.
+// readerLoop drains client heartbeats, watches for a logout and drops a
+// client that has gone silent.
 func (s *soupConn) readerLoop() {
 	hdr := make([]byte, 3)
 	for {
+		if s.silence > 0 {
+			s.c.SetReadDeadline(time.Now().Add(s.silence))
+		}
 		if _, err := io.ReadFull(s.c, hdr); err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				log.Printf("[%s] %s: nothing from the client for %s, not even a heartbeat: connection closed", s.name, s.c.RemoteAddr(), s.silence)
+			}
 			s.close()
 			return
 		}
@@ -209,6 +236,7 @@ func serveSoup(name, addr string, handle func(s *soupConn, req loginReq)) (net.A
 	if err != nil {
 		return nil, fmt.Errorf("listen %s: %w", addr, err)
 	}
+	silence := clientSilence()
 	go func() {
 		for {
 			c, err := ln.Accept()
@@ -231,6 +259,7 @@ func serveSoup(name, addr string, handle func(s *soupConn, req loginReq)) (net.A
 					return
 				}
 				s := newSoupConn(c, name)
+				s.silence = silence
 				go s.heartbeatLoop()
 				go s.readerLoop()
 				handle(s, req)

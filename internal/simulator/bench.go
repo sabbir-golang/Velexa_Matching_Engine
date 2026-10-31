@@ -91,7 +91,7 @@ func (s *Sim) StartBench(cfg BenchConfig) error {
 	if running {
 		return errors.New("a benchmark is already running")
 	}
-	syms := s.pickSymbols(BotConfig{Symbols: []string{cfg.Symbol}, Count: 1})
+	syms := s.pickSymbols([]string{cfg.Symbol}, 1)
 	if len(syms) == 0 {
 		return fmt.Errorf("%s is not an active listed share", cfg.Symbol)
 	}

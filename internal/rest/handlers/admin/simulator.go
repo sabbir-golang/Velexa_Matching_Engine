@@ -22,12 +22,16 @@ func (h *Handler) Sim(w http.ResponseWriter, r *http.Request) {
 	utils.WriteJSON(w, h.Simulator.Status())
 }
 
-// SimBots serves POST /admin/api/sim/bots: {action: start|pause|resume|stop}
-// plus, for start, the bot settings (rate, bots, symbols, count).
+// SimBots serves POST /admin/api/sim/bots: {action: start|pause|resume|stop|clean|forget}
+// plus, for start, the OMS address, dealer login and bot settings. The market
+// bots trade through that OMS. The password signs them in; with remember it is
+// saved on the engine (never shown or recorded), and a blank one uses the saved
+// login; forget deletes it. Stop leaves their orders in the book; clean cancels
+// them through the OMS and signs the bots out.
 func (h *Handler) SimBots(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Action string `json:"action"`
-		simulator.BotConfig
+		simulator.OMSConfig
 	}
 	if !h.simReq(w, r, &req) {
 		return
@@ -36,14 +40,27 @@ func (h *Handler) SimBots(w http.ResponseWriter, r *http.Request) {
 	detail := ""
 	switch req.Action {
 	case "start":
-		err = h.Simulator.Start(req.BotConfig)
-		detail = fmt.Sprintf("%d orders/s · %d bots · %s", req.Rate, req.Bots, symList(req.Symbols, req.Count))
+		err = h.Simulator.StartOMS(req.OMSConfig)
+		clients := fmt.Sprintf("%d of the dealer's clients", req.ClientCount)
+		if len(req.Clients) > 0 {
+			clients = fmt.Sprintf("%d clients", len(req.Clients))
+		}
+		detail = fmt.Sprintf("%s as %s · %s · %d orders/min · %s", req.URL, req.User, clients, req.Rate, symList(req.Symbols, req.Count))
 	case "pause":
-		err = h.Simulator.Pause(true)
+		err = h.Simulator.PauseOMS(true)
 	case "resume":
-		err = h.Simulator.Pause(false)
+		err = h.Simulator.PauseOMS(false)
 	case "stop":
-		h.Simulator.StopBots()
+		h.Simulator.StopOMS()
+	case "clean":
+		var n int
+		if n, err = h.Simulator.CleanOMS(); err == nil {
+			detail = fmt.Sprintf("%d orders cancelled", n)
+		}
+	case "forget":
+		if err = h.Simulator.ForgetOMSLogin(); err == nil {
+			detail = "saved OMS login deleted"
+		}
 	default:
 		err = fmt.Errorf("unknown action %q", req.Action)
 	}
@@ -113,7 +130,9 @@ func (h *Handler) simDone(w http.ResponseWriter, r *http.Request, action, detail
 		return
 	}
 	audit.Record(middleware.ActorOf(r), action, detail)
-	utils.WriteJSON(w, h.Simulator.Status())
+	out := h.Simulator.Status()
+	out["detail"] = detail
+	utils.WriteJSON(w, out)
 }
 
 func symList(syms []string, n int) string {

@@ -17,7 +17,7 @@ The acceptor is built on [quickfixgo](https://github.com/quickfixgo/quickfix) in
 | TargetCompID (broker side) | Any. `DynamicSessions=Y` accepts any CompID; the `DSE_BROKER` in the template is only a placeholder | fixed |
 | Session schedule | Always open (`StartTime` = `EndTime` = `00:00:00`) | fixed |
 | Sequence numbers | Reset to 1 on every Logon, Logout and disconnect (`ResetOnLogon`, `ResetOnLogout`, `ResetOnDisconnect`) | fixed |
-| Message store | In memory only. Nothing survives a restart, so earlier messages can't be resent | fixed |
+| Message store | In memory only, the newest 20,000 sent messages per session. A ResendRequest (35=2) reaching further back gets a SequenceReset-GapFill (35=4, 123=Y) for the missing range, then the kept messages (43=Y). Nothing survives a restart | `ME_FIX_RESEND_KEEP` (`0` keeps all) |
 | Validation | Inbound messages are checked against `FIXT11.xml` and `FIX50SP2.xml` from `ME_FIX_SPEC_DIR`. Field order and user-defined fields aren't checked, so broker-specific tags pass | `ME_FIX_DD`, `ME_FIX_SPEC_DIR` |
 
 With `ME_FIX_DD=off`, or a BeginString other than `FIXT.1.1`, the data dictionary isn't used.
@@ -193,6 +193,7 @@ Every SoupBinTCP packet has this frame:
 | client → server | `L` | LoginRequest: user (6), password (10), session (10), sequence (20). |
 | client → server | `O` | Logout: the server closes the connection. |
 | client → server | other | Read and ignored (including `R` client heartbeats). |
+| client → server | (nothing) | A client that sends nothing, not even a heartbeat, for `ME_ITCH_CLIENT_TIMEOUT` seconds (default 15, SoupBinTCP's usual figure) is disconnected. This frees a connection the client has lost track of, so its own reconnect can go ahead. |
 
 ### Login, sequence numbers and replay
 

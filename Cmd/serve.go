@@ -80,8 +80,8 @@ func Serve() {
 	var sim *simulator.Sim
 	if fa != nil && !strings.EqualFold(config.EnvOr("ME_SIMULATOR", "on"), "off") {
 		sim = simulator.New(eng, "127.0.0.1:"+fixPort, fixSender, config.EnvOr("ME_FIX_BEGIN", "FIXT.1.1"), st.orders)
-		if n := sim.Sweep(); n > 0 { // bots never outlive the engine run they belonged to
-			log.Printf("[sim] cancelled %d simulator order(s) left in the book from before the restart", n)
+		if n := sim.SweepBench(); n > 0 { // a benchmark never outlives its run; market-bot orders kept by Stop stay
+			log.Printf("[sim] cancelled %d benchmark order(s) left in the book from before the restart", n)
 		}
 	}
 
@@ -97,7 +97,7 @@ func Serve() {
 	// SIGTERM (docker stop, systemctl stop): log brokers out, save the market
 	// once more and close the database.
 	if sim != nil {
-		sim.StopBots()
+		sim.EndOMS() // cancels the market bots' orders through the OMS while the FIX gateway still runs
 		sim.StopBench()
 	}
 	if fa != nil {
